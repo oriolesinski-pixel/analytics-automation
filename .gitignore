@@ -1,22 +1,12 @@
-# node / pnpm
 node_modules/
 .pnpm-store/
 pnpm-lock.yaml
-
-# builds
 dist/
 build/
-.out/
-.next/
-
-# env & secrets (DO NOT COMMIT)
+.DS_Store
+# secrets
 .env
 .env.*
 !/.env.example
 secrets/
 *.pem
-
-# OS/editor
-.DS_Store
-*.log
-coverage/
