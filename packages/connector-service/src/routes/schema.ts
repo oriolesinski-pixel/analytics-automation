@@ -1,19 +1,18 @@
 // src/routes/schema.ts
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fs from 'node:fs';
 import { z } from 'zod';
 import { Octokit } from '@octokit/rest';
 import { createAppAuth } from '@octokit/auth-app';
 import { createClient } from '@supabase/supabase-js';
 
-// ---- Supabase (same options style as server.ts) ----
+// ---------- Supabase ----------
 const supabase = createClient(
   process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false, autoRefreshToken: false } }
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// ---- Validation / helpers ----
+// ---------- Schemas ----------
 const FullRepo = z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/);
 const FileSpec = z.object({ path: z.string().min(1), content: z.string().default('') });
 const ApproveBody = z.object({
@@ -21,15 +20,20 @@ const ApproveBody = z.object({
   commit_sha: z.string().min(7),
   files: z.array(FileSpec).optional(),
   force: z.boolean().optional(),
+  auto_inject: z.boolean().optional().default(true),
 });
 
+// ---------- Helpers ----------
 function parseFull(full: string) {
   const [owner, name] = full.split('/');
   return { owner, name };
 }
-function sanitizePath(path: string) {
-  if (path.startsWith('/') || path.includes('..')) throw new Error(`Unsafe path "${path}"`);
-  return path;
+function b64(s: string) {
+  return Buffer.from(s, 'utf8').toString('base64');
+}
+function sanitizePath(pth: string) {
+  if (pth.startsWith('/') || pth.includes('..')) throw new Error(`Unsafe path "${pth}"`);
+  return pth;
 }
 function readPrivateKey(): string {
   if (process.env.GITHUB_PRIVATE_KEY) return process.env.GITHUB_PRIVATE_KEY.replace(/\\n/g, '\n');
@@ -49,57 +53,109 @@ async function getRepoRow(owner: string, name: string) {
   return data as { id: string; installation_id: number; default_branch: string | null };
 }
 
-// Build an Installation-auth Octokit (same auth style as your server)
-function makeInstallationOctokit(installationId: number) {
-  return new Octokit({
-    authStrategy: createAppAuth,
-    auth: {
-      appId: Number(process.env.GITHUB_APP_ID),
-      privateKey: readPrivateKey(),
-      installationId
+async function latestSchemaEvent(repoId: string) {
+  const { data } = await supabase
+    .from('events')
+    .select('commit_sha, ts, metadata')
+    .eq('repo_id', repoId)
+    .eq('verb', 'schema')
+    .order('ts', { ascending: false })
+    .limit(1).maybeSingle();
+  return data ?? null;
+}
+
+function safeIncludes(hay: string | null | undefined, needle: string) {
+  return typeof hay === 'string' && hay.includes(needle);
+}
+function injectOnce(src: string, beforeNeedle: string, snippet: string) {
+  if (src.includes(snippet.trim())) return src; // idempotent
+  const idx = src.indexOf(beforeNeedle);
+  if (idx === -1) return src; // can't inject safely
+  return src.slice(0, idx) + snippet + src.slice(idx);
+}
+function prependOnce(src: string, snippet: string) {
+  if (src.includes(snippet.trim())) return src; // idempotent
+  return snippet + src;
+}
+async function tryGetText(octokit: Octokit, owner: string, repo: string, path: string, ref: string): Promise<string | null> {
+  try {
+    const r = await octokit.rest.repos.getContent({ owner, repo, path, ref });
+    // @ts-ignore
+    if (r?.data?.type === 'file' && r?.data?.content) {
+      // @ts-ignore
+      const buf = Buffer.from(r.data.content, r.data.encoding || 'base64').toString('utf8');
+      return buf;
     }
+    return null;
+  } catch (e: any) {
+    if (e?.status === 404) return null;
+    throw e;
+  }
+}
+
+// Write/create a file on a branch, handling existing sha + force
+async function upsertFile(octokit: Octokit, opts: {
+  owner: string; repo: string; branch: string;
+  path: string; content: string; message: string; force: boolean;
+}) {
+  const { owner, repo, branch, path, content, message, force } = opts;
+
+  // Check if exists on the branch to get sha
+  let existingSha: string | null = null;
+  try {
+    const get = await octokit.rest.repos.getContent({
+      owner, repo, path, ref: `heads/${branch}`,
+    });
+    if (!Array.isArray(get.data) && get.data && 'sha' in get.data) {
+      existingSha = (get.data as any).sha || null;
+    }
+  } catch (e: any) {
+    if (e?.status !== 404) throw e; // 404 == not found; ok to create
+  }
+
+  if (existingSha && !force) {
+    const err: any = new Error(`Refusing to overwrite existing file ${path} without force=true`);
+    err.status = 409;
+    err.collisions = [path];
+    throw err;
+  }
+
+  return await octokit.rest.repos.createOrUpdateFileContents({
+    owner, repo, path,
+    message,
+    content: b64(content),
+    branch,
+    sha: existingSha || undefined,
   });
 }
 
 export default async function schemaRoutes(app: FastifyInstance) {
-  // ---------- GET /schema/latest?full=owner/name ----------
-  app.get('/schema/latest', async (req, reply) => {
+  // GET /schema/latest?full=owner/name
+  app.get('/schema/latest', async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       const full = (req.query as any)?.full;
       const ok = FullRepo.safeParse(full);
       if (!ok.success) return reply.code(400).send({ error: 'Provide ?full=owner/name' });
-
       const { owner, name } = parseFull(full);
       const repo = await getRepoRow(owner, name);
-
-      const { data, error } = await supabase
-        .from('events')
-        .select('commit_sha, ts, metadata')
-        .eq('repo_id', repo.id)
-        .eq('verb', 'schema')
-        .order('ts', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) return reply.code(500).send({ error: error.message });
-      if (!data) return reply.code(404).send({ error: 'No schema suggestions yet' });
-
-      const suggested = (data.metadata as any)?.suggested ?? null;
-      return reply.send({ full, commit_sha: data.commit_sha, ts: data.ts, suggested });
+      const ev = await latestSchemaEvent(repo.id);
+      if (!ev) return reply.code(404).send({ error: 'No schema suggestions yet' });
+      const suggested = (ev.metadata as any)?.suggested ?? null;
+      return reply.send({ full, commit_sha: ev.commit_sha, ts: ev.ts, suggested });
     } catch (e:any) {
       return reply.code(500).send({ error: e.message || 'Unknown error' });
     }
   });
 
-  // ---------- POST /schema/approve ----------
-  app.post('/schema/approve', async (req, reply) => {
+  // POST /schema/approve
+  app.post('/schema/approve', async (req: FastifyRequest, reply: FastifyReply) => {
     const parsed = ApproveBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid body', details: parsed.error.flatten() });
 
-    const { full, commit_sha, files: inputFiles, force = false } = parsed.data;
+    const { full, commit_sha, files: inputFiles, force = false, auto_inject = true } = parsed.data;
     const { owner, name } = parseFull(full);
 
-    // templates for first-time bootstrap (contract + sit-above files)
+    // ---- Templates ----
     const CONTRACT_JSON = `{
   "name":"analytics-core-contract",
   "version":1,
@@ -112,63 +168,71 @@ export default async function schemaRoutes(app: FastifyInstance) {
     {"name":"search_query","required":["query"],"optional":["results_count","source"]}
   ]
 }\n`;
+
     const README_MD = `# Analytics (Auto)
 This folder was added by the analytics-automation bot.
 
-**Wire-up**: add to your app entry:
+**Wire-up**: imports are auto-injected by the bot for common frameworks (Next.js, CRA/Vite).
+If something wasn't wired, you can manually add:
 \`\`\`ts
-import './aa/tracker';
-import './aa/adapter';
+import './aa/tracker'
+import './aa/adapter'
 \`\`\`
 `;
+
     const FIRE_TS = `export function aaFire(name: string, props: Record<string, any> = {}) {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('aa:track', { detail: { name, props } }));
   }
 }\n`;
+
     const ADAPTER_TS = `import { aaFire } from './fire';
-async function loadMap(){ const r=await fetch('/.analytics/adapter.map.json',{cache:'no-store'}); return r.json(); }
 function delegateClick(sel:string, h:(el:Element,e:MouseEvent)=>void){ document.addEventListener('click',ev=>{const t=ev.target as Element|null; const el=t?.closest?.(sel); if(el) h(el, ev as MouseEvent);}); }
-function runPV(routes:any[]){ const path=location.pathname; const route=(routes||[]).find((r:any)=>{try{return new RegExp(r.pattern).test(path)}catch{return false}})?.route||path;
-  aaFire('page_view',{ page_url:location.href, referrer:document.referrer||null, route, title:document.title||null }); }
-export async function initAAAdapter(){
-  const map=await loadMap(); runPV(map.routes||[]);
-  let last=location.pathname+location.search+location.hash;
-  new MutationObserver(()=>{ const now=location.pathname+location.search+location.hash; if(now!==last){ last=now; runPV(map.routes||[]);} }).observe(document.body,{childList:true,subtree:true});
-  (map.buttons||[]).forEach((b:any)=>delegateClick(b.selector,(el)=>{ const text=(el.textContent||'').trim().slice(0,80);
-    aaFire('button_click',{button_id:b.button_id,surface:b.surface,container_id:b.container_id,text}); }));
-  (map.forms||[]).forEach((f:any)=>{ document.addEventListener('submit',ev=>{ const t=ev.target as HTMLFormElement; if(!t?.matches?.(f.selector))return;
-    const success=!t.hasAttribute('data-aa-error'); const error_count=Number(t.getAttribute('data-aa-error-count')??'0'); aaFire('form_submit',{form_id:f.form_id,success,error_count}); },{capture:true}); });
-  (map.modals||[]).forEach((m:any)=>{ let openAt:number|null=null; new MutationObserver(()=>{ const isOpen=!!document.querySelector(m.openSelector); const isClosed=!!document.querySelector(m.closeSelector);
-    if(isOpen&&openAt==null){ openAt=performance.now(); aaFire('modal_open',{modal_id:m.modal_id}); }
-    else if(isClosed&&openAt!=null){ const dur=Math.round(performance.now()-openAt); openAt=null; aaFire('modal_close',{modal_id:m.modal_id,duration_ms:dur}); } })
-    .observe(document.documentElement,{subtree:true,attributes:true,childList:true}); });
-  (map.search||[]).forEach((s:any)=>{ const form=document.querySelector<HTMLFormElement>(s.submitSelector);
-    const input=document.querySelector<HTMLInputElement>(s.input); if(form&&input) form.addEventListener('submit',()=>aaFire('search_query',{query:input.value??'',source:s.source}),{capture:true}); });
+export function initAAAdapter(){
+  delegateClick('[data-aa-id]', el => {
+    const id=(el as HTMLElement).getAttribute('data-aa-id')||'unknown';
+    const text=(el.textContent||'').trim().slice(0,80);
+    aaFire('button_click',{button_id:id,surface:'auto',text});
+  });
+  aaFire('page_view',{ page_url: location.href, referrer: document.referrer || null });
 }
 if(typeof window!=='undefined'){ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>initAAAdapter()); else initAAAdapter(); }\n`;
+
     const TRACKER_TS = `type AAPayload={name:string;props:Record<string,any>}; const ENDPOINT=(window as any).__AA_ENDPOINT__||(process?.env?.AA_ENDPOINT??'/ingest');
 function valid(p:AAPayload){ return !!p?.name && typeof p.name==='string'; }
-async function send(p:AAPayload){ try{ await fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({source:'web',ts:Date.now(),verb:p.name,metadata:p.props}),keepalive:true}); }catch{} }
-(function(){ window.addEventListener('aa:track',(ev:Event)=>{ const d=(ev as CustomEvent).detail as AAPayload; valid(d)&&send(d); }); })();\n`;
+async function send(p:AAPayload){ try{ await fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({full:(window as any).__AA_FULL__||'',source:'web',ts:Date.now(),verb:p.name,metadata:p.props}),keepalive:true}); }catch{} }
+(function(){ if(typeof window==='undefined') return; window.addEventListener('aa:track',(ev:Event)=>{ const d=(ev as CustomEvent).detail as AAPayload; valid(d)&&send(d); }); })();\n`;
+
+    const AAPROVIDER_TSX = `"use client";
+import { useEffect } from 'react';
+export default function AAProvider(){
+  useEffect(()=>{ if(typeof window!=='undefined'){ const fire=(name:string,props:any={})=>window.dispatchEvent(new CustomEvent('aa:track',{detail:{name,props}}));
+    fire('page_view',{ route: location.pathname, page_url: location.href }); }},[]);
+  return null;
+}
+`;
 
     try {
-      // 1) Repo + Installation Octokit
+      // ---- Installation-scoped Octokit ----
       const repoRow = await getRepoRow(owner, name);
-      const octokit = makeInstallationOctokit(repoRow.installation_id);
+      const instOctokit = new Octokit({
+        authStrategy: createAppAuth,
+        auth: {
+          appId: Number(process.env.GITHUB_APP_ID),
+          privateKey: readPrivateKey(),
+          installationId: repoRow.installation_id,
+        },
+      });
 
-      // 2) Detect bootstrap (no contract at this commit)
+      // ---- Bootstrap detection ----
       let isBootstrap = false;
-      try {
-        await octokit.rest.repos.getContent({ owner, repo: name, path: '.analytics/contract.json', ref: commit_sha });
-      } catch (e: any) {
-        if (e.status === 404) isBootstrap = true; else throw e;
-      }
+      try { await instOctokit.rest.repos.getContent({ owner, repo: name, path: '.analytics/contract.json', ref: commit_sha }); }
+      catch (e:any) { if (e.status === 404) isBootstrap = true; else throw e; }
 
-      // 3) Collect files to write
+      // ---- Collect files (from input or from suggestion) ----
       const files: Array<{ path: string; content: string }> = [];
       if (inputFiles?.length) {
-        inputFiles.forEach(f => files.push({ path: sanitizePath(f.path), content: f.content ?? '' }));
+        inputFiles.forEach((f) => files.push({ path: sanitizePath(f.path), content: f.content ?? '' }));
       } else {
         const { data: ev } = await supabase
           .from('events').select('metadata')
@@ -178,77 +242,169 @@ async function send(p:AAPayload){ try{ await fetch(ENDPOINT,{method:'POST',heade
         (sugg?.snippets ?? []).forEach((s:any)=> files.push({ path: sanitizePath(s.path), content: s.content ?? '' }));
       }
 
+      // Ensure runtime files
+      const addCore = () => {
+        files.push(
+          { path: 'src/aa/fire.ts',    content: FIRE_TS },
+          { path: 'src/aa/adapter.ts', content: ADAPTER_TS },
+          { path: 'src/aa/tracker.ts', content: TRACKER_TS },
+        );
+      };
+
       if (isBootstrap) {
-        // optional adapter map from suggestion, else empty template
         let adapterMap = `{"routes":[],"buttons":[],"forms":[],"modals":[],"search":[]}\n`;
         try {
           const { data: ev2 } = await supabase
             .from('events').select('metadata')
             .eq('repo_id', repoRow.id).eq('verb','schema').eq('commit_sha', commit_sha)
             .maybeSingle();
-          const m = ev2?.metadata?.suggested?.adapterMap;
+          const m = (ev2?.metadata as any)?.suggested?.adapterMap;
           if (m) adapterMap = JSON.stringify(m, null, 2) + '\n';
         } catch {}
         files.push(
           { path: '.analytics/contract.json',    content: CONTRACT_JSON },
           { path: '.analytics/adapter.map.json', content: adapterMap },
           { path: '.analytics/README.md',        content: README_MD },
-          { path: 'src/aa/fire.ts',              content: FIRE_TS },
-          { path: 'src/aa/adapter.ts',           content: ADAPTER_TS },
-          { path: 'src/aa/tracker.ts',           content: TRACKER_TS },
         );
+        addCore();
+      } else {
+        addCore();
       }
 
-      // 4) Safety: refuse overwrite unless force=true (check at base commit)
-      const collisions: string[] = [];
-      for (const f of files) {
-        try { await octokit.rest.repos.getContent({ owner, repo: name, path: f.path, ref: commit_sha }); collisions.push(f.path); }
-        catch (e:any) { if (e.status !== 404) throw e; }
-      }
-      if (collisions.length && !force) {
-        return reply.code(409).send({ error: 'Refusing to overwrite existing files', collisions, hint: 'Re-run with "force": true' });
+      // ---- Auto-injection (framework patch) ----
+      type PatchTarget = { path: string, kind: 'next-app' | 'next-pages' | 'react-vite' | 'vanilla' };
+      const candidates: PatchTarget[] = [
+        { path: 'src/app/layout.tsx', kind: 'next-app' },
+        { path: 'app/layout.tsx',     kind: 'next-app' },
+        { path: 'src/pages/_app.tsx', kind: 'next-pages' },
+        { path: 'pages/_app.tsx',     kind: 'next-pages' },
+        { path: 'src/main.tsx',       kind: 'react-vite' },
+        { path: 'index.html',         kind: 'vanilla' },
+        { path: 'public/index.html',  kind: 'vanilla' },
+      ];
+
+      let injectedAt: string | null = null;
+      if (auto_inject) {
+        for (const c of candidates) {
+          const text = await tryGetText(instOctokit, owner, name, c.path, commit_sha);
+          if (!text) continue;
+
+          let updated = text;
+
+          if (c.kind === 'next-app') {
+            const aaProvPath = 'src/app/AAProvider.tsx';
+            const haveProv = await tryGetText(instOctokit, owner, name, aaProvPath, commit_sha);
+            if (!haveProv) files.push({ path: aaProvPath, content: AAPROVIDER_TSX });
+
+            if (!safeIncludes(updated, "import '../aa/adapter'") && !safeIncludes(updated, 'import "../aa/adapter"')) {
+              updated = prependOnce(updated, `import "../aa/adapter";\n`);
+            }
+            if (!updated.includes('<AAProvider />')) {
+              if (updated.includes('</body>')) {
+                updated = updated.replace('</body>', '        <AAProvider />\n      </body>');
+              } else if (updated.includes('<body')) {
+                updated = injectOnce(updated, '>', '\n        <AAProvider />\n');
+              }
+            }
+            files.push({ path: c.path, content: updated });
+            injectedAt = c.path;
+            break;
+          }
+
+          if (c.kind === 'next-pages') {
+            let patched = updated;
+            if (!safeIncludes(patched, "import '../aa/adapter'") && !safeIncludes(patched, 'import "../aa/adapter"')) {
+              patched = prependOnce(patched, `import "../aa/adapter";\n`);
+            }
+            if (!/function\s+AAProvider|const\s+AAProvider/.test(patched)) {
+              patched = prependOnce(patched,
+                `import { useEffect } from "react";\nfunction AAProvider(){ useEffect(()=>{ if(typeof window!=="undefined"){ window.dispatchEvent(new CustomEvent("aa:track",{detail:{name:"page_view",props:{route:location.pathname,page_url:location.href}}})) }},[]); return null }\n`
+              );
+            }
+            if (!patched.includes('<AAProvider />')) {
+              patched = patched.replace(/return\s*\(/, 'return (\n      <AAProvider />\n');
+            }
+            files.push({ path: c.path, content: patched });
+            injectedAt = c.path;
+            break;
+          }
+
+          if (c.kind === 'react-vite') {
+            let patched = updated;
+            if (!safeIncludes(patched, "import './aa/adapter'") && !safeIncludes(patched, "import './aa/adapter.ts'")) {
+              patched = prependOnce(patched, `import "./aa/adapter";\n`);
+            }
+            files.push({ path: c.path, content: patched });
+            injectedAt = c.path;
+            break;
+          }
+
+          if (c.kind === 'vanilla') {
+            if (!updated.includes('src="/src/aa/adapter.ts"') && !updated.includes("src='/src/aa/adapter.ts'")) {
+              const tag = `<script type="module" src="/src/aa/adapter.ts"></script>`;
+              if (updated.includes('</body>')) {
+                updated = updated.replace('</body>', `  ${tag}\n</body>`);
+              } else if (updated.includes('</head>')) {
+                updated = updated.replace('</head>', `  ${tag}\n</head>`);
+              } else {
+                updated = updated + `\n${tag}\n`;
+              }
+            }
+            files.push({ path: c.path, content: updated });
+            injectedAt = c.path;
+            break;
+          }
+        }
       }
 
-      // 5) Idempotent branch/PR
+      // ---- Ensure branch exists from the provided commit_sha ----
       const branch = branchNameFromCommit(commit_sha);
-      const existing = await octokit.rest.pulls.list({ owner, repo: name, state: 'open', head: `${owner}:${branch}` });
+      const refName = `heads/${branch}`;
+
+      try {
+        await instOctokit.rest.git.getRef({ owner, repo: name, ref: refName });
+      } catch (e:any) {
+        if (e?.status === 404) {
+          await instOctokit.rest.git.createRef({
+            owner, repo: name,
+            ref: `refs/${refName}`,
+            sha: commit_sha
+          });
+        } else {
+          throw e;
+        }
+      }
+
+      // If an open PR for this branch already exists, return it (idempotent)
+      const existing = await instOctokit.rest.pulls.list({
+        owner, repo: name, state: 'open', head: `${owner}:${branch}`
+      });
       if (existing.data.length) {
         const pr = existing.data[0];
-        return reply.send({ status: 'exists', pr_number: pr.number, pr_url: pr.html_url, branch });
+        return reply.send({ status: 'exists', pr_number: pr.number, pr_url: pr.html_url, branch, injectedAt });
       }
 
-      // 6) Ensure branch (heads/<branch>), create if missing at commit_sha
-      let baseFor = commit_sha;
-      try {
-        const ref = await octokit.rest.git.getRef({ owner, repo: name, ref: `heads/${branch}` });
-        baseFor = ref.data.object.sha;
-      } catch (e:any) {
-        if (e.status === 404) await octokit.rest.git.createRef({ owner, repo: name, ref: `refs/heads/${branch}`, sha: commit_sha });
-        else throw e;
-      }
-
-      // 7) Create blobs -> tree -> commit -> move ref
-      const entries: Array<{ path: string; mode: '100644'; type: 'blob'; sha: string }> = [];
+      // ---- Write files via Contents API (handles sha + force per file) ----
+      const msg = commitMessage(commit_sha);
       for (const f of files) {
-        const blob = await octokit.rest.git.createBlob({ owner, repo: name, content: f.content, encoding: 'utf-8' });
-        entries.push({ path: f.path, mode: '100644', type: 'blob', sha: blob.data.sha });
+        await upsertFile(instOctokit, {
+          owner, repo: name, branch,
+          path: f.path, content: f.content, message: msg, force: !!force,
+        });
       }
 
-      const parent = await octokit.rest.git.getCommit({ owner, repo: name, commit_sha: baseFor });
-      const tree = await octokit.rest.git.createTree({ owner, repo: name, base_tree: parent.data.tree.sha, tree: entries });
-      const commit = await octokit.rest.git.createCommit({ owner, repo: name, message: commitMessage(commit_sha), tree: tree.data.sha, parents: [baseFor] });
-      await octokit.rest.git.updateRef({ owner, repo: name, ref: `heads/${branch}`, sha: commit.data.sha, force: false });
-
-      // 8) Open PR against default branch
-      const repoInfo = await octokit.rest.repos.get({ owner, repo: name });
+      // ---- Open PR
+      const repoInfo = await instOctokit.rest.repos.get({ owner, repo: name });
       const baseBranch = repoInfo.data.default_branch || 'main';
-      const pr = await octokit.rest.pulls.create({
+      const pr = await instOctokit.rest.pulls.create({
         owner, repo: name,
         title: isBootstrap ? 'Add analytics bootstrap (auto)' : 'Add analytics instrumentation (auto)',
         head: branch, base: baseBranch,
         body: [
           `Automated analytics ${isBootstrap ? 'bootstrap' : 'instrumentation'} for commit \`${commit_sha}\`.`,
-          `Files added/updated:`, ...files.map(f=>`- \`${f.path}\``),
+          `Files added/updated:`,
+          ...files.map(f=>`- \`${f.path}\``),
+          auto_inject ? `\nAuto-injected wiring into framework entry (if detected).` : '',
           `\nGenerated by ${process.env.GH_APP_SLUG || 'analytics-automation-bot'}.`
         ].join('\n')
       });
@@ -259,14 +415,11 @@ async function send(p:AAPayload){ try{ await fetch(ENDPOINT,{method:'POST',heade
         pr_number: pr.data.number,
         pr_url: pr.data.html_url,
         branch,
-        head_commit: commit.data.sha
+        injectedAt
       });
     } catch (e:any) {
       const status = Number(e?.status) || 500;
-      return reply.code(status >= 400 && status < 600 ? status : 500).send({
-        error: e.message || 'Unknown error creating PR',
-        details: e?.response?.data
-      });
+      return reply.code(status >= 400 && status < 600 ? status : 500).send({ error: e.message || 'Unknown error creating PR', details: e?.response?.data });
     }
   });
 }

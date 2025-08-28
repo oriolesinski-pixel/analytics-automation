@@ -1,3 +1,4 @@
+// packages/connector-service/src/server.ts
 import 'dotenv/config';
 import Fastify from 'fastify';
 import fs from 'fs';
@@ -7,10 +8,8 @@ import { Octokit } from '@octokit/rest';
 import { createAppAuth } from '@octokit/auth-app';
 import selfcheck from "./selfcheck";
 import { createClient } from '@supabase/supabase-js';
-import schemaRoutes from './routes/schema'; 
+import schemaRoutes from './routes/schema';
 import ingestRoutes from './routes/ingest';
-
-
 
 const app = Fastify({ logger: true });
 const PORT = Number(process.env.PORT || 8080);
@@ -31,8 +30,6 @@ app.addContentTypeParser('application/*+json', { parseAs: 'buffer' },
     catch (err) { done(err as any, undefined as any); }
   }
 );
-
-
 
 // ---- secrets loading helpers ----
 function getGithubPrivateKey(): string {
@@ -67,12 +64,14 @@ const octokit = new Octokit({
     privateKey: PRIVATE_KEY
   }
 });
+
 // ---- Supabase client ----
 const supabase = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
   { auth: { persistSession: false, autoRefreshToken: false } }
 );
+
 function parseFullName(full: string) {
   const [owner, name] = String(full).split('/');
   return { owner, name };
@@ -119,13 +118,21 @@ async function findRepoId(full_name: string): Promise<string | null> {
   return q.data?.id ?? null;
 }
 
-
-// Try to add raw-body plugin for signature verification (optional)
+// Helper to normalize installation.account union (user/org/enterprise)
+function pickAccount(acc: unknown) {
+  const a = acc as { type?: string; login?: string; slug?: string; name?: string };
+  return {
+    type: a?.type ?? null,
+    login_or_slug: a?.login ?? a?.slug ?? null,
+    name: a?.name ?? null,
+  };
+}
 
 let hasRaw = false;
 
 async function start() {
   hasRaw = true;
+
   // ---- routes ----
   app.get('/healthz', async () => ({ ok: true }));
 
@@ -144,13 +151,17 @@ async function start() {
     reply.redirect(url);
   });
 
-  // List installations (verifies App auth works)
+  // List installations — SINGLE definition (union-safe)
   app.get('/installations', async () => {
     const { data } = await octokit.rest.apps.listInstallations();
-    return data.map(i => ({ id: i.id, account: i.account?.login, target_type: i.target_type }));
+    return data.map(i => ({
+      id: i.id,
+      account: pickAccount(i.account),
+      target_type: i.target_type,
+    }));
   });
 
-  // Webhook receiver (signature verification optional)
+  // Webhook receiver
   app.post('/webhooks/github', async (req: any, reply) => {
     try {
       // --- Signature verification (mandatory)
@@ -175,7 +186,6 @@ async function start() {
         req.log.warn({ sig, expected }, 'Invalid webhook signature');
         return reply.code(401).send('invalid signature');
       }
-
 
       const event = String(req.headers['x-github-event'] || '');
       const payload = req.body as any;
@@ -300,7 +310,7 @@ async function start() {
           compare: payload.compare ?? null,
           base_sha: baseSha,
           head_sha: headSha,
-          context: { branch, actor },  // <— new
+          context: { branch, actor },
           stats: {
             added: Array.isArray(payload.head_commit?.added) ? payload.head_commit.added.length : 0,
             removed: Array.isArray(payload.head_commit?.removed) ? payload.head_commit.removed.length : 0,
@@ -334,7 +344,27 @@ async function start() {
     }
   });
 
-  // --- Debug routes ---
+  // --- Debug: normalized installations (already defined above) ---
+  // (Nothing else here for /installations to avoid duplicates)
+
+  // --- Debug: installation permissions — SINGLE definition
+  app.get('/installation/:id/permissions', async (req, reply) => {
+    const id = Number((req.params as any).id);
+    try {
+      const { data } = await octokit.rest.apps.getInstallation({ installation_id: id });
+      return reply.send({
+        ok: true,
+        id: data.id,
+        account: pickAccount(data.account),
+        repository_selection: data.repository_selection,
+        permissions: data.permissions,
+      });
+    } catch (e: any) {
+      req.log.error(e, 'getInstallation error');
+      return reply.code(500).send({ ok: false, error: e?.message });
+    }
+  });
+
   app.get('/debug/last-runs', async (_req, reply) => {
     const { data, error } = await supabase
       .from('analyzer_runs')
@@ -344,9 +374,6 @@ async function start() {
     if (error) return reply.code(500).send({ ok: false, error: error.message });
     return reply.send({ ok: true, count: data?.length ?? 0, data });
   });
-
-
-
 
   app.get('/debug/runs', async (req, reply) => {
     const q = req.query as any; // ?full=owner/name
@@ -375,8 +402,7 @@ async function start() {
     try {
       const instAuth: any = await octokit.auth({ type: 'installation', installationId: id });
       const instKit = new Octokit({ auth: instAuth.token });
-      const { data } =
-        await instKit.request('GET /installation/repositories', { per_page: 100 });
+      const { data } = await instKit.request('GET /installation/repositories', { per_page: 100 });
       return reply.send({
         ok: true,
         installation_id: id,
@@ -388,7 +414,8 @@ async function start() {
       return reply.code(500).send({ ok: false, error: e?.message });
     }
   });
-  // GET /events?full=owner/name&since=2025-08-01T00:00:00Z&limit=50
+
+  // GET /events?full=owner/name&since=...&limit=...
   app.get('/events', async (req, reply) => {
     const q = req.query as any;
     if (!q.full) return reply.code(400).send({ ok: false, error: 'pass ?full=owner/name' });
@@ -420,7 +447,7 @@ async function start() {
 
     return reply.send({ ok: true, count: data?.length ?? 0, data });
   });
-  // GET /events?full=owner/name&since=2025-08-01T00:00:00Z&limit=50
+
   // --- Minimal metrics ---
   app.get('/metrics', async (_req, reply) => {
     const { data, error } = await supabase
@@ -430,70 +457,68 @@ async function start() {
 
     if (error) return reply.code(500).send({ ok: false, error: error.message });
 
-    // Only the 4 supported statuses; start all at 0
     const statuses = ['queued', 'processing', 'completed', 'failed'] as const;
     const by: Record<typeof statuses[number], number> =
       Object.fromEntries(statuses.map(s => [s, 0])) as any;
 
     for (const row of data ?? []) {
       const s = String((row as any).status);
-      const c = parseInt(String((row as any).count ?? '0'), 10); // force number
+      const c = parseInt(String((row as any).count ?? '0'), 10);
       if ((statuses as readonly string[]).includes(s)) by[s as typeof statuses[number]] = c;
     }
 
     return reply.send({ ok: true, analyzer_runs: by });
   });
 
-// --- Admin: sync all installations' repos into Supabase.repos ---
-app.post('/admin/sync-installations', async (_req, reply) => {
-  try {
-    const installs = await octokit.rest.apps.listInstallations();
-    const results: any[] = [];
+  // --- Admin: sync all installations' repos into Supabase.repos ---
+  app.post('/admin/sync-installations', async (_req, reply) => {
+    try {
+      const installs = await octokit.rest.apps.listInstallations();
+      const results: any[] = [];
 
-    for (const inst of installs.data) {
-      const instAuth: any = await octokit.auth({ type: 'installation', installationId: inst.id });
-      const instKit = new Octokit({ auth: instAuth.token });
+      for (const inst of installs.data) {
+        const instAuth: any = await octokit.auth({ type: 'installation', installationId: inst.id });
+        const instKit = new Octokit({ auth: instAuth.token });
 
-      // page through repositories (max 100/page)
-      let page = 1;
-      let upserted = 0;
-      for (;;) {
-        const { data } = await instKit.request('GET /installation/repositories', {
-          per_page: 100, page
-        });
-        const repos = data.repositories ?? [];
-        if (repos.length === 0) break;
+        // page through repositories (max 100/page)
+        let page = 1;
+        let upserted = 0;
+        for (; ;) {
+          const { data } = await instKit.request('GET /installation/repositories', {
+            per_page: 100, page
+          });
+          const repos = data.repositories ?? [];
+          if (repos.length === 0) break;
 
-        for (const r of repos) {
-          const { error } = await supabase
-            .from('repos')
-            .upsert(
-              {
-                provider: 'github',
-                owner: r.owner.login,
-                name: r.name,
-                default_branch: r.default_branch || 'main',
-                installation_id: String(inst.id),
-              },
-              { onConflict: 'provider,owner,name' }
-            );
-          if (error) throw new Error(error.message);
-          upserted++;
+          for (const r of repos) {
+            const { error } = await supabase
+              .from('repos')
+              .upsert(
+                {
+                  provider: 'github',
+                  owner: r.owner.login, // from repo object it's always a user/org with login
+                  name: r.name,
+                  default_branch: r.default_branch || 'main',
+                  installation_id: String(inst.id),
+                },
+                { onConflict: 'provider,owner,name' }
+              );
+            if (error) throw new Error(error.message);
+            upserted++;
+          }
+
+          if (!data.total_count || repos.length < 100) break;
+          page++;
         }
 
-        if (!data.total_count || repos.length < 100) break;
-        page++;
+        results.push({ installation_id: inst.id, account: pickAccount(inst.account), upserted });
       }
 
-      results.push({ installation_id: inst.id, account: inst.account?.login, upserted });
+      return reply.send({ ok: true, results });
+    } catch (e: any) {
+      return reply.code(500).send({ ok: false, error: e.message });
     }
-
-    return reply.send({ ok: true, results });
-  } catch (e: any) {
-    return reply.code(500).send({ ok: false, error: e.message });
-  }
-});
-
+  });
 
   await app.register(selfcheck);
   await app.register(schemaRoutes);
