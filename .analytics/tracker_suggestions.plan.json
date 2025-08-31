@@ -1,0 +1,64 @@
+{
+  "files": [
+    {
+      "path": "src/app/layout.tsx",
+      "match": "<body>",
+      "action": "insert_after",
+      "insert": "<RouteListener />"
+    },
+    {
+      "path": "src/app/layout.tsx",
+      "match": "import React from 'react';",
+      "action": "insert_before",
+      "insert": "import RouteListener from './components/RouteListener';"
+    }
+  ],
+  "elements": [
+    {
+      "event": "button_click",
+      "metadata": {
+        "cta_id": "cta_home",
+        "session_id": "ensureSessionId()"
+      },
+      "selector": "[data-cta]"
+    },
+    {
+      "event": "button_click",
+      "metadata": {
+        "cta_id": "cta_pricing",
+        "session_id": "ensureSessionId()"
+      },
+      "selector": "[data-cta]"
+    },
+    {
+      "event": "button_click",
+      "metadata": {
+        "cta_id": "cta_signup",
+        "session_id": "ensureSessionId()"
+      },
+      "selector": "[data-cta]"
+    },
+    {
+      "event": "form_start",
+      "metadata": {
+        "form_id": "form_signup",
+        "session_id": "ensureSessionId()"
+      },
+      "selector": "form[data-form-id]"
+    },
+    {
+      "event": "form_submit",
+      "metadata": {
+        "form_id": "form_signup",
+        "session_id": "ensureSessionId()"
+      },
+      "selector": "form[data-form-id]"
+    }
+  ],
+  "snippets": [
+    {
+      "code": "import RouteListener from './components/RouteListener';",
+      "name": "route-listener-import"
+    }
+  ]
+}
