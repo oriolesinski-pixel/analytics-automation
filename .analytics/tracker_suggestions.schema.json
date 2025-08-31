@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TrackerSuggestionsPlan",
+  "type": "object",
+  "required": ["edits", "snippets", "mapping"],
+  "properties": {
+    "edits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "action", "find", "replace"],
+        "properties": {
+          "path": { "type": "string" },
+          "action": { "type": "string", "enum": ["insert", "replace", "append"] },
+          "find": { "type": "string" },
+          "replace": { "type": "string" }
+        }
+      }
+    },
+    "snippets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "content"],
+        "properties": {
+          "path": { "type": "string" },
+          "content": { "type": "string" }
+        }
+      }
+    },
+    "mapping": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["selector", "event", "metadata"],
+        "properties": {
+          "selector": { "type": "string" },
+          "event": { "type": "string", "enum": ["button_click", "form_start", "form_submit"] },
+          "metadata": { "type": "object", "additionalProperties": true }
+        }
+      }
+    }
+  }
+}
