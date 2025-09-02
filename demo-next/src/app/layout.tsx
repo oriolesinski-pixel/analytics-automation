@@ -38,3 +38,6 @@ export default function RootLayout({
 <RouteListener />
 // AA_INSERT_GUARD: demo-next/src/app/layout.tsx :: PGJvZHk+
 
+import RouteListener from './components/RouteListener';
+// AA_INSERT_GUARD: demo-next/src/app/layout.tsx :: aW1wb3J0IFJlYWN0
+
