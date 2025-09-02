@@ -1,56 +1,37 @@
 {
   "files": [
     {
-      "path": "src/app/layout.tsx",
-      "match": "<body>",
+      "path": "demo-next/src/app/layout.tsx",
+      "match": "/* AA_ANCHOR_ROUTE_LISTENER_RENDER",
       "action": "insert_after",
-      "insert": "<RouteListener />"
+      "insert": "<RouteListener />\n// AA_INSERT_GUARD: demo-next/src/app/layout.tsx :: PGJvZHk+\n"
     },
     {
-      "path": "src/app/layout.tsx",
-      "match": "import React from 'react';",
-      "action": "insert_before",
-      "insert": "import RouteListener from './components/RouteListener';"
+      "path": "demo-next/src/app/layout.tsx",
+      "match": "// AA_ANCHOR_ROUTE_LISTENER_IMPORT",
+      "action": "insert_after",
+      "insert": "import RouteListener from './components/RouteListener';\n// AA_INSERT_GUARD: demo-next/src/app/layout.tsx :: aW1wb3J0IFJlYWN0\n"
     }
   ],
   "elements": [
     {
       "event": "button_click",
       "metadata": {
-        "cta_id": "cta_home",
-        "session_id": "ensureSessionId()"
-      },
-      "selector": "[data-cta]"
-    },
-    {
-      "event": "button_click",
-      "metadata": {
-        "cta_id": "cta_pricing",
-        "session_id": "ensureSessionId()"
-      },
-      "selector": "[data-cta]"
-    },
-    {
-      "event": "button_click",
-      "metadata": {
-        "cta_id": "cta_signup",
-        "session_id": "ensureSessionId()"
+        "cta_id": "data-cta"
       },
       "selector": "[data-cta]"
     },
     {
       "event": "form_start",
       "metadata": {
-        "form_id": "form_signup",
-        "session_id": "ensureSessionId()"
+        "form_id": "data-form-id"
       },
       "selector": "form[data-form-id]"
     },
     {
       "event": "form_submit",
       "metadata": {
-        "form_id": "form_signup",
-        "session_id": "ensureSessionId()"
+        "form_id": "data-form-id"
       },
       "selector": "form[data-form-id]"
     }
