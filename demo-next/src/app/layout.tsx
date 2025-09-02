@@ -35,3 +35,6 @@ export default function RootLayout({
     </html>
   );
 }
+<RouteListener />
+// AA_INSERT_GUARD: demo-next/src/app/layout.tsx :: PGJvZHk+
+
