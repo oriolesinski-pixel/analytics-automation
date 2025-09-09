@@ -61,8 +61,8 @@ export default async function selfcheck(app: FastifyInstance) {
 
       res.checks.github_app = {
         ok: true,
-        app_slug: appInfo.data.slug,
-        app_name: appInfo.data.name,
+        app_slug: appInfo.data?.slug,
+        app_name: appInfo.data?.name,
         installation_ids: installs.data.map((i: any) => i.id),
         installation_accounts: installs.data.map((i: any) => i.account?.login),
       };

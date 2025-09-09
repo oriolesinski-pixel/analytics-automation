@@ -260,7 +260,7 @@ loadAll();
 
       // 1) Load schema: prefer override, else latest AI schema
       const ovr = await latestEventByVerb(repoId, 'schema_override');
-      const ai  = await latestEventByVerb(repoId, 'schema');
+      const ai = await latestEventByVerb(repoId, 'schema');
       const schema: any =
         (ovr?.metadata as any)?.suggested ||
         (ai?.metadata as any)?.suggested ||
@@ -325,5 +325,19 @@ loadAll();
     } catch (e: any) {
       return reply.code(400).send({ ok: false, error: e?.message || 'bad request' });
     }
+  });
+  // Basic app management endpoints
+  app.get('/apps', async (req, reply) => {
+    return reply.send({ apps: [], message: 'app management coming soon' });
+  });
+
+  app.post('/apps', async (req, reply) => {
+    const body = req.body as any;
+    return reply.send({
+      app: {
+        name: body.name || 'unnamed app',
+        created: new Date().toISOString()
+      }
+    });
   });
 }

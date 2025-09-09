@@ -10,6 +10,8 @@ import selfcheck from "./selfcheck";
 import { createClient } from '@supabase/supabase-js';
 import schemaRoutes from './routes/schema';
 import ingestRoutes from './routes/ingest';
+import analyticsRoutes from './routes/analytics';
+
 
 const app = Fastify({ logger: true });
 const PORT = Number(process.env.PORT || 8080);
@@ -30,6 +32,7 @@ app.addContentTypeParser('application/*+json', { parseAs: 'buffer' },
     catch (err) { done(err as any, undefined as any); }
   }
 );
+
 
 // ---- secrets loading helpers ----
 function getGithubPrivateKey(): string {
@@ -523,6 +526,10 @@ async function start() {
   await app.register(selfcheck);
   await app.register(schemaRoutes);
   await app.register(ingestRoutes);
+  await app.register(analyticsRoutes);
+  await app.register(require('@fastify/cors'), {
+    origin: ['http://localhost:3002', 'http://localhost:3001', 'http://localhost:3000']
+  });
   await app.listen({ port: PORT, host: '0.0.0.0' });
   app.log.info(`connector listening on :${PORT}`);
 }
