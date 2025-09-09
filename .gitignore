@@ -10,3 +10,8 @@ build/
 !/.env.example
 secrets/
 *.pem
+.next/
+node_modules/
+.env.local
+.env
+*.log
