@@ -42,52 +42,33 @@
   }
 
   trackPageView(page) {
-    this.queue.push({
-      type: 'pageview',
-      timestamp: new Date().toISOString(),
-      session_id: this.sessionId,
-      user_agent: navigator.userAgent,
-      page_url: page.url,
-      page_title: page.title,
-      referrer: document.referrer,
-      viewport_width: window.innerWidth,
-      viewport_height: window.innerHeight
+    this.trackEvent('page_view', {
+      page_url: page?.url || window.location.href,
+      page_title: page?.title || document.title
     });
-    this.scheduleFlush();
   }
 
   trackEvent(name, props) {
     this.queue.push({
-      type: 'event',
       name,
-      properties: props,
-      timestamp: new Date().toISOString(),
-      session_id: this.sessionId,
-      user_agent: navigator.userAgent,
-      page_url: window.location.href,
-      page_title: document.title,
-      referrer: document.referrer,
-      viewport_width: window.innerWidth,
-      viewport_height: window.innerHeight
+      props: {
+        ...props,
+        timestamp: new Date().toISOString(),
+        session_id: this.sessionId,
+        user_agent: navigator.userAgent,
+        referrer: document.referrer,
+        viewport_width: window.innerWidth,
+        viewport_height: window.innerHeight
+      }
     });
     this.scheduleFlush();
   }
 
   identify(userId, traits) {
-    this.queue.push({
-      type: 'identify',
-      userId,
-      traits,
-      timestamp: new Date().toISOString(),
-      session_id: this.sessionId,
-      user_agent: navigator.userAgent,
-      page_url: window.location.href,
-      page_title: document.title,
-      referrer: document.referrer,
-      viewport_width: window.innerWidth,
-      viewport_height: window.innerHeight
+    this.trackEvent('identify', {
+      user_id: userId,
+      ...traits
     });
-    this.scheduleFlush();
   }
 
   flush() {
@@ -98,13 +79,10 @@
 
   scheduleFlush() {
     if (this.flushTimer) clearTimeout(this.flushTimer);
-    this.flushTimer = setTimeout(() => {
-      this.flush();
-    }, this.config.flushInterval);
+    this.flushTimer = setTimeout(() => this.flush(), this.config.flushInterval);
   }
 
   sendEvents(batch, retryCount) {
-    if (typeof window === 'undefined') return;
     fetch(this.config.endpoint, {
       method: 'POST',
       headers: {
@@ -117,23 +95,19 @@
         console.log('Events sent successfully');
       } else {
         if (retryCount < this.config.maxRetries) {
-          console.log(`Retrying events (attempt ${retryCount + 1})`);
-          setTimeout(() => {
-            this.sendEvents(batch, retryCount + 1);
-          }, Math.pow(2, retryCount) * 1000);
+          console.error('Failed to send events, retrying...');
+          this.sendEvents(batch, retryCount + 1);
         } else {
-          console.error('Failed to send events after max retries');
+          console.error('Failed to send events after maximum retries');
         }
       }
     })
     .catch(error => {
       if (retryCount < this.config.maxRetries) {
-        console.log(`Retrying events (attempt ${retryCount + 1})`);
-        setTimeout(() => {
-          this.sendEvents(batch, retryCount + 1);
-        }, Math.pow(2, retryCount) * 1000);
+        console.error('Error sending events, retrying...', error);
+        this.sendEvents(batch, retryCount + 1);
       } else {
-        console.error('Failed to send events after max retries');
+        console.error('Error sending events after maximum retries', error);
       }
     });
   }

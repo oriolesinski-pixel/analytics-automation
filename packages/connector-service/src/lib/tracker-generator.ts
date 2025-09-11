@@ -227,7 +227,7 @@ async function saveFilesToLocal(
   return outputPath;
 }
 
-// Enhanced JavaScript prompt with all requirements
+// Enhanced JavaScript prompt with page parameter fix
 function createJavaScriptPrompt(input: TrackerGenerationInput): string {
   const fullDomain = input.domain?.startsWith('http') ? input.domain : `http://${input.domain || 'localhost:3000'}`;
 
@@ -240,7 +240,7 @@ CRITICAL REQUIREMENTS:
 - Config as property: this.config = { appKey: '${input.appKey}', endpoint: '${fullDomain}/ingest/app', batchSize: 10, flushInterval: 30000, maxRetries: 3 }
 
 METHODS REQUIRED:
-- trackPageView(page) - tracks page views with url, path, title, referrer
+- trackPageView(page) - page parameter is OPTIONAL, use window.location if not provided
 - trackEvent(name, props) - tracks custom events
 - identify(userId, traits) - identifies users
 - flush() - sends queued events
@@ -249,23 +249,24 @@ DATA TO INCLUDE IN EVERY EVENT:
 - timestamp: new Date().toISOString()
 - session_id: unique session ID stored in localStorage (try/catch for private browsing)
 - user_agent: navigator.userAgent
-- page_url: current URL
-- page_title: document.title
+- page_url: current URL (from page parameter or window.location.href)
+- page_title: current title (from page parameter or document.title)
 - referrer: document.referrer
 - viewport_width: window.innerWidth
 - viewport_height: window.innerHeight
 
-FEATURES:
+IMPORTANT NOTES:
+- trackPageView can be called with no arguments: trackPageView() should work
+- Use optional chaining: page?.url || window.location.href
 - Session management with localStorage (generate UUID, handle private browsing)
 - Event batching (send when batch size reached OR after flushInterval ms)
 - Retry logic with exponential backoff BUT limit to maxRetries (3)
-- Check typeof window !== 'undefined' for browser safety
-- IMPORTANT: When sending events, body must be JSON.stringify({ app_key: this.config.appKey, events: batch })
+- Body must be JSON.stringify({ app_key: this.config.appKey, events: batch })
 
 Return ONLY JavaScript code, no markdown, no comments about the code.`;
 }
 
-// Complete fallback JavaScript with all features
+// Complete fallback JavaScript with page parameter fix
 function createFallbackTracker(appKey: string, domain: string): string {
   const fullDomain = domain.startsWith('http') ? domain : `http://${domain}`;
 
@@ -339,13 +340,13 @@ function createFallbackTracker(appKey: string, domain: string): string {
     }, this.config.flushInterval);
   }
 
-  getPageMetadata() {
+  getPageMetadata(page) {
     if (typeof window === 'undefined') return {};
     
     return {
-      page_url: window.location.href,
+      page_url: page?.url || window.location.href,
       page_path: window.location.pathname,
-      page_title: document.title,
+      page_title: page?.title || document.title,
       referrer: document.referrer,
       user_agent: navigator.userAgent,
       viewport_width: window.innerWidth,
@@ -358,19 +359,32 @@ function createFallbackTracker(appKey: string, domain: string): string {
   trackPageView(page) {
     if (typeof window === 'undefined') return;
     
-    const pageData = this.getPageMetadata();
-    pageData.page_url = page || pageData.page_url;
+    const metadata = this.getPageMetadata(page);
     
-    this.trackEvent('page_view', pageData);
+    const eventData = {
+      type: 'pageview',
+      session_id: this.sessionId,
+      timestamp: new Date().toISOString(),
+      ...metadata
+    };
+
+    this.eventQueue.push(eventData);
+
+    if (this.eventQueue.length >= this.config.batchSize) {
+      this.sendEvents();
+    }
   }
 
   trackEvent(eventName, properties) {
+    const metadata = this.getPageMetadata();
+    
     const eventData = {
-      event: eventName,
+      type: 'event',
+      name: eventName,
       session_id: this.sessionId,
       timestamp: new Date().toISOString(),
       properties: properties || {},
-      metadata: this.getPageMetadata()
+      ...metadata
     };
 
     this.eventQueue.push(eventData);
@@ -381,10 +395,22 @@ function createFallbackTracker(appKey: string, domain: string): string {
   }
 
   identify(userId, traits) {
-    this.trackEvent('identify', {
+    const metadata = this.getPageMetadata();
+    
+    const eventData = {
+      type: 'identify',
       user_id: userId,
-      traits: traits || {}
-    });
+      traits: traits || {},
+      session_id: this.sessionId,
+      timestamp: new Date().toISOString(),
+      ...metadata
+    };
+
+    this.eventQueue.push(eventData);
+
+    if (this.eventQueue.length >= this.config.batchSize) {
+      this.sendEvents();
+    }
   }
 
   flush() {
@@ -475,6 +501,7 @@ export async function generateTrackerImplementation(input: TrackerGenerationInpu
       temperature: 0.1,
       system: `You are a JavaScript expert. Generate pure JavaScript code only. No TypeScript. 
 Include session management, page metadata, and timestamps in all events. 
+The trackPageView method must work when called with no arguments.
 The request body must include app_key when sending events.
 Limit retries to prevent infinite loops.`,
       messages: [{

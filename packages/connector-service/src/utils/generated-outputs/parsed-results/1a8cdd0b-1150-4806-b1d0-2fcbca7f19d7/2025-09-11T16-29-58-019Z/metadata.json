@@ -1,0 +1,12 @@
+{
+  "generated_at": "2025-09-11T16-29-58-019Z",
+  "repo_id": "1a8cdd0b-1150-4806-b1d0-2fcbca7f19d7",
+  "repo_name": "demo-fashion-store",
+  "ready_to_deploy": "/Users/oriolesinski/analytics-automation/packages/connector-service/src/utils/generated-outputs/parsed-results/1a8cdd0b-1150-4806-b1d0-2fcbca7f19d7/2025-09-11T16-29-58-019Z/ready-to-deploy",
+  "integration_steps": [
+    "1. Copy /Users/oriolesinski/analytics-automation/packages/connector-service/src/utils/generated-outputs/parsed-results/1a8cdd0b-1150-4806-b1d0-2fcbca7f19d7/2025-09-11T16-29-58-019Z/ready-to-deploy/tracker.js to public/tracker.js",
+    "2. Copy /Users/oriolesinski/analytics-automation/packages/connector-service/src/utils/generated-outputs/parsed-results/1a8cdd0b-1150-4806-b1d0-2fcbca7f19d7/2025-09-11T16-29-58-019Z/ready-to-deploy/Analytics.tsx to components/Analytics.tsx",
+    "3. Add <Analytics /> to your layout.tsx",
+    "4. Test in browser console"
+  ]
+}
