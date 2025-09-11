@@ -1,4 +1,6 @@
-// demo-next/src/aa/tracker.core.ts
+// Complete TypeScript code for the tracker
+
+```typescript
 interface EventSchema {
   name: string;
   optional?: string[];
@@ -42,12 +44,8 @@ class AnalyticsTracker {
   }
 
   private initUserSession() {
-    if (typeof localStorage !== 'undefined') {
-      this.userSession = localStorage.getItem('userSession') || this.generateSessionId();
-      localStorage.setItem('userSession', this.userSession);
-    } else {
-      this.userSession = this.generateSessionId();
-    }
+    this.userSession = localStorage.getItem('userSession') || this.generateSessionId();
+    localStorage.setItem('userSession', this.userSession);
   }
 
   private generateSessionId(): string {
@@ -55,14 +53,9 @@ class AnalyticsTracker {
   }
 
   private setupListeners() {
-    if (typeof window === 'undefined') return;
-    
     window.addEventListener('hashchange', () => this.trackPageView());
     window.addEventListener('popstate', () => this.trackPageView());
     document.addEventListener('click', (event) => this.handleButtonClick(event));
-    
-    // Auto-track initial page view
-    setTimeout(() => this.trackPageView(), 100);
   }
 
   private trackPageView() {
@@ -76,30 +69,22 @@ class AnalyticsTracker {
 
   private handleButtonClick(event: MouseEvent) {
     const target = event.target as HTMLElement;
-    if (target.tagName === 'BUTTON' || target.tagName === 'A') {
-      const buttonId = target.id || target.className || 'unknown';
-      const text = target.innerText?.slice(0, 50);
+    if (target.tagName === 'BUTTON') {
+      const buttonId = target.id;
+      const text = target.innerText;
       const containerId = target.parentElement?.id;
 
       this.trackEvent('button_click', { button_id: buttonId, text, container_id: containerId });
     }
   }
 
-  public trackEvent(eventName: string, data: EventData) {
+  private trackEvent(eventName: string, data: EventData) {
     const eventSchema = EVENTS.find(event => event.name === eventName);
     if (!eventSchema) return;
 
-    const eventData: EventData = { 
-      app_key: this.appKey, 
-      verb: eventName, 
-      metadata: {
-        user_id: this.userSession,
-        session_id: this.userSession,
-        ...data
-      }
-    };
+    const eventData: EventData = { app_key: this.appKey, event_name: eventName, user_session: this.userSession, ...data };
 
-    if (this.validateEventData(eventSchema, eventData.metadata)) {
+    if (this.validateEventData(eventSchema, eventData)) {
       this.eventQueue.push(eventData);
       this.sendEvents();
     }
@@ -108,7 +93,7 @@ class AnalyticsTracker {
   private validateEventData(schema: EventSchema, data: EventData): boolean {
     for (const field of schema.required) {
       if (!data[field]) {
-        console.warn(`Missing required field: ${field}`);
+        console.error(`Missing required field: ${field}`);
         return false;
       }
     }
@@ -119,28 +104,28 @@ class AnalyticsTracker {
     if (this.isSending || this.eventQueue.length === 0) return;
 
     this.isSending = true;
-    const eventToSend = this.eventQueue.shift(); // Send one at a time
+    const eventsToSend = this.eventQueue.splice(0, 10); // Batch size of 10
 
     try {
       const response = await fetch(this.endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'DNT': navigator.doNotTrack === '1' ? '1' : '0'
         },
-        body: JSON.stringify(eventToSend),
-        keepalive: true
+        body: JSON.stringify(eventsToSend)
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to send event: ${response.statusText}`);
+        throw new Error(`Failed to send events: ${response.statusText}`);
       }
     } catch (error) {
-      console.error('Error sending event:', error);
-      // Don't requeue on error to avoid infinite loops
+      console.error('Error sending events:', error);
+      this.eventQueue.unshift(...eventsToSend); // Requeue failed events
     } finally {
       this.isSending = false;
       if (this.eventQueue.length > 0) {
-        setTimeout(() => this.sendEvents(), 1000); // Process next event after delay
+        setTimeout(() => this.sendEvents(), 1000); // Retry after 1 second
       }
     }
   }
@@ -149,11 +134,10 @@ class AnalyticsTracker {
 // Initialize the tracker
 const tracker = new AnalyticsTracker({
   appKey: 'demo-fashion-store',
-  endpoint: 'http://localhost:8080/ingest/app'
+  endpoint: '/ingest/app'
 });
 
-// Export for manual tracking if needed
-export function aaFire(eventName: string, data: Record<string, any> = {}) {
-  tracker.trackEvent(eventName, data);
-}
-console.log('Analytics tracker initialized for:', tracker);
+// Auto-track initial page view
+tracker.trackPageView();
+```
+

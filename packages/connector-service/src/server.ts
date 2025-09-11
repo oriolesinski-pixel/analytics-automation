@@ -11,6 +11,9 @@ import { createClient } from '@supabase/supabase-js';
 import schemaRoutes from './routes/schema';
 import ingestRoutes from './routes/ingest';
 import analyticsRoutes from './routes/analytics';
+import { addRuntimeTrackerEndpoints } from './lib/runtime-tracker-builder';
+import { createTrackerEndpoint } from './lib/tracker-generator';
+
 
 
 const app = Fastify({ logger: true });
@@ -32,6 +35,7 @@ app.addContentTypeParser('application/*+json', { parseAs: 'buffer' },
     catch (err) { done(err as any, undefined as any); }
   }
 );
+
 
 
 // ---- secrets loading helpers ----
@@ -450,6 +454,68 @@ async function start() {
 
     return reply.send({ ok: true, count: data?.length ?? 0, data });
   });
+  // Add these endpoints to packages/connector-service/src/server.ts
+
+// Apps management
+app.get('/apps/list', async (req, reply) => {
+  const { data: apps, error } = await supabase
+    .from('apps')
+    .select('*, repos:repo_id (owner, name)')
+    .order('created_at', { ascending: false });
+  
+  if (error) return reply.code(500).send({ ok: false, error: error.message });
+  return reply.send({ ok: true, apps: apps || [], count: apps?.length || 0 });
+});
+
+app.post('/apps/create', async (req, reply) => {
+  const { name, app_key, domain, repo_id } = req.body as any;
+  
+  const { data: app, error } = await supabase
+    .from('apps')
+    .insert({
+      app_key: app_key || `app_${Date.now()}`,
+      name: name || 'Demo App',
+      domain: domain || 'localhost:3002',
+      repo_id: repo_id || '1a8cdd0b-1150-4806-b1d0-2fcbca7f19d7'
+    })
+    .select()
+    .single();
+
+  if (error) return reply.code(500).send({ ok: false, error: error.message });
+  return reply.send({ ok: true, app: app });
+});
+
+// Enhanced event ingestion
+app.post('/ingest/app', async (req, reply) => {
+  const { app_key, verb, metadata, source = 'web' } = req.body as any;
+  
+  if (!app_key || !verb) {
+    return reply.code(400).send({ ok: false, error: 'app_key and verb required' });
+  }
+
+  // Insert event with app_key
+  const { data: result, error } = await supabase
+    .from('events')
+    .insert({
+      source,
+      repo_id: '1a8cdd0b-1150-4806-b1d0-2fcbca7f19d7', // Your demo repo
+      commit_sha: null,
+      actor: metadata?.user_id || 'anonymous',
+      ts: new Date().toISOString(),
+      verb,
+      metadata: { ...metadata, app_key },
+      app_key,
+      user_id: metadata?.user_id,
+      session_id: metadata?.session_id,
+      type: verb,
+      data: metadata || {}
+    })
+    .select()
+    .single();
+
+  if (error) return reply.code(500).send({ ok: false, error: error.message });
+  return reply.send({ ok: true, event_id: result.id, app_key });
+});
 
   // --- Minimal metrics ---
   app.get('/metrics', async (_req, reply) => {
@@ -522,10 +588,10 @@ async function start() {
       return reply.code(500).send({ ok: false, error: e.message });
     }
   });
-
   await app.register(selfcheck);
   await app.register(schemaRoutes);
   await app.register(ingestRoutes);
+  await app.register(createTrackerEndpoint);
   await app.register(analyticsRoutes);
   await app.register(require('@fastify/cors'), {
     origin: ['http://localhost:3002', 'http://localhost:3001', 'http://localhost:3000']
