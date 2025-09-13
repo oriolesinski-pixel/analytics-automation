@@ -1,3 +1,4 @@
+
 {
   "compilerOptions": {
     "lib": ["dom", "dom.iterable", "ES6"],
@@ -19,9 +20,7 @@
     ],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "analytics-ui": ["../analytics-ui/src/index.ts"],
-      "analytics-ui/*": ["../analytics-ui/src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

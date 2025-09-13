@@ -1,0 +1,112 @@
+.
+├── .DS_Store
+├── .gitignore
+├── HANDOFF_CURRENT_STATE.md
+├── adaptive_response.json
+├── analyze_project.sh
+├── bump.txt
+├── demo-next
+│   ├── .env.local
+│   ├── .gitignore
+│   ├── README.md
+│   ├── eslint.config.mjs
+│   ├── next-env.d.ts
+│   ├── next.config.ts
+│   ├── package.json
+│   ├── pnpm-lock.yaml
+│   ├── postcss.config.mjs
+│   ├── public
+│   │   ├── Analytics.tsx
+│   │   ├── README.md
+│   │   ├── file.svg
+│   │   ├── globe.svg
+│   │   ├── next.svg
+│   │   ├── tracker.js
+│   │   ├── vercel.svg
+│   │   ├── window.d.ts
+│   │   └── window.svg
+│   ├── src
+│   │   └── app
+│   │       ├── favicon.ico
+│   │       ├── globals.css
+│   │       ├── layout.tsx
+│   │       ├── page.tsx
+│   │       └── pricing
+│   └── tsconfig.json
+├── eval "$(ssh-agent -s)"
+├── eval "$(ssh-agent -s)".pub
+├── openai_response.txt
+├── package.json
+├── packages
+│   ├── .DS_Store
+│   ├── analytics-platform
+│   │   ├── next-env.d.ts
+│   │   ├── package-lock.json
+│   │   ├── package.json
+│   │   ├── pnpm-lock.yaml
+│   │   ├── src
+│   │   │   └── app
+│   │   ├── tailwind.config.js
+│   │   └── tsconfig.json
+│   ├── analytics-ui
+│   │   ├── .DS_Store
+│   │   ├── package-lock.json
+│   │   ├── package.json
+│   │   ├── pnpm-lock.yaml
+│   │   ├── src
+│   │   │   ├── components
+│   │   │   └── index.ts
+│   │   ├── tsconfig.json
+│   │   └── yarn.lock
+│   ├── analyzer-core
+│   │   ├── package-lock.json
+│   │   └── pnpm-lock.yaml
+│   ├── connector-service
+│   │   ├── .DS_Store
+│   │   ├── .analytics
+│   │   ├── .env
+│   │   ├── .env.example
+│   │   ├── .gitignore
+│   │   ├── package-lock.json
+│   │   ├── package.json
+│   │   ├── package.json.bak
+│   │   ├── payload.json
+│   │   ├── pnpm-lock.yaml
+│   │   ├── scripts
+│   │   │   ├── analyze-compare.ts
+│   │   │   ├── analyzer-worker.ts
+│   │   │   ├── backfill
+│   │   │   ├── backfill.ts
+│   │   │   ├── ensure-repo.ts
+│   │   │   └── worker-loop.sh
+│   │   ├── secrets
+│   │   │   └── github-app-private-key.pem
+│   │   ├── selfcheck.ts
+│   │   ├── src
+│   │   │   ├── .DS_Store
+│   │   │   ├── debug_tracker_generation.js
+│   │   │   ├── lib
+│   │   │   ├── routes
+│   │   │   ├── selfcheck.ts
+│   │   │   ├── server.ts
+│   │   │   └── utils
+│   │   └── tsconfig.json
+│   └── tracker-runtime
+│       └── pnpm-lock.yaml
+├── pnpm-lock.yaml
+├── project_analysis
+│   └── full_structure.txt
+└── supabase
+    ├── .DS_Store
+    ├── .temp
+    │   ├── cli-latest
+    │   ├── gotrue-version
+    │   ├── pooler-url
+    │   ├── postgres-version
+    │   ├── project-ref
+    │   ├── rest-version
+    │   └── storage-version
+    └── migrations
+        └── .DS_Store
+
+27 directories, 83 files

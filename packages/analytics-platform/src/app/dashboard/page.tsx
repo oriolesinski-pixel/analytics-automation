@@ -1,6 +1,7 @@
+
 'use client';
-import { BasicFunnel } from '../../../../analytics-ui/src/components/BasicFunnel';
-import { TopKPIs } from '../../../../analytics-ui/src/components/TopKPIs';
+import { BasicFunnel } from '../../components/BasicFunnel';
+import { TopKPIs } from '../../components/TopKPIs';
 import { Activity, BarChart3, TrendingUp, Settings, Zap, Monitor, Sparkles } from 'lucide-react';
 
 const analyticsConfig = {

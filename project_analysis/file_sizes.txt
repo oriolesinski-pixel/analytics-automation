@@ -1,0 +1,21 @@
+=== LARGEST FILES ===
+    3531 ./demo-next/.next/server/vendor-chunks/next@15.5.2_react-dom@19.1.0_react@19.1.0__react@19.1.0.js
+    1892 ./demo-next/.next/static/chunks/main-app.js
+    1404 ./demo-next/.next/static/chunks/webpack.js
+     799 ./packages/connector-service/src/lib/tracker-generator.ts
+     689 ./packages/connector-service/src/server.ts
+     436 ./packages/tracker-runtime/dist/tracker.umd.js
+     425 ./packages/connector-service/src/routes/schema.ts
+     424 ./packages/tracker-runtime/dist/tracker.esm.js
+     371 ./packages/connector-service/scripts/analyzer-worker.ts
+     343 ./packages/connector-service/src/routes/ingest.ts
+     308 ./packages/connector-service/scripts/analyze-compare.ts
+     293 ./demo-next/.next/server/app/page.js
+     262 ./packages/connector-service/src/routes/analytics.ts
+     222 ./packages/connector-service/src/utils/universal_tracker_parser.js
+     222 ./packages/connector-service/src/lib/runtime-tracker-builder.ts
+     208 ./demo-next/.next/server/webpack-runtime.js
+     196 ./packages/analyzer-core/dist/plugins/nextjs.js
+     191 ./demo-next/.next/static/chunks/app/page.js
+     181 ./demo-next/.next/static/chunks/app-pages-internals.js
+     141 ./demo-next/.next/types/cache-life.d.ts

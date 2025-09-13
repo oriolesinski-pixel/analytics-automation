@@ -227,9 +227,9 @@ async function saveFilesToLocal(
   return outputPath;
 }
 
-// Enhanced JavaScript prompt with page parameter fix
+// Enhanced JavaScript prompt with page parameter fix - CORRECTED ENDPOINT
 function createJavaScriptPrompt(input: TrackerGenerationInput): string {
-  const fullDomain = input.domain?.startsWith('http') ? input.domain : `http://${input.domain || 'localhost:3000'}`;
+  const fullDomain = input.domain?.startsWith('http') ? input.domain : `http://${input.domain || 'localhost:8080'}`;
 
   return `Generate a browser-compatible JavaScript analytics tracker class.
 
@@ -237,7 +237,7 @@ CRITICAL REQUIREMENTS:
 - Pure JavaScript (ES6 classes OK, but NO TypeScript)
 - Class named AnalyticsTracker
 - No constructor parameters
-- Config as property: this.config = { appKey: '${input.appKey}', endpoint: '${fullDomain}/ingest/app', batchSize: 10, flushInterval: 30000, maxRetries: 3 }
+- Config as property: this.config = { appKey: '${input.appKey}', endpoint: '${fullDomain}/ingest/analytics', batchSize: 10, flushInterval: 30000, maxRetries: 3 }
 
 METHODS REQUIRED:
 - trackPageView(page) - page parameter is OPTIONAL, use window.location if not provided
@@ -266,7 +266,7 @@ IMPORTANT NOTES:
 Return ONLY JavaScript code, no markdown, no comments about the code.`;
 }
 
-// Complete fallback JavaScript with page parameter fix
+// Complete fallback JavaScript with page parameter fix - CORRECTED ENDPOINT
 function createFallbackTracker(appKey: string, domain: string): string {
   const fullDomain = domain.startsWith('http') ? domain : `http://${domain}`;
 
@@ -274,7 +274,7 @@ function createFallbackTracker(appKey: string, domain: string): string {
   constructor() {
     this.config = {
       appKey: '${appKey}',
-      endpoint: '${fullDomain}/ingest/app',
+      endpoint: '${fullDomain}/ingest/analytics',
       batchSize: 10,
       flushInterval: 30000,
       maxRetries: 3
@@ -488,7 +488,7 @@ export async function generateTrackerImplementation(input: TrackerGenerationInpu
   };
   savedPath?: string;
 }> {
-  const domain = input.domain || 'localhost:3000';
+  const domain = input.domain || 'localhost:8080';
   const files = [];
   let jsCode: string;
 
@@ -639,8 +639,7 @@ export async function generateTrackerForCompletedAnalysis(runId: string, options
   const frameworks = frameworkDetection?.frameworks || run.summary?.schema?.frameworks || [];
   const routes = run.summary?.routes_sample || [];
   const appKey = app?.app_key || `${repo.owner}-${repo.name}`;
-  const domain = app?.domain || 'localhost:3000';
-
+  const domain = 'localhost:8080';
   const trackerInput: TrackerGenerationInput = {
     repoId: run.repo_id,
     appKey,

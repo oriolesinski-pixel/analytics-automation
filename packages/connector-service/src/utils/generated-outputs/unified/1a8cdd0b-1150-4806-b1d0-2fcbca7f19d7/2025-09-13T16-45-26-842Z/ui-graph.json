@@ -1,0 +1,72 @@
+{
+  "app_key": "demo-next-app",
+  "relationships": [
+    {
+      "from": "home",
+      "to": "external_vercel_deploy",
+      "trigger": "button_click",
+      "element": "deploy_now_button"
+    },
+    {
+      "from": "home",
+      "to": "external_nextjs_docs",
+      "trigger": "button_click",
+      "element": "read_docs_button"
+    },
+    {
+      "from": "home",
+      "to": "external_nextjs_learn",
+      "trigger": "footer_link_click",
+      "element": "learn_link"
+    },
+    {
+      "from": "home",
+      "to": "external_vercel_templates",
+      "trigger": "footer_link_click",
+      "element": "examples_link"
+    },
+    {
+      "from": "home",
+      "to": "external_nextjs_home",
+      "trigger": "footer_link_click",
+      "element": "nextjs_link"
+    }
+  ],
+  "pages": {
+    "home": {
+      "route": "/",
+      "components": [
+        "next_logo",
+        "vercel_logo",
+        "instruction_list",
+        "deploy_button",
+        "docs_button",
+        "footer_links"
+      ],
+      "can_navigate_to": [
+        "pricing",
+        "external_vercel_deploy",
+        "external_nextjs_docs",
+        "external_nextjs_learn",
+        "external_vercel_templates",
+        "external_nextjs_home"
+      ],
+      "events": [
+        "page_view",
+        "button_click",
+        "footer_link_click",
+        "code_snippet_interaction"
+      ]
+    },
+    "pricing": {
+      "route": "/pricing",
+      "components": [],
+      "can_navigate_to": [
+        "home"
+      ],
+      "events": [
+        "page_view"
+      ]
+    }
+  }
+}

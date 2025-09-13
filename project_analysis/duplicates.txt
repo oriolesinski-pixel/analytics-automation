@@ -1,0 +1,49 @@
+=== ANALYZER FILES ===
+./analyze_project.sh
+./packages/analyzer-core
+./packages/connector-service/scripts/analyze-compare.ts
+./packages/connector-service/scripts/analyzer-worker.ts
+
+=== TRACKER FILES ===
+./demo-next/public/tracker.js
+./packages/connector-service/src/debug_tracker_generation.js
+./packages/connector-service/src/lib/runtime-tracker-builder.ts
+./packages/connector-service/src/lib/tracker-generator.ts
+./packages/connector-service/src/utils/generated-outputs/parsed-results/1a8cdd0b-1150-4806-b1d0-2fcbca7f19d7/2025-09-11T16-29-58-019Z/ready-to-deploy/tracker.js
+./packages/connector-service/src/utils/generated-outputs/trackers
+./packages/connector-service/src/utils/parsed_tracking_plan.json
+./packages/connector-service/src/utils/universal_tracker_parser.js
+./packages/tracker-runtime
+./packages/tracker-runtime/dist/tracker.esm.js
+./packages/tracker-runtime/dist/tracker.esm.js.map
+./packages/tracker-runtime/dist/tracker.umd.js
+./packages/tracker-runtime/dist/tracker.umd.js.map
+
+=== SERVER/API FILES ===
+./demo-next/.next/cache/webpack/server-development
+./demo-next/.next/server
+./demo-next/.next/server/server-reference-manifest.js
+./demo-next/.next/server/server-reference-manifest.json
+./packages/analytics-platform/.next/server
+./packages/analytics-platform/.next/server/server-reference-manifest.js
+./packages/analytics-platform/.next/server/server-reference-manifest.json
+./packages/connector-service/src/server.ts
+
+=== CONFIG FILES ===
+./demo-next/.env.local
+./demo-next/.next/cache/swc/plugins/macos_aarch64_18.0.0
+./demo-next/.next/server/interception-route-rewrite-manifest.js
+./demo-next/eslint.config.mjs
+./demo-next/next.config.ts
+./demo-next/postcss.config.mjs
+./demo-next/public/vercel.svg
+./demo-next/src
+./packages/analytics-platform/.next/server/interception-route-rewrite-manifest.js
+./packages/analytics-platform/src
+./packages/analytics-platform/src/app/dashboard/postcss.config.js
+./packages/analytics-platform/tailwind.config.js
+./packages/analytics-ui/src
+./packages/connector-service/.env
+./packages/connector-service/.env.example
+./packages/connector-service/src
+./project_analysis/source_files.txt

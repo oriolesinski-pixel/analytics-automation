@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "*": ["packages/*/node_modules/*"]
+    }
+  },
+  "references": [
+    { "path": "./packages/analytics-platform" },
+    { "path": "./packages/connector-service" },
+    { "path": "./examples/demo-next" }
+  ]
+}

@@ -13,6 +13,7 @@ import ingestRoutes from './routes/ingest';
 import analyticsRoutes from './routes/analytics';
 import { addRuntimeTrackerEndpoints } from './lib/runtime-tracker-builder';
 import { createTrackerEndpoint } from './lib/tracker-generator';
+import analyticsIntelligenceRoutes from './routes/analytics-intelligence';
 
 
 
@@ -674,6 +675,7 @@ async function start() {
     }
   });
   await app.register(selfcheck);
+  app.register(analyticsIntelligenceRoutes);
   await app.register(schemaRoutes);
   await app.register(ingestRoutes);
   await app.register(createTrackerEndpoint);

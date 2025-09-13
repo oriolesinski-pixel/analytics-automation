@@ -1,0 +1,46 @@
+=== PACKAGE.JSON LOCATIONS ===
+
+========== ./demo-next/.next/package.json ==========
+Name: 
+Dependencies count:        0
+Dev dependencies count:        0
+
+========== ./demo-next/.next/types/package.json ==========
+Name: 
+Dependencies count:        0
+Dev dependencies count:        0
+
+========== ./demo-next/package.json ==========
+Name:   "name": "demo-next",
+Dependencies count:       14
+Dev dependencies count:       10
+
+========== ./package.json ==========
+Name:   "name": "analytics-platform",
+Dependencies count:        8
+Dev dependencies count:        4
+
+========== ./packages/analytics-platform/.next/package.json ==========
+Name: 
+Dependencies count:        0
+Dev dependencies count:        0
+
+========== ./packages/analytics-platform/.next/types/package.json ==========
+Name: 
+Dependencies count:        0
+Dev dependencies count:        0
+
+========== ./packages/analytics-platform/package.json ==========
+Name:   "name": "analytics-platform",
+Dependencies count:       16
+Dev dependencies count:       10
+
+========== ./packages/analytics-ui/package.json ==========
+Name:   "name": "analytics-ui",
+Dependencies count:       12
+Dev dependencies count:        7
+
+========== ./packages/connector-service/package.json ==========
+Name:   "name": "connector-service",
+Dependencies count:       17
+Dev dependencies count:        5

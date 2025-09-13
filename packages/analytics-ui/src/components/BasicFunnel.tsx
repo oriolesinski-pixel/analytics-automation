@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Users, MousePointer, Eye, FileText, CheckCircle, ShoppingCart, Package } from 'lucide-react';
-
+ 
 interface FunnelStep {
     step: number;
     event_type: string;

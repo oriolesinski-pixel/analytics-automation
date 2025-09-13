@@ -1,0 +1,150 @@
+{
+  "required_fields": {
+    "app_key": {
+      "type": "string",
+      "source": "config"
+    },
+    "session_id": {
+      "type": "string",
+      "source": "sessionStorage"
+    },
+    "user_id": {
+      "type": "string",
+      "source": "context",
+      "nullable": true
+    },
+    "ts": {
+      "type": "timestamp",
+      "source": "generated"
+    }
+  },
+  "events": [
+    {
+      "type": "page_view",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "page_url"
+      ],
+      "optional": [
+        "page_title",
+        "referrer",
+        "viewport_width"
+      ],
+      "properties": {
+        "page_url": "string",
+        "page_title": "string",
+        "referrer": "string",
+        "viewport_width": "number"
+      },
+      "possible_values": {
+        "page_url": [
+          "/",
+          "/pricing"
+        ],
+        "page_title": [
+          "Create Next App",
+          "Pricing"
+        ]
+      }
+    },
+    {
+      "type": "button_click",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "button_text",
+        "button_href"
+      ],
+      "optional": [
+        "button_type"
+      ],
+      "properties": {
+        "button_text": "string",
+        "button_href": "string",
+        "button_type": "string"
+      },
+      "possible_values": {
+        "button_text": [
+          "Deploy now",
+          "Read our docs"
+        ],
+        "button_href": [
+          "https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app",
+          "https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+        ],
+        "button_type": [
+          "primary",
+          "secondary"
+        ]
+      }
+    },
+    {
+      "type": "footer_link_click",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "link_text",
+        "link_href"
+      ],
+      "optional": [
+        "icon_type"
+      ],
+      "properties": {
+        "link_text": "string",
+        "link_href": "string",
+        "icon_type": "string"
+      },
+      "possible_values": {
+        "link_text": [
+          "Learn",
+          "Examples",
+          "Go to nextjs.org →"
+        ],
+        "link_href": [
+          "https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app",
+          "https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app",
+          "https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+        ],
+        "icon_type": [
+          "file",
+          "window",
+          "globe"
+        ]
+      }
+    },
+    {
+      "type": "code_snippet_interaction",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "action"
+      ],
+      "optional": [
+        "code_text"
+      ],
+      "properties": {
+        "action": "string",
+        "code_text": "string"
+      },
+      "possible_values": {
+        "action": [
+          "view",
+          "hover",
+          "copy"
+        ],
+        "code_text": [
+          "src/app/page.tsx"
+        ]
+      }
+    }
+  ]
+}
