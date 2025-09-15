@@ -1,0 +1,237 @@
+import 'dotenv/config';
+import Fastify from 'fastify';
+import { createClient } from '@supabase/supabase-js';
+import ingestRoutes from './routes/ingest';
+import analyticsRoutes from './routes/analytics';
+import selfcheck from "./selfcheck";
+
+
+const app = Fastify({ logger: true });
+const PORT = Number(process.env.ANALYTICS_PORT || 8082);
+
+const supabase = createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+);
+
+async function start() {
+    // ---- routes ----
+    app.get('/healthz', async () => ({ ok: true }));
+
+    // GET /events?full=owner/name&since=...&limit=...
+    app.get('/events', async (req, reply) => {
+        const q = req.query as any;
+        if (!q.full) return reply.code(400).send({ ok: false, error: 'pass ?full=owner/name' });
+        const [owner, name] = String(q.full).split('/');
+        const since = q.since ? new Date(String(q.since)).toISOString() : null;
+        const limit = Math.min(Number(q.limit || 50), 200);
+
+        // find repo id
+        const repo = await supabase
+            .from('repos')
+            .select('id')
+            .eq('provider', 'github')
+            .eq('owner', owner)
+            .eq('name', name)
+            .single();
+        if (repo.error) return reply.code(404).send({ ok: false, error: 'repo not found' });
+
+        let query = supabase
+            .from('events')
+            .select('*')
+            .eq('repo_id', repo.data.id)
+            .order('ts', { ascending: false })
+            .limit(limit);
+
+        if (since) query = query.gte('ts', since);
+
+        const { data, error } = await query;
+        if (error) return reply.code(500).send({ ok: false, error: error.message });
+
+        return reply.send({ ok: true, count: data?.length ?? 0, data });
+    });
+
+    // Apps management
+    app.get('/apps/list', async (req, reply) => {
+        const { data: apps, error } = await supabase
+            .from('apps')
+            .select('*, repos:repo_id (owner, name)')
+            .order('created_at', { ascending: false });
+
+        if (error) return reply.code(500).send({ ok: false, error: error.message });
+        return reply.send({ ok: true, apps: apps || [], count: apps?.length || 0 });
+    });
+
+    app.post('/apps/create', async (req, reply) => {
+        const { name, app_key, domain, repo_id } = req.body as any;
+
+        const { data: app, error } = await supabase
+            .from('apps')
+            .insert({
+                app_key: app_key || `app_${Date.now()}`,
+                name: name || 'Demo App',
+                domain: domain || 'localhost:3002',
+                repo_id: repo_id || '1a8cdd0b-1150-4806-b1d0-2fcbca7f19d7'
+            })
+            .select()
+            .single();
+
+        if (error) return reply.code(500).send({ ok: false, error: error.message });
+        return reply.send({ ok: true, app: app });
+    });
+
+    // Enhanced event ingestion
+    app.post('/ingest/app', async (req, reply) => {
+        const { app_key, verb, metadata, source = 'web' } = req.body as any;
+
+        if (!app_key || !verb) {
+            return reply.code(400).send({ ok: false, error: 'app_key and verb required' });
+        }
+
+        // Insert event with app_key
+        const { data: result, error } = await supabase
+            .from('events')
+            .insert({
+                source,
+                repo_id: '1a8cdd0b-1150-4806-b1d0-2fcbca7f19d7', // Your demo repo
+                commit_sha: null,
+                actor: metadata?.user_id || 'anonymous',
+                ts: new Date().toISOString(),
+                verb,
+                metadata: { ...metadata, app_key },
+                app_key,
+                user_id: metadata?.user_id,
+                session_id: metadata?.session_id,
+                type: verb,
+                data: metadata || {}
+            })
+            .select()
+            .single();
+
+        if (error) return reply.code(500).send({ ok: false, error: error.message });
+        return reply.send({ ok: true, event_id: result.id, app_key });
+    });
+
+    // New endpoint for standard analytics
+    app.post('/ingest/analytics', async (req, reply) => {
+        const { app_key, events } = req.body as {
+            app_key: string;
+            events: Array<{
+                name: string;
+                props: {
+                    user_id?: string;
+                    session_id?: string;
+                    timestamp?: string;
+                    [key: string]: any;
+                };
+            }>;
+        };
+
+        if (!app_key || !events || !Array.isArray(events)) {
+            return reply.code(400).send({ ok: false, error: 'app_key and events array required' });
+        }
+
+        // Look up the app to get its repo_id
+        let repo_id = '1a8cdd0b-1150-4806-b1d0-2fcbca7f19d7'; // Default fallback
+
+        const { data: appData, error: appError } = await supabase
+            .from('apps')
+            .select('repo_id')
+            .eq('app_key', app_key)
+            .single();
+
+        if (appData?.repo_id) {
+            repo_id = appData.repo_id;
+        } else if (appError) {
+            app.log.warn(`App lookup failed for app_key: ${app_key}, using default repo_id. Error: ${appError.message}`);
+        }
+
+        // Transform and insert each event
+        const results = await Promise.all(events.map(async (event) => {
+            // Validate event structure
+            if (!event.name || typeof event.name !== 'string') {
+                return { success: false, error: 'Invalid event name', event: null };
+            }
+
+            const eventData = {
+                source: 'web',
+                repo_id: repo_id,
+                commit_sha: null,
+                actor: event.props?.user_id || 'anonymous',
+                ts: event.props?.timestamp || new Date().toISOString(),
+                verb: event.name,
+                metadata: event.props || {},
+                app_key,
+                user_id: event.props?.user_id || null,
+                session_id: event.props?.session_id || null,
+                type: event.name,
+                data: event.props || {}
+            };
+
+            const { data, error } = await supabase
+                .from('events')
+                .insert(eventData)
+                .select();
+
+            if (error) {
+                app.log.error(`Failed to insert event: ${event.name} - ${error.message}`);
+                return { success: false, event: null, error: error.message };
+            }
+
+            return { success: true, event: data, error: null };
+        }));
+
+        const successful = results.filter((r: { success: boolean }) => r.success).length;
+        const failed = results.filter((r: { success: boolean }) => !r.success);
+
+        // Log any failures for debugging
+        if (failed.length > 0) {
+            app.log.warn({ failedCount: failed.length, errors: failed.map(f => f.error) }, 'Some events failed to store');
+        }
+
+        return reply.send({
+            ok: successful > 0,
+            received: events.length,
+            stored: successful,
+            failed: failed.length,
+            app_key,
+            repo_id
+        });
+    });
+
+    // --- Minimal metrics ---
+    app.get('/metrics', async (_req, reply) => {
+        const { data, error } = await supabase
+            .from('analyzer_runs')
+            .select('status, count:id')   // PostgREST -> GROUP BY status
+            .order('status', { ascending: true });
+
+        if (error) return reply.code(500).send({ ok: false, error: error.message });
+
+        const statuses = ['queued', 'processing', 'completed', 'failed'] as const;
+        const by: Record<typeof statuses[number], number> =
+            Object.fromEntries(statuses.map(s => [s, 0])) as any;
+
+        for (const row of data ?? []) {
+            const s = String((row as any).status);
+            const c = parseInt(String((row as any).count ?? '0'), 10);
+            if ((statuses as readonly string[]).includes(s)) by[s as typeof statuses[number]] = c;
+        }
+
+        return reply.send({ ok: true, analyzer_runs: by });
+    });
+
+    await app.register(ingestRoutes);
+    await app.register(selfcheck);
+    await app.register(analyticsRoutes);
+    await app.register(require('@fastify/cors'), {
+        origin: ['http://localhost:3002', 'http://localhost:3001', 'http://localhost:3000']
+    });
+
+    await app.listen({ port: PORT, host: '0.0.0.0' });
+    app.log.info(`Analytics service listening on :${PORT}`);
+}
+
+// kick it off
+start().catch((e) => { app.log.error(e); process.exit(1); });
