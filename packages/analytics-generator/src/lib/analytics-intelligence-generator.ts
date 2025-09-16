@@ -1,4 +1,4 @@
-// packages/connector-service/src/lib/analytics-intelligence-generator.ts
+// packages/analytics-generator/src/lib/analytics-intelligence-generator.ts
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import fs from 'fs/promises';
@@ -70,13 +70,125 @@ interface SchemaWithGraph {
     uiGraph: any;
 }
 
+/**
+ * Storage Service for cloud and local file management
+ */
+class StorageService {
+    private bucketName = 'generated-analytics';
+    private supabase: any;
+
+    constructor(supabaseClient: any) {
+        this.supabase = supabaseClient;
+        this.initializeBucket();
+    }
+
+    private async initializeBucket() {
+        try {
+            const { data: buckets } = await this.supabase.storage.listBuckets();
+            if (!buckets?.find((b: any) => b.name === this.bucketName)) {
+                await this.supabase.storage.createBucket(this.bucketName, {
+                    public: false,
+                    allowedMimeTypes: ['application/json', 'application/javascript', 'text/javascript', 'text/markdown', 'text/plain']
+                });
+                console.log('✅ Created storage bucket:', this.bucketName);
+            }
+        } catch (error) {
+            console.error('⚠️ Storage bucket initialization error:', error);
+        }
+    }
+
+    async saveToCloud(repoId: string, fileName: string, content: string, contentType = 'application/json'): Promise<{ path: string; url: string | null }> {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const cloudPath = `${repoId}/${timestamp}/${fileName}`;
+
+        try {
+            const { data, error } = await this.supabase.storage
+                .from(this.bucketName)
+                .upload(cloudPath, content, {
+                    contentType,
+                    upsert: false
+                });
+
+            if (error) throw error;
+
+            // Save metadata to database
+            await this.supabase.from('generated_outputs').insert({
+                repo_id: repoId,
+                output_type: fileName.replace(/\.(js|json|tsx|ts|md)$/, ''),
+                file_path: cloudPath,
+                metadata: {
+                    size: content.length,
+                    contentType
+                },
+                created_at: new Date().toISOString()
+            });
+
+            const url = await this.getSignedUrl(cloudPath);
+            console.log(`☁️ Saved to cloud: ${fileName}`);
+
+            return { path: cloudPath, url };
+        } catch (error) {
+            console.error(`⚠️ Cloud save failed for ${fileName}:`, error);
+            return { path: cloudPath, url: null };
+        }
+    }
+
+    async saveToLocal(outputPath: string, fileName: string, content: string): Promise<void> {
+        const filePath = path.join(outputPath, fileName);
+        await fs.writeFile(filePath, content, 'utf8');
+        console.log(`💾 Saved locally: ${fileName}`);
+    }
+
+    private async getSignedUrl(filePath: string, expiresIn = 3600): Promise<string | null> {
+        try {
+            const { data } = await this.supabase.storage
+                .from(this.bucketName)
+                .createSignedUrl(filePath, expiresIn);
+            return data?.signedUrl || null;
+        } catch (error) {
+            console.error('Failed to generate signed URL:', error);
+            return null;
+        }
+    }
+
+    async getLatestFromCloud(repoId: string, outputType: string): Promise<string | null> {
+        try {
+            // Get latest metadata from database
+            const { data: metadata } = await this.supabase
+                .from('generated_outputs')
+                .select('*')
+                .eq('repo_id', repoId)
+                .eq('output_type', outputType)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single();
+
+            if (!metadata) return null;
+
+            // Download file from storage
+            const { data } = await this.supabase.storage
+                .from(this.bucketName)
+                .download(metadata.file_path);
+
+            if (!data) return null;
+
+            return await data.text();
+        } catch (error) {
+            console.error(`Failed to retrieve ${outputType} from cloud:`, error);
+            return null;
+        }
+    }
+}
+
 export class AnalyticsIntelligenceGenerator {
     private anthropic: Anthropic;
     private supabase: any;
+    private storageService: StorageService;
 
     constructor() {
         this.anthropic = anthropic;
         this.supabase = supabase;
+        this.storageService = new StorageService(supabase);
     }
 
     /**
@@ -110,10 +222,77 @@ export class AnalyticsIntelligenceGenerator {
         // Step 5: Generate implementation components
         const output = await this.generateImplementation(input, eventsWithRequiredFields, uiGraph);
 
-        // Step 6: Save to disk
+        // Step 6: Save to both cloud and local storage
         await this.saveOutput(output, input.repoId, input.appKey);
 
         return output;
+    }
+
+    /**
+     * Save output to both cloud storage and local disk
+     */
+    private async saveOutput(output: GeneratorOutput, repoId: string, appKey: string): Promise<string> {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const localOutputPath = path.join(OUTPUTS_DIR, 'unified', repoId, timestamp);
+
+        // Create local directory
+        const keepLocal = process.env.KEEP_LOCAL_COPY !== 'false';
+        if (keepLocal) {
+            await fs.mkdir(localOutputPath, { recursive: true });
+        }
+
+        // Define file mappings with proper content types
+        const fileMap = [
+            { name: 'tracker.js', content: output['tracker.js'], type: 'application/javascript' },
+            { name: 'events-schema.json', content: JSON.stringify(output['events-schema.json'], null, 2), type: 'application/json' },
+            { name: 'ui-graph.json', content: JSON.stringify(output['ui-graph.json'], null, 2), type: 'application/json' },
+            { name: 'analytics-provider.tsx', content: output['analytics-provider.tsx'], type: 'text/plain' },
+            { name: 'analytics.types.ts', content: output['analytics.types.ts'], type: 'text/plain' },
+            { name: 'integration-guide.md', content: output['integration-guide.md'], type: 'text/markdown' },
+            { name: 'metadata.json', content: JSON.stringify(output.metadata, null, 2), type: 'application/json' }
+        ];
+
+        // Save all files
+        const cloudUrls: Record<string, string> = {};
+
+        for (const file of fileMap) {
+            // Save to cloud
+            const { url } = await this.storageService.saveToCloud(repoId, file.name, file.content, file.type);
+            if (url) {
+                cloudUrls[file.name] = url;
+            }
+
+            // Save to local if enabled
+            if (keepLocal) {
+                await this.storageService.saveToLocal(localOutputPath, file.name, file.content);
+            }
+        }
+
+        // Record event in database
+        await this.supabase.from('events').insert({
+            source: 'ai',
+            repo_id: repoId,
+            commit_sha: null,
+            actor: 'analytics_intelligence_generator',
+            ts: new Date().toISOString(),
+            verb: 'analytics_implementation',
+            metadata: {
+                app_key: appKey,
+                output_path: localOutputPath,
+                cloud_urls: cloudUrls,
+                storage_mode: keepLocal ? 'hybrid' : 'cloud_only',
+                ...output.metadata,
+                files: Object.keys(output).filter(k => k !== 'metadata')
+            }
+        });
+
+        console.log(`✅ Analytics implementation saved`);
+        console.log(`   ☁️ Cloud: ${Object.keys(cloudUrls).length} files uploaded`);
+        if (keepLocal) {
+            console.log(`   💾 Local: ${localOutputPath}`);
+        }
+
+        return localOutputPath;
     }
 
     /**
@@ -234,6 +413,12 @@ export class AnalyticsIntelligenceGenerator {
         return files.slice(0, 50); // Limit to 50 files to avoid token limits
     }
 
+    // [All other methods remain exactly the same as in your original file]
+    // extractRoutesFromFiles, generateSchemaFromCode, getDefaultContextualSchema,
+    // getDemoNextSchema, generateDefaultUIGraph, ensureRequiredFields,
+    // generateImplementation, generateTracker, generateProvider, generateTypes,
+    // generateIntegrationGuide
+
     /**
      * Extract routes from file system structure
      */
@@ -337,7 +522,7 @@ Return ONLY a JSON object with this structure:
         try {
             console.log('🤖 Sending code to LLM for analysis...');
             const response = await this.anthropic.messages.create({
-                model: "claude-3-opus-20240229", 
+                model: "claude-3-opus-20240229",
                 max_tokens: 8000,
                 temperature: 0.1,
                 system: systemPrompt,
@@ -604,7 +789,7 @@ Return ONLY a JSON object with this structure:
         events: EventSchema[],
         uiGraph: any
     ): Promise<GeneratorOutput> {
-        const backend = input.backendUrl || 'http://localhost:8080/ingest/analytics';
+        const backend = input.backendUrl || 'http://localhost:8082/ingest/analytics';
 
         return {
             'tracker.js': this.generateTracker(input.appKey, backend),
@@ -634,49 +819,6 @@ Return ONLY a JSON object with this structure:
                 frameworksDetected: input.frameworks || []
             }
         };
-    }
-
-    // [Rest of the methods remain the same: saveOutput, generateTracker, generateProvider, generateTypes, generateIntegrationGuide]
-
-    /**
-     * Save output to disk
-     */
-    private async saveOutput(output: GeneratorOutput, repoId: string, appKey: string): Promise<string> {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const outputPath = path.join(OUTPUTS_DIR, 'unified', repoId, timestamp);
-
-        await fs.mkdir(outputPath, { recursive: true });
-
-        for (const [filename, content] of Object.entries(output)) {
-            if (filename === 'metadata') continue;
-            const filePath = path.join(outputPath, filename);
-            const fileContent = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
-            await fs.writeFile(filePath, fileContent, 'utf8');
-        }
-
-        await fs.writeFile(
-            path.join(outputPath, 'metadata.json'),
-            JSON.stringify(output.metadata, null, 2),
-            'utf8'
-        );
-
-        await this.supabase.from('events').insert({
-            source: 'ai',
-            repo_id: repoId,
-            commit_sha: null,
-            actor: 'analytics_intelligence_generator',
-            ts: new Date().toISOString(),
-            verb: 'analytics_implementation',
-            metadata: {
-                app_key: appKey,
-                output_path: outputPath,
-                ...output.metadata,
-                files: Object.keys(output).filter(k => k !== 'metadata')
-            }
-        });
-
-        console.log(`✅ Analytics implementation saved to: ${outputPath}`);
-        return outputPath;
     }
 
     private generateTracker(appKey: string, endpoint: string): string {
@@ -951,5 +1093,5 @@ export const analyticsGenerator = new AnalyticsIntelligenceGenerator();
 
 // API endpoint handler remains the same...
 export async function createAnalyticsIntelligenceEndpoint(app: any) {
-    // [Same as before]
+    // [Same as before - not modified]
 }
