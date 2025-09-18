@@ -16,7 +16,6 @@ export function AnalyticsProvider({
   const [sessionId, setSessionId] = useState('');
   
   useEffect(() => {
-    // Get or create session ID
     try {
       let sid = sessionStorage.getItem('analytics_session_id');
       if (!sid) {
@@ -25,14 +24,13 @@ export function AnalyticsProvider({
       }
       setSessionId(sid);
     } catch {
-      // Fallback for SSR or storage errors
       setSessionId('sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9));
     }
   }, []);
   
   return (
     <AnalyticsContext.Provider value={{
-      appKey: 'test-generation',
+      appKey: 'test-app-rich-1758206274927',
       sessionId,
       userId
     }}>

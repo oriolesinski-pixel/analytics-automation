@@ -1,0 +1,108 @@
+{
+  "app_key": "test-app-rich-1758206274927",
+  "relationships": [],
+  "pages": {
+    "home": {
+      "path": "/",
+      "events": [
+        "page_view",
+        "link_click",
+        "scroll_depth"
+      ]
+    },
+    "about": {
+      "path": "/about",
+      "events": [
+        "page_view"
+      ]
+    },
+    "login": {
+      "path": "/auth/login",
+      "events": [
+        "page_view",
+        "form_started",
+        "form_submitted",
+        "form_error",
+        "modal_opened",
+        "modal_closed"
+      ]
+    },
+    "register": {
+      "path": "/auth/register",
+      "events": [
+        "page_view",
+        "form_started",
+        "form_submitted",
+        "form_error",
+        "modal_opened",
+        "modal_closed"
+      ]
+    },
+    "cart": {
+      "path": "/cart",
+      "events": [
+        "page_view",
+        "button_click"
+      ]
+    },
+    "checkout": {
+      "path": "/checkout",
+      "events": [
+        "page_view",
+        "form_started",
+        "form_submitted",
+        "form_error"
+      ]
+    },
+    "checkout_payment": {
+      "path": "/checkout/payment",
+      "events": [
+        "page_view",
+        "form_started",
+        "form_submitted",
+        "form_error"
+      ]
+    },
+    "checkout_success": {
+      "path": "/checkout/success",
+      "events": [
+        "page_view"
+      ]
+    },
+    "product_detail": {
+      "path": "/products/:param",
+      "events": [
+        "page_view",
+        "button_click",
+        "link_click"
+      ]
+    },
+    "products": {
+      "path": "/products",
+      "events": [
+        "page_view",
+        "search_performed",
+        "scroll_depth"
+      ]
+    },
+    "returns": {
+      "path": "/returns",
+      "events": [
+        "page_view"
+      ]
+    },
+    "shipping": {
+      "path": "/shipping",
+      "events": [
+        "page_view"
+      ]
+    },
+    "wishlist": {
+      "path": "/wishlist",
+      "events": [
+        "page_view",
+        "button_click"
+      ]
+    }
+  }
+}

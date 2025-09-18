@@ -1,0 +1,350 @@
+{
+  "required_fields": {
+    "app_key": {
+      "type": "string",
+      "source": "config"
+    },
+    "session_id": {
+      "type": "string",
+      "source": "sessionStorage"
+    },
+    "user_id": {
+      "type": "string",
+      "source": "context",
+      "nullable": true
+    },
+    "ts": {
+      "type": "timestamp",
+      "source": "generated"
+    }
+  },
+  "events": [
+    {
+      "type": "page_view",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "page_url"
+      ],
+      "optional": [
+        "page_title",
+        "referrer",
+        "query_params",
+        "hash"
+      ],
+      "properties": {
+        "page_url": "string",
+        "page_title": "string",
+        "referrer": "string",
+        "query_params": "string",
+        "hash": "string"
+      },
+      "possible_values": {
+        "page_url": [
+          "/",
+          "/about",
+          "/auth/login",
+          "/auth/register",
+          "/cart",
+          "/checkout",
+          "/checkout/payment",
+          "/checkout/success",
+          "/products/:param",
+          "/products",
+          "/returns",
+          "/shipping",
+          "/wishlist"
+        ]
+      }
+    },
+    {
+      "type": "button_click",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "button_text"
+      ],
+      "optional": [
+        "button_type",
+        "button_location"
+      ],
+      "properties": {
+        "button_text": "string",
+        "button_type": "string",
+        "button_location": "string"
+      },
+      "possible_values": {
+        "button_text": [
+          "Sign in",
+          "Create a new account",
+          "Continue Shopping",
+          "Add to Cart",
+          "Remove",
+          "+",
+          "-",
+          "Proceed to Checkout",
+          "Place Order",
+          "Save Card"
+        ]
+      }
+    },
+    {
+      "type": "link_click",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "link_text",
+        "link_url"
+      ],
+      "optional": [
+        "link_type"
+      ],
+      "properties": {
+        "link_text": "string",
+        "link_url": "string",
+        "link_type": "string"
+      },
+      "possible_values": {
+        "link_text": [
+          "sign in to existing account",
+          "create a new account",
+          "Products",
+          "About",
+          "Shipping",
+          "Returns",
+          "Continue Shopping",
+          "Back to Home"
+        ],
+        "link_url": [
+          "/auth/login",
+          "/auth/register",
+          "/products",
+          "/about",
+          "/shipping",
+          "/returns",
+          "/products",
+          "/"
+        ]
+      }
+    },
+    {
+      "type": "form_started",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "form_name"
+      ],
+      "optional": [
+        "form_type"
+      ],
+      "properties": {
+        "form_name": "string",
+        "form_type": "string"
+      },
+      "possible_values": {
+        "form_name": [
+          "Login",
+          "Register",
+          "Checkout Shipping",
+          "Checkout Payment"
+        ],
+        "form_type": [
+          "login",
+          "register",
+          "shipping",
+          "payment"
+        ]
+      }
+    },
+    {
+      "type": "form_submitted",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "form_name",
+        "form_valid"
+      ],
+      "optional": [
+        "form_type"
+      ],
+      "properties": {
+        "form_name": "string",
+        "form_type": "string",
+        "form_valid": "boolean"
+      },
+      "possible_values": {
+        "form_name": [
+          "Login",
+          "Register",
+          "Checkout Shipping",
+          "Checkout Payment"
+        ],
+        "form_type": [
+          "login",
+          "register",
+          "shipping",
+          "payment"
+        ]
+      }
+    },
+    {
+      "type": "form_error",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "form_name",
+        "error_message"
+      ],
+      "optional": [
+        "form_type",
+        "field_name"
+      ],
+      "properties": {
+        "form_name": "string",
+        "form_type": "string",
+        "error_message": "string",
+        "field_name": "string"
+      },
+      "possible_values": {
+        "form_name": [
+          "Login",
+          "Register",
+          "Checkout Shipping",
+          "Checkout Payment"
+        ],
+        "form_type": [
+          "login",
+          "register",
+          "shipping",
+          "payment"
+        ],
+        "error_message": [
+          "Passwords do not match",
+          "Password must be at least 6 characters",
+          "Invalid email or password",
+          "An error occurred. Please try again."
+        ]
+      }
+    },
+    {
+      "type": "modal_opened",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "modal_name"
+      ],
+      "optional": [
+        "modal_type"
+      ],
+      "properties": {
+        "modal_name": "string",
+        "modal_type": "string"
+      },
+      "possible_values": {
+        "modal_name": [
+          "Login",
+          "Register"
+        ],
+        "modal_type": [
+          "login",
+          "register"
+        ]
+      }
+    },
+    {
+      "type": "modal_closed",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "modal_name"
+      ],
+      "optional": [
+        "modal_type"
+      ],
+      "properties": {
+        "modal_name": "string",
+        "modal_type": "string"
+      },
+      "possible_values": {
+        "modal_name": [
+          "Login",
+          "Register"
+        ],
+        "modal_type": [
+          "login",
+          "register"
+        ]
+      }
+    },
+    {
+      "type": "scroll_depth",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "page_url",
+        "scroll_percentage"
+      ],
+      "optional": [
+        "scroll_position"
+      ],
+      "properties": {
+        "page_url": "string",
+        "scroll_percentage": "number",
+        "scroll_position": "number"
+      },
+      "possible_values": {
+        "page_url": [
+          "/",
+          "/about",
+          "/auth/login",
+          "/auth/register",
+          "/cart",
+          "/checkout",
+          "/checkout/payment",
+          "/checkout/success",
+          "/products/:param",
+          "/products",
+          "/returns",
+          "/shipping",
+          "/wishlist"
+        ]
+      }
+    },
+    {
+      "type": "search_performed",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "search_query"
+      ],
+      "optional": [
+        "search_filters"
+      ],
+      "properties": {
+        "search_query": "string",
+        "search_filters": "string"
+      },
+      "possible_values": {}
+    }
+  ]
+}
