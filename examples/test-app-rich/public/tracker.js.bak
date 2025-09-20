@@ -1,0 +1,669 @@
+(function(root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define([], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.Analytics = factory();
+  }
+}(typeof self !== 'undefined' ? self : this, function() {
+  
+  class AnalyticsTracker {
+    constructor() {
+      this.config = {
+        appKey: 'test-app-rich-1758365126046',
+        endpoint: 'http://localhost:8082/ingest/analytics',
+        batchSize: 10,
+        flushInterval: 30000
+      };
+      
+      this.eventQueue = [];
+      this.sessionId = this.getOrCreateSession();
+      this.userId = null;
+      this.pageLoadTime = Date.now();
+      this.maxScrollDepth = 0;
+      this.formTracking = new WeakMap();
+      this.clickedElements = new WeakSet();
+      this.pageContext = {};
+      
+      // AI-discovered component patterns
+      this.componentDetectors = [
+        {
+            name: 'LoginButton',
+            type: 'button',
+            selectors: [".bg-blue-600",".hover:bg-blue-700"],
+            purpose: 'Login functionality',
+            contextNeeded: ["email","password"],
+            contextCollection: {"search_parents":["form"],"extract_fields":["email","password"]}
+        },
+
+        {
+            name: 'RegisterLink',
+            type: 'link',
+            selectors: [".font-medium",".text-blue-600",".hover:text-blue-500"],
+            purpose: 'Navigate to registration page',
+            contextNeeded: [],
+            contextCollection: {"search_parents":["nav"]}
+        },
+
+        {
+            name: 'TestCredentialsButton',
+            type: 'button',
+            selectors: ["#test-credentials"],
+            purpose: 'Fill test credentials in login form',
+            contextNeeded: [],
+            contextCollection: {"search_parents":["form"]}
+        },
+
+        {
+            name: 'PasswordInput',
+            type: 'form_input',
+            selectors: ["#password"],
+            purpose: 'Password input for login',
+            contextNeeded: ["password"],
+            contextCollection: {"search_parents":["form"]}
+        },
+
+        {
+            name: 'EmailInput',
+            type: 'form_input',
+            selectors: ["#email"],
+            purpose: 'Email input for login',
+            contextNeeded: ["email"],
+            contextCollection: {"search_parents":["form"]}
+        },
+
+        {
+            name: 'NameInput',
+            type: 'form_input',
+            selectors: ["#name"],
+            purpose: 'Name input for registration',
+            contextNeeded: ["name"],
+            contextCollection: {"search_parents":["form"]}
+        },
+
+        {
+            name: 'ConfirmPasswordInput',
+            type: 'form_input',
+            selectors: ["#confirm-password"],
+            purpose: 'Confirm password input for registration',
+            contextNeeded: ["confirmPassword"],
+            contextCollection: {"search_parents":["form"]}
+        },
+
+        {
+            name: 'RegisterButton',
+            type: 'button',
+            selectors: [".bg-blue-600",".hover:bg-blue-700"],
+            purpose: 'Register functionality',
+            contextNeeded: ["name","email","password","confirmPassword"],
+            contextCollection: {"search_parents":["form"],"extract_fields":["name","email","password","confirmPassword"]}
+        },
+
+        {
+            name: 'RemoveFromCartButton',
+            type: 'button',
+            selectors: [".text-red-500",".hover:text-red-700"],
+            purpose: 'Remove item from cart',
+            contextNeeded: ["product_id"],
+            contextCollection: {"search_parents":[".cart-item"],"extract_fields":["product-id"]}
+        },
+
+        {
+            name: 'QuantityDecreaseButton',
+            type: 'button',
+            selectors: [".p-1",".hover:bg-gray-100"],
+            purpose: 'Decrease quantity in cart',
+            contextNeeded: ["product_id","quantity"],
+            contextCollection: {"search_parents":[".cart-item"],"extract_fields":["product-id","quantity"]}
+        },
+
+        {
+            name: 'QuantityIncreaseButton',
+            type: 'button',
+            selectors: [".p-1",".hover:bg-gray-100"],
+            purpose: 'Increase quantity in cart',
+            contextNeeded: ["product_id","quantity"],
+            contextCollection: {"search_parents":[".cart-item"],"extract_fields":["product-id","quantity"]}
+        },
+
+        {
+            name: 'ClearCartButton',
+            type: 'button',
+            selectors: [".text-red-500",".hover:text-red-700"],
+            purpose: 'Clear the entire cart',
+            contextNeeded: [],
+            contextCollection: {"search_parents":[".cart"]}
+        },
+
+        {
+            name: 'ContinueShoppingLink',
+            type: 'link',
+            selectors: [".bg-blue-600",".hover:bg-blue-700"],
+            purpose: 'Navigate to product listing page',
+            contextNeeded: [],
+            contextCollection: {"search_parents":[".cart"]}
+        },
+
+        {
+            name: 'BackToHomeLink',
+            type: 'link',
+            selectors: [".border",".hover:bg-gray-50"],
+            purpose: 'Navigate to home page',
+            contextNeeded: [],
+            contextCollection: {"search_parents":[".checkout"]}
+        },
+
+        {
+            name: 'ShippingInfoForm',
+            type: 'form',
+            selectors: ["form",".onSubmit={handleSubmit}"],
+            purpose: 'Collect shipping information for checkout',
+            contextNeeded: ["firstName","lastName","email","phone","address","city","state","zipCode","country"],
+            contextCollection: {"search_parents":["form"],"extract_fields":["firstName","lastName","email","phone","address","city","state","zipCode","country"]}
+        },
+
+        {
+            name: 'PaymentForm',
+            type: 'form',
+            selectors: ["form",".onSubmit={handleSubmit}"],
+            purpose: 'Process payment for checkout',
+            contextNeeded: ["cardNumber","cardName","expiryDate","cvv","saveCard"],
+            contextCollection: {"search_parents":["form"],"extract_fields":["cardNumber","cardName","expiryDate","cvv","saveCard"]}
+        }
+      ];
+      
+      if (typeof window !== 'undefined') {
+        this.setupListeners();
+        this.startFlushTimer();
+        this.initAutoTracking();
+      }
+    }
+
+    getOrCreateSession() {
+      try {
+        let sessionId = sessionStorage.getItem('analytics_session_id');
+        if (!sessionId) {
+          sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          sessionStorage.setItem('analytics_session_id', sessionId);
+        }
+        return sessionId;
+      } catch {
+        return 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      }
+    }
+
+    setupListeners() {
+      window.addEventListener('beforeunload', () => this.flush());
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') this.flush();
+      });
+    }
+
+    startFlushTimer() {
+      setInterval(() => {
+        if (this.eventQueue.length > 0) this.flush();
+      }, this.config.flushInterval);
+    }
+
+    // ============ AI-ENHANCED AUTO-TRACKING ============
+    initAutoTracking() {
+      console.log('🤖 AI-Enhanced Analytics initialized for test-app-rich-1758365126046');
+      console.log('📊 Tracking 16 discovered components');
+      
+      this.trackPageView();
+      this.trackAllClicks();
+      this.trackSelectionChanges();
+      this.trackFormInteractions();
+      this.trackScrollDepth();
+      this.trackRouteChanges();
+    }
+
+    // Detect component using AI-discovered patterns
+    detectComponent(element) {
+      for (const detector of this.componentDetectors) {
+        for (const selector of detector.selectors) {
+          try {
+            if (element.matches(selector) || element.closest(selector)) {
+              return detector;
+            }
+          } catch (e) {
+            // Invalid selector, skip
+          }
+        }
+      }
+      return null;
+    }
+
+    // Collect context using AI-discovered patterns
+    collectContextWithAI(element, componentInfo) {
+      const context = {};
+      
+      if (!componentInfo || !componentInfo.contextCollection) {
+        return this.collectGenericContext(element);
+      }
+      
+      const collection = componentInfo.contextCollection;
+      
+      // Search parent containers
+      if (collection.search_parents) {
+        for (const parentSelector of collection.search_parents) {
+          const parent = element.closest(parentSelector);
+          if (parent) {
+            // Extract specified fields
+            if (collection.extract_fields) {
+              for (const field of collection.extract_fields) {
+                const value = parent.dataset[field] || 
+                             parent.querySelector(`[data-${field}]`)?.dataset[field];
+                if (value) context[field] = value;
+              }
+            }
+            break;
+          }
+        }
+      }
+      
+      // Get sibling context
+      if (collection.sibling_context) {
+        const container = element.closest('.product, .card, form, section') || document.body;
+        for (const siblingSelector of collection.sibling_context) {
+          const sibling = container.querySelector(siblingSelector);
+          if (sibling) {
+            const contextKey = siblingSelector.includes('color') ? 'color' :
+                             siblingSelector.includes('size') ? 'size' :
+                             siblingSelector.includes('quantity') ? 'quantity' : 'value';
+            context[contextKey] = sibling.value || sibling.textContent || sibling.dataset.value;
+          }
+        }
+      }
+      
+      return Object.keys(context).length > 0 ? context : null;
+    }
+
+    // Fallback to generic context collection
+    collectGenericContext(element) {
+      const context = {};
+      const container = element.closest('.product, .product-card, .item, .card, form, section, article') || document.body;
+      
+      // Try common patterns
+      const patterns = {
+        color: ['[data-color].selected', 'input[name="color"]:checked', '[class*="color"][class*="active"]'],
+        size: ['[data-size].selected', 'input[name="size"]:checked', 'select[name="size"]'],
+        quantity: ['input[type="number"][name*="qty"]', 'input[type="number"][name*="quantity"]', 'select[name*="quantity"]'],
+        product_id: ['[data-product-id]', '[data-sku]', '[data-item-id]'],
+        price: ['[data-price]', '.price', '.product-price']
+      };
+      
+      for (const [key, selectors] of Object.entries(patterns)) {
+        for (const selector of selectors) {
+          const el = container.querySelector(selector);
+          if (el) {
+            const value = el.value || el.dataset[key.replace('_', '-')] || el.textContent?.trim();
+            if (value) {
+              context[key] = key === 'price' ? parseFloat(value.replace(/[^0-9.]/g, '')) : value;
+              break;
+            }
+          }
+        }
+      }
+      
+      return Object.keys(context).length > 0 ? context : null;
+    }
+
+    // Enhanced click tracking with AI component detection
+    trackAllClicks() {
+      document.addEventListener('click', (e) => {
+        const target = e.target;
+        
+        if (this.clickedElements.has(target)) return;
+        this.clickedElements.add(target);
+        setTimeout(() => this.clickedElements.delete(target), 100);
+        
+        // Try AI component detection first
+        const componentInfo = this.detectComponent(target);
+        
+        // Find clickable element
+        const clickable = target.closest(`
+          button, [role="button"], [onclick], input[type="submit"], input[type="button"],
+          [class*="button"], [class*="btn"], svg, [class*="icon"], [data-clickable],
+          [style*="cursor: pointer"], a
+        `);
+        
+        if (clickable || componentInfo) {
+          const element = clickable || target;
+          
+          // Skip regular link handling if it's a link
+          if (element.tagName === 'A' && element.href && !componentInfo) {
+            this.trackLinkClick(element);
+            return;
+          }
+          
+          // Collect context with AI insights
+          const context = componentInfo 
+            ? this.collectContextWithAI(element, componentInfo)
+            : this.collectGenericContext(element);
+          
+          this.trackEvent('element_click', {
+            element_text: this.getElementText(element).slice(0, 100),
+            element_type: componentInfo?.type || this.getElementType(element),
+            component_name: componentInfo?.name || null,
+            component_purpose: componentInfo?.purpose || null,
+            element_id: element.id || null,
+            element_class: element.className || null,
+            element_location: this.getElementLocation(element),
+            context: context,
+            page_title: document.title,
+            page_url: window.location.pathname
+          });
+        }
+      }, true);
+    }
+
+    trackSelectionChanges() {
+      document.addEventListener('click', (e) => {
+        const target = e.target;
+        const componentInfo = this.detectComponent(target);
+        
+        const isSelection = target.matches(`
+          [data-color], [data-size], [data-variant], [data-option],
+          input[type="radio"], input[type="checkbox"]
+        `) || componentInfo?.purpose === 'selection';
+        
+        if (isSelection) {
+          const selectionType = this.getSelectionType(target);
+          const selectionValue = this.getSelectionValue(target);
+          const selectionName = target.name || target.dataset.optionName || selectionType;
+          
+          const previousValue = this.pageContext[selectionName] || null;
+          this.pageContext[selectionName] = selectionValue;
+          
+          this.trackEvent('selection_change', {
+            selection_type: selectionType,
+            selection_value: selectionValue,
+            selection_name: selectionName,
+            previous_value: previousValue,
+            component_name: componentInfo?.name || null,
+            page_title: document.title,
+            page_url: window.location.pathname
+          });
+        }
+      });
+      
+      document.addEventListener('change', (e) => {
+        const target = e.target;
+        const componentInfo = this.detectComponent(target);
+        
+        if (target.tagName === 'SELECT' || target.tagName === 'INPUT') {
+          const selectionType = this.getSelectionType(target);
+          const selectionValue = target.value;
+          const selectionName = target.name || target.id || selectionType;
+          
+          const previousValue = this.pageContext[selectionName] || null;
+          this.pageContext[selectionName] = selectionValue;
+          
+          this.trackEvent('selection_change', {
+            selection_type: selectionType,
+            selection_value: selectionValue,
+            selection_name: selectionName,
+            previous_value: previousValue,
+            component_name: componentInfo?.name || null,
+            page_title: document.title,
+            page_url: window.location.pathname
+          });
+        }
+      });
+    }
+
+    trackLinkClick(link) {
+      const linkText = (link.innerText || link.getAttribute('aria-label') || 'Unknown').trim();
+      const linkHref = link.getAttribute('href') || '';
+      const isExternal = linkHref.startsWith('http') && !linkHref.includes(window.location.hostname);
+      const componentInfo = this.detectComponent(link);
+      const context = componentInfo 
+        ? this.collectContextWithAI(link, componentInfo)
+        : this.collectGenericContext(link);
+      
+      this.trackEvent('element_click', {
+        element_text: linkText.slice(0, 100),
+        element_type: 'link',
+        component_name: componentInfo?.name || null,
+        element_id: link.id || null,
+        element_class: link.className || null,
+        element_location: this.getElementLocation(link),
+        context: context,
+        link_href: linkHref,
+        is_external: isExternal,
+        page_title: document.title,
+        page_url: window.location.pathname
+      });
+    }
+
+    getSelectionType(element) {
+      if (element.dataset.color) return 'color';
+      if (element.dataset.size) return 'size';
+      if (element.dataset.variant) return 'variant';
+      
+      const name = (element.name || '').toLowerCase();
+      if (name.includes('color')) return 'color';
+      if (name.includes('size')) return 'size';
+      if (name.includes('variant')) return 'variant';
+      if (name.includes('quantity')) return 'quantity';
+      
+      return element.type === 'number' ? 'quantity' : 'other';
+    }
+
+    getSelectionValue(element) {
+      return element.value || 
+             element.dataset.value ||
+             element.textContent?.trim() ||
+             'unknown';
+    }
+
+    getElementText(element) {
+      return element.innerText || 
+             element.textContent ||
+             element.value ||
+             element.getAttribute('aria-label') ||
+             element.getAttribute('title') ||
+             'Unknown';
+    }
+
+    getElementType(element) {
+      if (element.tagName === 'BUTTON') return 'button';
+      if (element.tagName === 'A') return 'link';
+      if (element.tagName === 'INPUT') return element.type || 'input';
+      if (element.tagName === 'SVG' || element.querySelector('svg')) return 'icon';
+      return element.tagName.toLowerCase();
+    }
+
+    getElementLocation(element) {
+      const section = element.closest('header, main, footer, aside, nav, section');
+      return section ? section.tagName.toLowerCase() : 'unknown';
+    }
+
+    trackFormInteractions() {
+      document.addEventListener('focusin', (e) => {
+        const field = e.target;
+        const form = field.closest('form');
+        
+        if (form && !this.formTracking.has(form)) {
+          const componentInfo = this.detectComponent(form);
+          const context = componentInfo 
+            ? this.collectContextWithAI(form, componentInfo)
+            : this.collectGenericContext(form);
+          
+          this.formTracking.set(form, {
+            started: true,
+            startTime: Date.now(),
+            fieldsInteracted: new Set()
+          });
+          
+          this.trackEvent('form_started', {
+            form_name: this.getFormName(form),
+            form_id: form.id || null,
+            first_field_focused: field.name || field.id || field.type,
+            context: context,
+            page_title: document.title,
+            page_url: window.location.pathname
+          });
+        }
+        
+        if (form && this.formTracking.has(form)) {
+          const tracking = this.formTracking.get(form);
+          tracking.fieldsInteracted.add(field.name || field.id || field.type);
+        }
+      });
+
+      document.addEventListener('submit', (e) => {
+        const form = e.target;
+        const tracking = this.formTracking.get(form);
+        const componentInfo = this.detectComponent(form);
+        const context = componentInfo 
+          ? this.collectContextWithAI(form, componentInfo)
+          : this.collectGenericContext(form);
+        
+        this.trackEvent('form_submitted', {
+          form_name: this.getFormName(form),
+          form_id: form.id || null,
+          success: true,
+          duration_seconds: tracking ? Math.round((Date.now() - tracking.startTime) / 1000) : null,
+          fields_interacted: tracking ? tracking.fieldsInteracted.size : null,
+          context: context,
+          page_title: document.title,
+          page_url: window.location.pathname
+        });
+        
+        this.formTracking.delete(form);
+      });
+    }
+
+    getFormName(form) {
+      return form.getAttribute('name') || 
+             form.getAttribute('aria-label') ||
+             form.id ||
+             'form';
+    }
+
+    trackScrollDepth() {
+      let scrollTimer;
+      
+      const checkScrollDepth = () => {
+        const scrollPercent = Math.round(
+          (window.scrollY + window.innerHeight) / document.body.scrollHeight * 100
+        );
+        
+        const milestones = [25, 50, 75, 100];
+        const milestone = milestones.find(m => m <= scrollPercent && m > this.maxScrollDepth);
+        
+        if (milestone) {
+          this.maxScrollDepth = milestone;
+          this.trackEvent('scroll_depth', {
+            depth_percent: milestone,
+            page_height: document.body.scrollHeight,
+            viewport_height: window.innerHeight,
+            time_on_page_seconds: Math.round((Date.now() - this.pageLoadTime) / 1000),
+            page_title: document.title,
+            page_url: window.location.pathname
+          });
+        }
+      };
+      
+      window.addEventListener('scroll', () => {
+        clearTimeout(scrollTimer);
+        scrollTimer = setTimeout(checkScrollDepth, 500);
+      });
+    }
+
+    trackRouteChanges() {
+      const originalPushState = history.pushState;
+      const originalReplaceState = history.replaceState;
+      
+      history.pushState = (...args) => {
+        originalPushState.apply(history, args);
+        setTimeout(() => {
+          this.pageContext = {};
+          this.trackPageView();
+        }, 0);
+      };
+      
+      history.replaceState = (...args) => {
+        originalReplaceState.apply(history, args);
+        setTimeout(() => {
+          this.pageContext = {};
+          this.trackPageView();
+        }, 0);
+      };
+      
+      window.addEventListener('popstate', () => {
+        this.pageContext = {};
+        this.trackPageView();
+      });
+    }
+
+    // ============ CORE METHODS ============
+    trackEvent(eventName, properties = {}) {
+      const event = {
+        name: eventName,
+        props: {
+          app_key: this.config.appKey,
+          session_id: this.sessionId,
+          user_id: this.userId,
+          ts: new Date().toISOString(),
+          ...properties
+        }
+      };
+      
+      this.eventQueue.push(event);
+      
+      if (this.eventQueue.length >= this.config.batchSize) {
+        this.flush();
+      }
+    }
+
+    trackPageView(page) {
+      this.maxScrollDepth = 0;
+      this.pageLoadTime = Date.now();
+      
+      this.trackEvent('page_view', {
+        page_url: page?.url || window.location.href,
+        page_title: page?.title || document.title,
+        referrer: document.referrer,
+        query_params: window.location.search,
+        hash: window.location.hash
+      });
+    }
+
+    identify(userId, traits = {}) {
+      this.userId = userId;
+      this.trackEvent('identify', { user_id: userId, traits });
+    }
+
+    flush() {
+      if (this.eventQueue.length === 0) return;
+      
+      const batch = [...this.eventQueue];
+      this.eventQueue = [];
+      
+      fetch(this.config.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          app_key: this.config.appKey,
+          events: batch
+        }),
+        keepalive: true
+      }).catch(err => {
+        console.error('Analytics flush error:', err);
+        this.eventQueue.unshift(...batch);
+      });
+    }
+  }
+
+  // Auto-initialize
+  if (typeof window !== 'undefined' && !window.analytics) {
+    window.analytics = new AnalyticsTracker();
+    console.log('✅ AI-Enhanced Analytics tracker initialized');
+  }
+
+  return AnalyticsTracker;
+}));

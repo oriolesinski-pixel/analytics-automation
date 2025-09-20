@@ -5,7 +5,6 @@ import ingestRoutes from './routes/ingest';
 import analyticsRoutes from './routes/analytics';
 import selfcheck from "./selfcheck";
 
-
 const app = Fastify({ logger: true });
 const PORT = Number(process.env.ANALYTICS_PORT || 8082);
 
@@ -16,6 +15,21 @@ const supabase = createClient(
 );
 
 async function start() {
+    // Register CORS FIRST - before any routes
+    await app.register(require('@fastify/cors'), {
+        origin: [
+            'http://localhost:3000',
+            'http://localhost:3001',
+            'http://localhost:3002',
+            'http://localhost:3003',  // Added port 3003
+            'http://localhost:3004',  // Added for future use
+            'http://localhost:3005'   // Added for future use
+        ],
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization']
+    });
+
     // ---- routes ----
     app.get('/healthz', async () => ({ ok: true }));
 
@@ -113,93 +127,6 @@ async function start() {
         return reply.send({ ok: true, event_id: result.id, app_key });
     });
 
-    // New endpoint for standard analytics
-    app.post('/ingest/analytics', async (req, reply) => {
-        const { app_key, events } = req.body as {
-            app_key: string;
-            events: Array<{
-                name: string;
-                props: {
-                    user_id?: string;
-                    session_id?: string;
-                    timestamp?: string;
-                    [key: string]: any;
-                };
-            }>;
-        };
-
-        if (!app_key || !events || !Array.isArray(events)) {
-            return reply.code(400).send({ ok: false, error: 'app_key and events array required' });
-        }
-
-        // Look up the app to get its repo_id
-        let repo_id = '1a8cdd0b-1150-4806-b1d0-2fcbca7f19d7'; // Default fallback
-
-        const { data: appData, error: appError } = await supabase
-            .from('apps')
-            .select('repo_id')
-            .eq('app_key', app_key)
-            .single();
-
-        if (appData?.repo_id) {
-            repo_id = appData.repo_id;
-        } else if (appError) {
-            app.log.warn(`App lookup failed for app_key: ${app_key}, using default repo_id. Error: ${appError.message}`);
-        }
-
-        // Transform and insert each event
-        const results = await Promise.all(events.map(async (event) => {
-            // Validate event structure
-            if (!event.name || typeof event.name !== 'string') {
-                return { success: false, error: 'Invalid event name', event: null };
-            }
-
-            const eventData = {
-                source: 'web',
-                repo_id: repo_id,
-                commit_sha: null,
-                actor: event.props?.user_id || 'anonymous',
-                ts: event.props?.timestamp || new Date().toISOString(),
-                verb: event.name,
-                metadata: event.props || {},
-                app_key,
-                user_id: event.props?.user_id || null,
-                session_id: event.props?.session_id || null,
-                type: event.name,
-                data: event.props || {}
-            };
-
-            const { data, error } = await supabase
-                .from('events')
-                .insert(eventData)
-                .select();
-
-            if (error) {
-                app.log.error(`Failed to insert event: ${event.name} - ${error.message}`);
-                return { success: false, event: null, error: error.message };
-            }
-
-            return { success: true, event: data, error: null };
-        }));
-
-        const successful = results.filter((r: { success: boolean }) => r.success).length;
-        const failed = results.filter((r: { success: boolean }) => !r.success);
-
-        // Log any failures for debugging
-        if (failed.length > 0) {
-            app.log.warn({ failedCount: failed.length, errors: failed.map(f => f.error) }, 'Some events failed to store');
-        }
-
-        return reply.send({
-            ok: successful > 0,
-            received: events.length,
-            stored: successful,
-            failed: failed.length,
-            app_key,
-            repo_id
-        });
-    });
-
     // --- Minimal metrics ---
     app.get('/metrics', async (_req, reply) => {
         const { data, error } = await supabase
@@ -222,12 +149,10 @@ async function start() {
         return reply.send({ ok: true, analyzer_runs: by });
     });
 
+    // Register other routes after CORS
     await app.register(ingestRoutes);
     await app.register(selfcheck);
     await app.register(analyticsRoutes);
-    await app.register(require('@fastify/cors'), {
-        origin: ['http://localhost:3002', 'http://localhost:3001', 'http://localhost:3000']
-    });
 
     await app.listen({ port: PORT, host: '0.0.0.0' });
     app.log.info(`Analytics service listening on :${PORT}`);

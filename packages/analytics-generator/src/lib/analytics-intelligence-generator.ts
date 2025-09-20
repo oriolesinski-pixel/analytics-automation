@@ -82,7 +82,33 @@ interface GeneratorOutput {
     };
 }
 
-interface SchemaWithGraph {
+interface ComponentDiscovery {
+    components: Array<{
+        name: string;
+        type: string;
+        selector_patterns: string[];
+        interaction_type: string;
+        likely_purpose: string;
+        context_needed: string[];
+    }>;
+    framework: string;
+}
+
+interface BehaviorAnalysis {
+    patterns: Array<{
+        component: string;
+        context_collection: {
+            search_parents: string[];
+            extract_fields: string[];
+            sibling_context: string[];
+        };
+        state_changes: string[];
+    }>;
+}
+
+interface ProgressiveAnalysis {
+    discovery: ComponentDiscovery;
+    behaviors: BehaviorAnalysis;
     events: EventSchema[];
     uiGraph: any;
 }
@@ -179,10 +205,10 @@ export class AnalyticsIntelligenceGenerator {
     }
 
     /**
-     * Generate the complete analytics implementation
+     * Generate the complete analytics implementation with AI-driven analysis
      */
     async generate(input: GeneratorInput): Promise<GeneratorOutput> {
-        console.log('🔍 Starting generation for:', input.appKey);
+        console.log('🚀 Starting AI-powered generation for:', input.appKey);
 
         // Step 1: Load files
         const repoFiles = await this.loadRepositoryFiles(input.repoId);
@@ -198,21 +224,1146 @@ export class AnalyticsIntelligenceGenerator {
             input.routes = extractedRoutes;
         }
 
-        // Step 3: Generate schema based on actual code content
-        const schemaResult = await this.generateSchemaFromCode(input);
-        const events = schemaResult.events;
-        const uiGraph = schemaResult.uiGraph;
+        // Step 3: Progressive AI Analysis
+        const analysis = await this.performProgressiveAnalysis(input);
 
         // Step 4: Ensure required fields in all events
-        const eventsWithRequiredFields = this.ensureRequiredFields(events);
+        const eventsWithRequiredFields = this.ensureRequiredFields(analysis.events);
 
-        // Step 5: Generate implementation components
-        const output = await this.generateImplementation(input, eventsWithRequiredFields, uiGraph);
+        // Step 5: Generate implementation with AI insights
+        const output = await this.generateImplementation(input, eventsWithRequiredFields, analysis);
 
         // Step 6: Save to both cloud and local storage
         await this.saveOutput(output, input.repoId, input.appKey);
 
         return output;
+    }
+
+    /**
+     * Perform progressive AI analysis of components and behaviors
+     */
+    private async performProgressiveAnalysis(input: GeneratorInput): Promise<ProgressiveAnalysis> {
+        console.log('🤖 Starting progressive AI analysis...');
+
+        // Phase 1: Discover components
+        const discovery = await this.discoverComponentsWithAI(input);
+        console.log(`📊 Discovered ${discovery.components.length} interactive components`);
+
+        // Phase 2: Analyze behaviors
+        const behaviors = await this.analyzeBehaviorsWithAI(input, discovery);
+        console.log(`🔍 Analyzed ${behaviors.patterns.length} behavior patterns`);
+
+        // Phase 3: Generate optimized events schema
+        const events = await this.generateEventsFromAnalysis(discovery, behaviors);
+        
+        // Phase 4: Create UI graph
+        const uiGraph = await this.generateUIGraphWithAI(input, discovery, behaviors);
+
+        return {
+            discovery,
+            behaviors,
+            events,
+            uiGraph
+        };
+    }
+
+    /**
+     * AI-driven component discovery with intelligent pattern recognition
+     */
+    private async discoverComponentsWithAI(input: GeneratorInput): Promise<ComponentDiscovery> {
+        if (!input.files || input.files.length === 0) {
+            return { components: [], framework: 'unknown' };
+        }
+
+        const codeContent = input.files.slice(0, 20).map((f: FileContent) =>
+            `=== File: ${f.path} ===\n${f.content.slice(0, 3000)}\n`
+        ).join('\n').slice(0, 40000);
+
+        const systemPrompt = `You are an expert UI component analyzer. 
+Analyze code to identify ALL interactive components, not just standard HTML elements.
+Use context clues from the code to understand component purposes.
+Focus on understanding the actual implementation, not theoretical possibilities.
+Return ONLY valid JSON.`;
+
+        const userPrompt = `Analyze this code and identify ALL interactive UI components.
+
+INTELLIGENT DETECTION INSTRUCTIONS:
+Look at the actual values and context in the code to understand component purposes. These are EXAMPLES, not a complete list:
+
+1. **Infer selector types from their values:**
+   - If you see options like "red", "blue", "#FF5733" → likely a color selector
+   - If you see "S", "M", "L", "XL", "small", "large" → likely a size selector  
+   - If you see "1", "2", "3" or +/- buttons with numbers → likely quantity control
+   - If you see "cotton", "polyester", "silk" → likely material selector
+   - If you see dates, times, calendars → likely date/time picker
+   - Use your understanding to categorize any other value patterns you find
+
+2. **Understand purpose from handler names:**
+   - onClick={handleAddToCart} → cart functionality
+   - onClick={toggleWishlist} → wishlist functionality
+   - onChange={updateQuantity} → quantity control
+   - onSubmit={processPayment} → payment processing
+   - The function name usually describes what it does
+
+3. **Use context clues from classes and IDs:**
+   - className="product-card__wishlist-btn" → wishlist button for products
+   - id="size-selector-modal" → size selection in a modal
+   - className="nav-menu-toggle" → navigation menu control
+   - Look for descriptive naming patterns in the code
+
+4. **Check surrounding elements for context:**
+   - A heart icon near product info → likely wishlist
+   - Plus/minus buttons near a number → likely quantity
+   - Swatches near product images → likely color selection
+   - Stars near text → likely rating system
+
+5. **Look for aria-labels and data attributes:**
+   - aria-label="Add to shopping cart" → clear purpose
+   - data-action="remove-item" → describes the action
+   - data-product-id="123" → shows what context is available
+
+6. **Identify patterns in component composition:**
+   - Multiple similar buttons in a row → likely option selectors
+   - Form with email/password → likely authentication
+   - Grid of cards with images/prices → likely product listing
+
+Remember: These are just examples. Use your understanding to identify ANY interactive pattern you find in the code, even if it's not listed here.
+
+COMPREHENSIVE DETECTION GUIDE:
+
+STANDARD CLICKABLE ELEMENTS:
+- HTML: <button>, <a>, <input type="submit">, <input type="button">
+- React/Vue: <Button>, <Link>, <IconButton>, <ActionButton>
+- Attributes: onClick, @click, v-on:click, (click), ng-click
+- Role attributes: role="button", role="link", tabindex="0" with onClick
+- Custom components: Any component with "Button", "Btn", "Link" in name
+- Icons with handlers: <svg onClick>, <Icon onClick>, any icon component
+- Divs/Spans: <div onClick>, <span onClick>, elements with cursor:pointer
+- Special classes: class containing "clickable", "btn", "button", "link"
+
+CUSTOM COMPONENTS TO IDENTIFY:
+- Framework components (Button, Link, IconButton, Card)
+- Custom components with click/change handlers
+- Icon components (HeartIcon, CartIcon, WishlistIcon, etc.)
+- Styled components with interactions
+- HOCs and wrapper components
+- Components with cursor:pointer or interactive styling
+
+SELECTION ELEMENTS:
+- Color/size/variant selectors (ColorPicker, SizeSelector, VariantButtons)
+- Radio buttons, checkboxes for options
+- Dropdown selects for choices
+- Quantity inputs (QuantitySelector, NumberInput)
+- Any element that represents a user choice/selection
+
+FORM ELEMENTS:
+- HTML: <form>, <input>, <select>, <textarea>
+- React: <Form>, controlled inputs with onChange/value
+- Vue: v-model, @submit, v-on:submit
+- Custom form components (FormField, InputField, TextInput)
+- Validation: error states, validation messages, required fields
+
+UI COMPONENTS:
+- Modals/Dialogs: Modal, Dialog, Popup, Overlay, role="dialog"
+- Tabs: Tab, TabPanel, role="tab"
+- Accordions: Accordion, Collapsible, expand/collapse
+- Dropdowns: Select, Dropdown, Combobox
+- Search: SearchBar, SearchInput, SearchBox
+- Filters: FilterPanel, filter controls, FilterButton
+- Pagination: Pagination, "next", "previous", PageNumbers
+
+NAVIGATION PATTERNS:
+- Router links: Link, NavLink, RouterLink
+- Menu items: MenuItem, NavItem, NavigationItem
+- Back buttons: history.back(), BackButton, ReturnButton
+
+For each component found:
+1. Create SPECIFIC selectors that won't match everything (use classes, IDs, data attributes)
+2. Look at the actual onClick handler name to understand purpose
+3. Check the actual values/options to categorize
+4. Use parent element context to create more specific selectors
+5. Only include components that actually appear in the code
+
+CODE:
+${codeContent}
+
+Return this EXACT JSON structure:
+{
+  "framework": "react|vue|angular|vanilla|unknown",
+  "components": [
+    {
+      "name": "component_name_from_code",
+      "type": "button|link|icon|form_input|toggle|selector|custom",
+      "selector_patterns": ["SPECIFIC CSS selectors - use classes, IDs, not just tag names"],
+      "interaction_type": "click|change|toggle|submit|hover",
+      "likely_purpose": "Be specific based on handler names and context",
+      "context_needed": ["product_id", "selected_state", "form_data", "etc"],
+      "code_patterns": ["Actual patterns found in the code"],
+      "actual_values": ["Actual option values if it's a selector (colors, sizes, etc.)"]
+    }
+  ]
+}
+
+Include ALL interactive elements found, both standard HTML and custom components.
+Make selectors SPECIFIC to avoid matching everything.`;
+
+        try {
+            const response = await this.anthropic.messages.create({
+                model: "claude-3-haiku-20240307",
+                max_tokens: CONFIG.LLM_MAX_TOKENS,
+                temperature: 0.1,
+                system: systemPrompt,
+                messages: [{
+                    role: "user",
+                    content: userPrompt
+                }]
+            });
+
+            const content = response.content[0].type === 'text' ? response.content[0].text : '';
+            const parsed = this.extractJSON(content);
+            
+            return parsed as ComponentDiscovery;
+        } catch (error) {
+            console.error('❌ Component discovery failed:', error);
+            return { components: [], framework: 'unknown' };
+        }
+    }
+
+    /**
+     * AI-driven behavior analysis
+     */
+    private async analyzeBehaviorsWithAI(
+        input: GeneratorInput, 
+        discovery: ComponentDiscovery
+    ): Promise<BehaviorAnalysis> {
+        if (!input.files || discovery.components.length === 0) {
+            return { patterns: [] };
+        }
+
+        const codeContent = input.files.slice(0, 15).map((f: FileContent) =>
+            `=== File: ${f.path} ===\n${f.content.slice(0, 2000)}\n`
+        ).join('\n').slice(0, 30000);
+
+        const systemPrompt = `You are an expert in understanding UI component behaviors and data flow.
+Analyze how components interact and what context they need.
+Return ONLY valid JSON.`;
+
+        const userPrompt = `Given these discovered components:
+${JSON.stringify(discovery.components, null, 2)}
+
+Analyze the code to understand:
+1. What data each component needs from its context
+2. Where to find that context (parent elements, siblings, data attributes)
+3. What state changes occur on interaction
+4. Component relationships and dependencies
+
+CODE:
+${codeContent}
+
+Return behavior patterns as JSON:
+{
+  "patterns": [
+    {
+      "component": "component_name_from_discovery",
+      "context_collection": {
+        "search_parents": [".product-card", "[data-product]", "form"],
+        "extract_fields": ["product-id", "price", "selected-color"],
+        "sibling_context": ["input[name='size']", ".color-selector.active"],
+        "data_attributes": ["data-product-id", "data-sku"]
+      },
+      "state_changes": ["toggles_class", "updates_cart", "navigates_to"],
+      "triggers_events": ["form_submit", "api_call", "state_update"]
+    }
+  ]
+}`;
+
+        try {
+            const response = await this.anthropic.messages.create({
+                model: "claude-3-haiku-20240307",
+                max_tokens: CONFIG.LLM_MAX_TOKENS,
+                temperature: 0.1,
+                system: systemPrompt,
+                messages: [{
+                    role: "user",
+                    content: userPrompt
+                }]
+            });
+
+            const content = response.content[0].type === 'text' ? response.content[0].text : '';
+            const parsed = this.extractJSON(content);
+            
+            return parsed as BehaviorAnalysis;
+        } catch (error) {
+            console.error('❌ Behavior analysis failed:', error);
+            return { patterns: [] };
+        }
+    }
+
+    /**
+     * Generate events schema from AI analysis
+     */
+    private async generateEventsFromAnalysis(
+        discovery: ComponentDiscovery,
+        behaviors: BehaviorAnalysis
+    ): Promise<EventSchema[]> {
+        // Always include base events
+        const events: EventSchema[] = [
+            {
+                name: 'page_view',
+                required: ['app_key', 'session_id', 'user_id', 'ts', 'page_url'],
+                optional: ['page_title', 'referrer', 'query_params', 'hash'],
+                properties: {
+                    page_url: 'string',
+                    page_title: 'string',
+                    referrer: 'string',
+                    query_params: 'string',
+                    hash: 'string'
+                },
+                possible_values: {}
+            },
+            {
+                name: 'element_click',
+                required: ['app_key', 'session_id', 'user_id', 'ts', 'element_text', 'element_type'],
+                optional: ['element_id', 'element_class', 'element_location', 'context', 'component_name', 'page_title', 'page_url'],
+                properties: {
+                    element_text: 'string',
+                    element_type: 'string',
+                    element_id: 'string',
+                    element_class: 'string',
+                    element_location: 'string',
+                    component_name: 'string',
+                    context: 'object',
+                    page_title: 'string',
+                    page_url: 'string'
+                },
+                possible_values: {
+                    element_type: Array.from(new Set(discovery.components.map(c => c.type)))
+                }
+            },
+            {
+                name: 'selection_change',
+                required: ['app_key', 'session_id', 'user_id', 'ts', 'selection_type', 'selection_value'],
+                optional: ['selection_name', 'previous_value', 'component_name', 'page_title', 'page_url'],
+                properties: {
+                    selection_type: 'string',
+                    selection_value: 'string',
+                    selection_name: 'string',
+                    previous_value: 'string',
+                    component_name: 'string',
+                    page_title: 'string',
+                    page_url: 'string'
+                },
+                possible_values: {}
+            }
+        ];
+
+        // Add discovered interaction-specific events
+        const interactionTypes = new Set(discovery.components.map(c => c.interaction_type));
+        
+        if (interactionTypes.has('submit') || discovery.framework === 'react') {
+            events.push(
+                {
+                    name: 'form_started',
+                    required: ['app_key', 'session_id', 'user_id', 'ts', 'form_name', 'page_title'],
+                    optional: ['form_id', 'first_field_focused', 'context', 'page_url'],
+                    properties: {
+                        form_name: 'string',
+                        form_id: 'string',
+                        first_field_focused: 'string',
+                        context: 'object',
+                        page_title: 'string',
+                        page_url: 'string'
+                    },
+                    possible_values: {}
+                },
+                {
+                    name: 'form_submitted',
+                    required: ['app_key', 'session_id', 'user_id', 'ts', 'form_name', 'success', 'page_title'],
+                    optional: ['form_id', 'error_message', 'duration_seconds', 'fields_interacted', 'context', 'page_url'],
+                    properties: {
+                        form_name: 'string',
+                        form_id: 'string',
+                        success: 'boolean',
+                        duration_seconds: 'number',
+                        fields_interacted: 'number',
+                        error_message: 'string',
+                        context: 'object',
+                        page_title: 'string',
+                        page_url: 'string'
+                    },
+                    possible_values: {}
+                }
+            );
+        }
+
+        // Always add scroll depth
+        events.push({
+            name: 'scroll_depth',
+            required: ['app_key', 'session_id', 'user_id', 'ts', 'depth_percent', 'page_title'],
+            optional: ['page_height', 'viewport_height', 'time_on_page_seconds', 'page_url'],
+            properties: {
+                depth_percent: 'number',
+                page_height: 'number',
+                viewport_height: 'number',
+                time_on_page_seconds: 'number',
+                page_title: 'string',
+                page_url: 'string'
+            },
+            possible_values: {}
+        });
+
+        return events;
+    }
+
+    /**
+     * Generate UI graph with only pages, modals, routes, and widgets
+     */
+    private async generateUIGraphWithAI(
+        input: GeneratorInput,
+        discovery: ComponentDiscovery,
+        behaviors: BehaviorAnalysis
+    ): Promise<any> {
+        const routes = input.routes || ['/'];
+        const pages: any = {};
+
+        // Create simplified page entries without component lists
+        routes.forEach((route: string) => {
+            const pageName = this.routeToPageName(route);
+            
+            // Determine which types of widgets/modals might be on this page based on route
+            const pageType = this.determinePageType(route);
+            
+            pages[pageName] = {
+                route,
+                page_type: pageType,
+                widgets: this.getWidgetsForPageType(pageType),
+                modals: this.getModalsForPageType(pageType),
+                can_navigate_to: routes.filter((r: string) => r !== route).map((r: string) => this.routeToPageName(r)),
+                events: ['page_view', 'element_click', 'selection_change', 'scroll_depth'],
+                ai_insights: {
+                    framework: discovery.framework,
+                    interaction_types: Array.from(new Set(discovery.components.map(c => c.interaction_type))),
+                    has_forms: pageType.includes('auth') || pageType.includes('checkout'),
+                    has_product_interactions: pageType.includes('product') || route === '/'
+                }
+            };
+        });
+
+        return {
+            app_key: input.appKey,
+            framework: discovery.framework,
+            relationships: [],
+            pages,
+            widgets: this.identifyGlobalWidgets(discovery),
+            modals: this.identifyModals(discovery)
+        };
+    }
+
+    /**
+     * Determine page type based on route
+     */
+    private determinePageType(route: string): string {
+        if (route === '/') return 'home';
+        if (route.includes('product')) return 'product_detail';
+        if (route.includes('cart')) return 'cart';
+        if (route.includes('checkout')) return 'checkout';
+        if (route.includes('auth') || route.includes('login') || route.includes('register')) return 'auth';
+        if (route.includes('wishlist')) return 'wishlist';
+        if (route.includes('about') || route.includes('shipping') || route.includes('returns')) return 'info';
+        return 'general';
+    }
+
+    /**
+     * Get widgets that should appear on specific page types
+     */
+    private getWidgetsForPageType(pageType: string): string[] {
+        const widgets: string[] = ['header', 'footer'];
+        
+        switch(pageType) {
+            case 'home':
+                widgets.push('product_carousel', 'featured_products', 'search_bar');
+                break;
+            case 'product_detail':
+                widgets.push('product_gallery', 'product_options', 'add_to_cart', 'reviews');
+                break;
+            case 'cart':
+                widgets.push('cart_items', 'cart_summary', 'checkout_button');
+                break;
+            case 'checkout':
+                widgets.push('checkout_form', 'order_summary');
+                break;
+            case 'auth':
+                widgets.push('auth_form');
+                break;
+            case 'wishlist':
+                widgets.push('wishlist_grid');
+                break;
+        }
+        
+        return widgets;
+    }
+
+    /**
+     * Get modals that might appear on specific page types
+     */
+    private getModalsForPageType(pageType: string): string[] {
+        const modals: string[] = [];
+        
+        if (pageType === 'product_detail') {
+            modals.push('size_guide', 'quick_view');
+        }
+        if (pageType === 'cart' || pageType === 'checkout') {
+            modals.push('promo_code', 'shipping_info');
+        }
+        if (pageType === 'auth') {
+            modals.push('forgot_password');
+        }
+        
+        return modals;
+    }
+
+    /**
+     * Identify global widgets from discovered components
+     */
+    private identifyGlobalWidgets(discovery: ComponentDiscovery): string[] {
+        const widgets = new Set<string>();
+        
+        discovery.components.forEach(comp => {
+            if (comp.name.toLowerCase().includes('header')) widgets.add('header');
+            if (comp.name.toLowerCase().includes('footer')) widgets.add('footer');
+            if (comp.name.toLowerCase().includes('nav')) widgets.add('navigation');
+            if (comp.name.toLowerCase().includes('search')) widgets.add('search_bar');
+            if (comp.name.toLowerCase().includes('cart') && comp.type === 'icon') widgets.add('cart_icon');
+        });
+        
+        return Array.from(widgets);
+    }
+
+    /**
+     * Identify modals from discovered components
+     */
+    private identifyModals(discovery: ComponentDiscovery): string[] {
+        const modals = new Set<string>();
+        
+        discovery.components.forEach(comp => {
+            if (comp.name.toLowerCase().includes('modal')) modals.add(comp.name);
+            if (comp.name.toLowerCase().includes('dialog')) modals.add(comp.name);
+            if (comp.name.toLowerCase().includes('popup')) modals.add(comp.name);
+        });
+        
+        return Array.from(modals);
+    }
+
+    /**
+     * Generate implementation with AI-driven insights
+     */
+    private async generateImplementation(
+        input: GeneratorInput,
+        events: EventSchema[],
+        analysis: ProgressiveAnalysis
+    ): Promise<GeneratorOutput> {
+        const backend = input.backendUrl || 'http://localhost:8082/ingest/analytics';
+
+        return {
+            'tracker.js': this.generateAIEnhancedTracker(input.appKey, backend, analysis),
+            'events-schema.json': {
+                required_fields: {
+                    app_key: { type: 'string', source: 'config' },
+                    session_id: { type: 'string', source: 'sessionStorage' },
+                    user_id: { type: 'string', source: 'context', nullable: true },
+                    ts: { type: 'timestamp', source: 'generated' }
+                },
+                events: events.map(e => ({
+                    type: e.name,
+                    required: e.required,
+                    optional: e.optional,
+                    properties: e.properties || {},
+                    possible_values: e.possible_values || {}
+                })),
+                ai_components: analysis.discovery.components,
+                ai_patterns: analysis.behaviors.patterns
+            },
+            'ui-graph.json': analysis.uiGraph,
+            'analytics-provider.tsx': this.generateProvider(input.appKey),
+            'analytics.types.ts': this.generateTypes(events),
+            'integration-guide.md': this.generateIntegrationGuide(input.appKey, events, analysis),
+            metadata: {
+                generatedAt: new Date().toISOString(),
+                appKey: input.appKey,
+                eventCount: events.length,
+                frameworksDetected: [analysis.discovery.framework]
+            }
+        };
+    }
+
+    /**
+     * Generate AI-enhanced tracker with discovered patterns
+     */
+    private generateAIEnhancedTracker(
+        appKey: string, 
+        endpoint: string,
+        analysis: ProgressiveAnalysis
+    ): string {
+        // Generate component detectors from AI analysis
+        const componentDetectors = analysis.discovery.components.map(comp => {
+            const pattern = analysis.behaviors.patterns.find(p => p.component === comp.name);
+            return `
+        {
+            name: '${comp.name}',
+            type: '${comp.type}',
+            selectors: ${JSON.stringify(comp.selector_patterns)},
+            purpose: '${comp.likely_purpose}',
+            contextNeeded: ${JSON.stringify(comp.context_needed)},
+            contextCollection: ${pattern ? JSON.stringify(pattern.context_collection) : 'null'}
+        }`;
+        }).join(',\n');
+
+        return `(function(root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define([], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.Analytics = factory();
+  }
+}(typeof self !== 'undefined' ? self : this, function() {
+  
+  class AnalyticsTracker {
+    constructor() {
+      this.config = {
+        appKey: '${appKey}',
+        endpoint: '${endpoint}',
+        batchSize: 10,
+        flushInterval: 30000
+      };
+      
+      this.eventQueue = [];
+      this.sessionId = this.getOrCreateSession();
+      this.userId = null;
+      this.pageLoadTime = Date.now();
+      this.maxScrollDepth = 0;
+      this.formTracking = new WeakMap();
+      this.clickedElements = new WeakSet();
+      this.pageContext = {};
+      
+      // AI-discovered component patterns
+      this.componentDetectors = [${componentDetectors}
+      ];
+      
+      if (typeof window !== 'undefined') {
+        this.setupListeners();
+        this.startFlushTimer();
+        this.initAutoTracking();
+      }
+    }
+
+    getOrCreateSession() {
+      try {
+        let sessionId = sessionStorage.getItem('analytics_session_id');
+        if (!sessionId) {
+          sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          sessionStorage.setItem('analytics_session_id', sessionId);
+        }
+        return sessionId;
+      } catch {
+        return 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      }
+    }
+
+    setupListeners() {
+      window.addEventListener('beforeunload', () => this.flush());
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') this.flush();
+      });
+    }
+
+    startFlushTimer() {
+      setInterval(() => {
+        if (this.eventQueue.length > 0) this.flush();
+      }, this.config.flushInterval);
+    }
+
+    // ============ AI-ENHANCED AUTO-TRACKING ============
+    initAutoTracking() {
+      console.log('🤖 AI-Enhanced Analytics initialized for ${appKey}');
+      console.log('📊 Tracking ${analysis.discovery.components.length} discovered components');
+      
+      this.trackPageView();
+      this.trackAllClicks();
+      this.trackSelectionChanges();
+      this.trackFormInteractions();
+      this.trackScrollDepth();
+      this.trackRouteChanges();
+    }
+
+    // Detect component using AI-discovered patterns
+    detectComponent(element) {
+      for (const detector of this.componentDetectors) {
+        for (const selector of detector.selectors) {
+          try {
+            if (element.matches(selector) || element.closest(selector)) {
+              return detector;
+            }
+          } catch (e) {
+            // Invalid selector, skip
+          }
+        }
+      }
+      return null;
+    }
+
+    // Collect context using AI-discovered patterns
+    collectContextWithAI(element, componentInfo) {
+      const context = {};
+      
+      if (!componentInfo || !componentInfo.contextCollection) {
+        return this.collectGenericContext(element);
+      }
+      
+      const collection = componentInfo.contextCollection;
+      
+      // Search parent containers
+      if (collection.search_parents) {
+        for (const parentSelector of collection.search_parents) {
+          const parent = element.closest(parentSelector);
+          if (parent) {
+            // Extract specified fields
+            if (collection.extract_fields) {
+              for (const field of collection.extract_fields) {
+                const value = parent.dataset[field] || 
+                             parent.querySelector(\`[data-\${field}]\`)?.dataset[field];
+                if (value) context[field] = value;
+              }
+            }
+            break;
+          }
+        }
+      }
+      
+      // Get sibling context
+      if (collection.sibling_context) {
+        const container = element.closest('.product, .card, form, section') || document.body;
+        for (const siblingSelector of collection.sibling_context) {
+          const sibling = container.querySelector(siblingSelector);
+          if (sibling) {
+            const contextKey = siblingSelector.includes('color') ? 'color' :
+                             siblingSelector.includes('size') ? 'size' :
+                             siblingSelector.includes('quantity') ? 'quantity' : 'value';
+            context[contextKey] = sibling.value || sibling.textContent || sibling.dataset.value;
+          }
+        }
+      }
+      
+      return Object.keys(context).length > 0 ? context : null;
+    }
+
+    // Fallback to generic context collection
+    collectGenericContext(element) {
+      const context = {};
+      const container = element.closest('.product, .product-card, .item, .card, form, section, article') || document.body;
+      
+      // Try common patterns
+      const patterns = {
+        color: ['[data-color].selected', 'input[name="color"]:checked', '[class*="color"][class*="active"]'],
+        size: ['[data-size].selected', 'input[name="size"]:checked', 'select[name="size"]'],
+        quantity: ['input[type="number"][name*="qty"]', 'input[type="number"][name*="quantity"]', 'select[name*="quantity"]'],
+        product_id: ['[data-product-id]', '[data-sku]', '[data-item-id]'],
+        price: ['[data-price]', '.price', '.product-price']
+      };
+      
+      for (const [key, selectors] of Object.entries(patterns)) {
+        for (const selector of selectors) {
+          const el = container.querySelector(selector);
+          if (el) {
+            const value = el.value || el.dataset[key.replace('_', '-')] || el.textContent?.trim();
+            if (value) {
+              context[key] = key === 'price' ? parseFloat(value.replace(/[^0-9.]/g, '')) : value;
+              break;
+            }
+          }
+        }
+      }
+      
+      return Object.keys(context).length > 0 ? context : null;
+    }
+
+    // Enhanced click tracking with AI component detection
+    trackAllClicks() {
+      document.addEventListener('click', (e) => {
+        const target = e.target;
+        
+        if (this.clickedElements.has(target)) return;
+        this.clickedElements.add(target);
+        setTimeout(() => this.clickedElements.delete(target), 100);
+        
+        // Try AI component detection first
+        const componentInfo = this.detectComponent(target);
+        
+        // Find clickable element
+        const clickable = target.closest(\`
+          button, [role="button"], [onclick], input[type="submit"], input[type="button"],
+          [class*="button"], [class*="btn"], svg, [class*="icon"], [data-clickable],
+          [style*="cursor: pointer"], a
+        \`);
+        
+        if (clickable || componentInfo) {
+          const element = clickable || target;
+          
+          // Skip regular link handling if it's a link
+          if (element.tagName === 'A' && element.href && !componentInfo) {
+            this.trackLinkClick(element);
+            return;
+          }
+          
+          // Collect context with AI insights
+          const context = componentInfo 
+            ? this.collectContextWithAI(element, componentInfo)
+            : this.collectGenericContext(element);
+          
+          this.trackEvent('element_click', {
+            element_text: this.getElementText(element).slice(0, 100),
+            element_type: componentInfo?.type || this.getElementType(element),
+            component_name: componentInfo?.name || null,
+            component_purpose: componentInfo?.purpose || null,
+            element_id: element.id || null,
+            element_class: element.className || null,
+            element_location: this.getElementLocation(element),
+            context: context,
+            page_title: document.title,
+            page_url: window.location.pathname
+          });
+        }
+      }, true);
+    }
+
+    trackSelectionChanges() {
+      document.addEventListener('click', (e) => {
+        const target = e.target;
+        const componentInfo = this.detectComponent(target);
+        
+        const isSelection = target.matches(\`
+          [data-color], [data-size], [data-variant], [data-option],
+          input[type="radio"], input[type="checkbox"]
+        \`) || componentInfo?.purpose === 'selection';
+        
+        if (isSelection) {
+          const selectionType = this.getSelectionType(target);
+          const selectionValue = this.getSelectionValue(target);
+          const selectionName = target.name || target.dataset.optionName || selectionType;
+          
+          const previousValue = this.pageContext[selectionName] || null;
+          this.pageContext[selectionName] = selectionValue;
+          
+          this.trackEvent('selection_change', {
+            selection_type: selectionType,
+            selection_value: selectionValue,
+            selection_name: selectionName,
+            previous_value: previousValue,
+            component_name: componentInfo?.name || null,
+            page_title: document.title,
+            page_url: window.location.pathname
+          });
+        }
+      });
+      
+      document.addEventListener('change', (e) => {
+        const target = e.target;
+        const componentInfo = this.detectComponent(target);
+        
+        if (target.tagName === 'SELECT' || target.tagName === 'INPUT') {
+          const selectionType = this.getSelectionType(target);
+          const selectionValue = target.value;
+          const selectionName = target.name || target.id || selectionType;
+          
+          const previousValue = this.pageContext[selectionName] || null;
+          this.pageContext[selectionName] = selectionValue;
+          
+          this.trackEvent('selection_change', {
+            selection_type: selectionType,
+            selection_value: selectionValue,
+            selection_name: selectionName,
+            previous_value: previousValue,
+            component_name: componentInfo?.name || null,
+            page_title: document.title,
+            page_url: window.location.pathname
+          });
+        }
+      });
+    }
+
+    trackLinkClick(link) {
+      const linkText = (link.innerText || link.getAttribute('aria-label') || 'Unknown').trim();
+      const linkHref = link.getAttribute('href') || '';
+      const isExternal = linkHref.startsWith('http') && !linkHref.includes(window.location.hostname);
+      const componentInfo = this.detectComponent(link);
+      const context = componentInfo 
+        ? this.collectContextWithAI(link, componentInfo)
+        : this.collectGenericContext(link);
+      
+      this.trackEvent('element_click', {
+        element_text: linkText.slice(0, 100),
+        element_type: 'link',
+        component_name: componentInfo?.name || null,
+        element_id: link.id || null,
+        element_class: link.className || null,
+        element_location: this.getElementLocation(link),
+        context: context,
+        link_href: linkHref,
+        is_external: isExternal,
+        page_title: document.title,
+        page_url: window.location.pathname
+      });
+    }
+
+    getSelectionType(element) {
+      if (element.dataset.color) return 'color';
+      if (element.dataset.size) return 'size';
+      if (element.dataset.variant) return 'variant';
+      
+      const name = (element.name || '').toLowerCase();
+      if (name.includes('color')) return 'color';
+      if (name.includes('size')) return 'size';
+      if (name.includes('variant')) return 'variant';
+      if (name.includes('quantity')) return 'quantity';
+      
+      return element.type === 'number' ? 'quantity' : 'other';
+    }
+
+    getSelectionValue(element) {
+      return element.value || 
+             element.dataset.value ||
+             element.textContent?.trim() ||
+             'unknown';
+    }
+
+    getElementText(element) {
+      return element.innerText || 
+             element.textContent ||
+             element.value ||
+             element.getAttribute('aria-label') ||
+             element.getAttribute('title') ||
+             'Unknown';
+    }
+
+    getElementType(element) {
+      if (element.tagName === 'BUTTON') return 'button';
+      if (element.tagName === 'A') return 'link';
+      if (element.tagName === 'INPUT') return element.type || 'input';
+      if (element.tagName === 'SVG' || element.querySelector('svg')) return 'icon';
+      return element.tagName.toLowerCase();
+    }
+
+    getElementLocation(element) {
+      const section = element.closest('header, main, footer, aside, nav, section');
+      return section ? section.tagName.toLowerCase() : 'unknown';
+    }
+
+    trackFormInteractions() {
+      document.addEventListener('focusin', (e) => {
+        const field = e.target;
+        const form = field.closest('form');
+        
+        if (form && !this.formTracking.has(form)) {
+          const componentInfo = this.detectComponent(form);
+          const context = componentInfo 
+            ? this.collectContextWithAI(form, componentInfo)
+            : this.collectGenericContext(form);
+          
+          this.formTracking.set(form, {
+            started: true,
+            startTime: Date.now(),
+            fieldsInteracted: new Set()
+          });
+          
+          this.trackEvent('form_started', {
+            form_name: this.getFormName(form),
+            form_id: form.id || null,
+            first_field_focused: field.name || field.id || field.type,
+            context: context,
+            page_title: document.title,
+            page_url: window.location.pathname
+          });
+        }
+        
+        if (form && this.formTracking.has(form)) {
+          const tracking = this.formTracking.get(form);
+          tracking.fieldsInteracted.add(field.name || field.id || field.type);
+        }
+      });
+
+      document.addEventListener('submit', (e) => {
+        const form = e.target;
+        const tracking = this.formTracking.get(form);
+        const componentInfo = this.detectComponent(form);
+        const context = componentInfo 
+          ? this.collectContextWithAI(form, componentInfo)
+          : this.collectGenericContext(form);
+        
+        this.trackEvent('form_submitted', {
+          form_name: this.getFormName(form),
+          form_id: form.id || null,
+          success: true,
+          duration_seconds: tracking ? Math.round((Date.now() - tracking.startTime) / 1000) : null,
+          fields_interacted: tracking ? tracking.fieldsInteracted.size : null,
+          context: context,
+          page_title: document.title,
+          page_url: window.location.pathname
+        });
+        
+        this.formTracking.delete(form);
+      });
+    }
+
+    getFormName(form) {
+      return form.getAttribute('name') || 
+             form.getAttribute('aria-label') ||
+             form.id ||
+             'form';
+    }
+
+    trackScrollDepth() {
+      let scrollTimer;
+      
+      const checkScrollDepth = () => {
+        const scrollPercent = Math.round(
+          (window.scrollY + window.innerHeight) / document.body.scrollHeight * 100
+        );
+        
+        const milestones = [25, 50, 75, 100];
+        const milestone = milestones.find(m => m <= scrollPercent && m > this.maxScrollDepth);
+        
+        if (milestone) {
+          this.maxScrollDepth = milestone;
+          this.trackEvent('scroll_depth', {
+            depth_percent: milestone,
+            page_height: document.body.scrollHeight,
+            viewport_height: window.innerHeight,
+            time_on_page_seconds: Math.round((Date.now() - this.pageLoadTime) / 1000),
+            page_title: document.title,
+            page_url: window.location.pathname
+          });
+        }
+      };
+      
+      window.addEventListener('scroll', () => {
+        clearTimeout(scrollTimer);
+        scrollTimer = setTimeout(checkScrollDepth, 500);
+      });
+    }
+
+    trackRouteChanges() {
+      const originalPushState = history.pushState;
+      const originalReplaceState = history.replaceState;
+      
+      history.pushState = (...args) => {
+        originalPushState.apply(history, args);
+        setTimeout(() => {
+          this.pageContext = {};
+          this.trackPageView();
+        }, 0);
+      };
+      
+      history.replaceState = (...args) => {
+        originalReplaceState.apply(history, args);
+        setTimeout(() => {
+          this.pageContext = {};
+          this.trackPageView();
+        }, 0);
+      };
+      
+      window.addEventListener('popstate', () => {
+        this.pageContext = {};
+        this.trackPageView();
+      });
+    }
+
+    // ============ CORE METHODS ============
+    trackEvent(eventName, properties = {}) {
+      const event = {
+        name: eventName,
+        props: {
+          app_key: this.config.appKey,
+          session_id: this.sessionId,
+          user_id: this.userId,
+          ts: new Date().toISOString(),
+          ...properties
+        }
+      };
+      
+      this.eventQueue.push(event);
+      
+      if (this.eventQueue.length >= this.config.batchSize) {
+        this.flush();
+      }
+    }
+
+    trackPageView(page) {
+      this.maxScrollDepth = 0;
+      this.pageLoadTime = Date.now();
+      
+      this.trackEvent('page_view', {
+        page_url: page?.url || window.location.href,
+        page_title: page?.title || document.title,
+        referrer: document.referrer,
+        query_params: window.location.search,
+        hash: window.location.hash
+      });
+    }
+
+    identify(userId, traits = {}) {
+      this.userId = userId;
+      this.trackEvent('identify', { user_id: userId, traits });
+    }
+
+    flush() {
+      if (this.eventQueue.length === 0) return;
+      
+      const batch = [...this.eventQueue];
+      this.eventQueue = [];
+      
+      fetch(this.config.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          app_key: this.config.appKey,
+          events: batch
+        }),
+        keepalive: true
+      }).catch(err => {
+        console.error('Analytics flush error:', err);
+        this.eventQueue.unshift(...batch);
+      });
+    }
+  }
+
+  // Auto-initialize
+  if (typeof window !== 'undefined' && !window.analytics) {
+    window.analytics = new AnalyticsTracker();
+    console.log('✅ AI-Enhanced Analytics tracker initialized');
+  }
+
+  return AnalyticsTracker;
+}));`;
+    }
+
+    /**
+     * Helper to extract JSON from LLM response
+     */
+    private extractJSON(content: string): any {
+        // Try to find JSON in markdown code blocks
+        const jsonMatch = content.match(/```json\n?([\s\S]*?)\n?```/);
+        if (jsonMatch) {
+            return JSON.parse(jsonMatch[1]);
+        }
+        
+        // Try to find raw JSON
+        const jsonStart = content.indexOf('{');
+        const jsonEnd = content.lastIndexOf('}') + 1;
+        if (jsonStart >= 0 && jsonEnd > jsonStart) {
+            return JSON.parse(content.slice(jsonStart, jsonEnd));
+        }
+        
+        throw new Error('No valid JSON found in response');
     }
 
     /**
@@ -360,18 +1511,17 @@ export class AnalyticsIntelligenceGenerator {
     }
 
     /**
-     * Extract routes from file system structure - FIXED to exclude page.tsx
+     * Extract routes from file system structure
      */
     private extractRoutesFromFiles(files: FileContent[]): string[] {
         const routes = new Set<string>();
-        routes.add('/'); // Always include home
+        routes.add('/');
 
         for (const file of files) {
-            // Skip root page.tsx files that aren't part of a route structure
             if (file.path === 'page.tsx' ||
                 file.path === './page.tsx' ||
                 file.path === 'src/page.tsx' ||
-                file.path === 'app/page.tsx') {  // Add this line
+                file.path === 'app/page.tsx') {
                 continue;
             }
 
@@ -382,7 +1532,6 @@ export class AnalyticsIntelligenceGenerator {
                     .replace(/\/page\.(tsx|jsx|js)$/, '')
                     .replace(/\[.*?\]/g, ':param');
 
-                // Don't add if it results in just '/' from app/page.tsx
                 if (route !== '/' || file.path === 'app/page.tsx') {
                     routes.add(route === '/' ? '/' : route);
                 }
@@ -400,381 +1549,6 @@ export class AnalyticsIntelligenceGenerator {
         }
 
         return Array.from(routes);
-    }
-
-    /**
-     * ENHANCED: Generate schema by analyzing actual code content with better LLM guidance
-     */
-    private async generateSchemaFromCode(input: GeneratorInput): Promise<SchemaWithGraph> {
-        if (!input.files || input.files.length === 0) {
-            console.log('⚠️ No files to analyze, using default schema');
-            const defaultEvents = this.getDefaultAutoTrackedEvents();
-            return {
-                events: defaultEvents,
-                uiGraph: this.generateDefaultUIGraph(input, defaultEvents)
-            };
-        }
-
-        console.log(`📊 Generating schema with ${input.files.length} files and ${input.routes?.length || 0} routes`);
-
-        // Prepare code content for LLM analysis
-        const codeContent = input.files.slice(0, 15).map((f: FileContent) =>
-            `=== File: ${f.path} ===\n${f.content.slice(0, 2000)}\n`
-        ).join('\n').slice(0, 30000);
-
-        const systemPrompt = `You are an expert analytics architect analyzing application code.
-Generate a JSON schema for analytics events based on the code.
-
-ANALYSIS INSTRUCTIONS:
-1. First, scan the code for UI elements and interactions
-2. For each UI element type found, include the corresponding event
-3. Look for ACTUAL elements in the code, not theoretical ones
-4. Include an event ONLY if you find evidence of that element type
-
-IMPORTANT: Return ONLY valid JSON, no explanations or markdown.`;
-
-        const userPrompt = `Analyze this code and return a JSON object with events and UI graph.
-
-Application: ${input.appKey}
-Routes: ${JSON.stringify(input.routes || [])}
-
-CODE:
-${codeContent}
-
-DETECTION GUIDE - Include these events ONLY if you find the corresponding elements:
-
-UI ELEMENTS TO DETECT:
-- <button>, <Button>, type="submit", role="button" → include "button_click" event
-- <a>, <Link>, href=, to= → include "link_click" event  
-- <form>, <Form>, onSubmit, handleSubmit → include "form_started" and "form_submitted" events
-- validation, error messages, invalid states → include "form_error" event
-- modal, dialog, popup, overlay, role="dialog" → include "modal_opened" and "modal_closed" events
-- Long content, overflow, pagination → include "scroll_depth" event
-- Search inputs, filter controls → include "search_performed" event
-
-ANALYSIS STEPS:
-1. Read through the code files
-2. Identify which UI elements actually exist
-3. For each element type found, include its corresponding events
-4. For the UI graph, create a page entry for EACH route provided
-5. Extract actual values (button texts, form names) when visible in code
-
-Return this EXACT JSON structure:
-{
-  "events": [
-    {
-      "name": "page_view",
-      "required": ["app_key", "session_id", "user_id", "ts", "page_url"],
-      "optional": ["page_title", "referrer", "query_params", "hash"],
-      "properties": {
-        "page_url": "string",
-        "page_title": "string",
-        "referrer": "string",
-        "query_params": "string",
-        "hash": "string"
-      },
-      "possible_values": {
-        "page_url": ${JSON.stringify(input.routes || [])}
-      }
-    },
-    // ADD ONLY events for UI elements you actually found in the code
-    // Each event MUST have: name, required, optional, properties, possible_values
-  ],
-  "uiGraph": {
-    "app_key": "${input.appKey}",
-    "relationships": [],
-    "pages": {
-      // CREATE AN ENTRY FOR EACH ROUTE - don't skip any!
-      // Use route path to generate page names (/ = "home", /products = "products", etc.)
-    }
-  }
-}
-
-CRITICAL RULES:
-- Include page_view event always
-- Add other events ONLY if you found their UI elements in the code
-- Every route MUST have a page entry in the UI graph
-- Don't make up events - only include what you can verify exists
-- If you see 10+ buttons in the code, include button_click
-- If you see forms with input fields, include form events
-- If you see navigation links, include link_click`;
-
-        try {
-            console.log('🤖 Sending code to LLM for analysis...');
-            const response = await this.anthropic.messages.create({
-                model: "claude-3-haiku-20240307",
-                max_tokens: CONFIG.LLM_MAX_TOKENS,
-                temperature: 0.1,
-                system: systemPrompt,
-                messages: [{
-                    role: "user",
-                    content: userPrompt
-                }]
-            });
-
-            const content = response.content[0].type === 'text' ? response.content[0].text : '';
-
-            // Extract JSON from response
-            let parsed;
-            const jsonMatch = content.match(/```json\n?([\s\S]*?)\n?```/);
-            if (jsonMatch) {
-                parsed = JSON.parse(jsonMatch[1]);
-            } else {
-                const jsonStart = content.indexOf('{');
-                const jsonEnd = content.lastIndexOf('}') + 1;
-                if (jsonStart >= 0 && jsonEnd > jsonStart) {
-                    parsed = JSON.parse(content.slice(jsonStart, jsonEnd));
-                } else {
-                    throw new Error('No valid JSON found in LLM response');
-                }
-            }
-
-            // Validate events have required structure
-            parsed.events = this.validateAndFixEventSchema(parsed.events || []);
-
-            // FIXED: Better duplicate prevention when ensuring all routes are in UI graph
-            if (parsed.uiGraph && parsed.uiGraph.pages) {
-                const existingPageRoutes = new Set(
-                    Object.values(parsed.uiGraph.pages)
-                        .map((p: any) => p.route || p.path)
-                        .filter(Boolean)
-                );
-
-                (input.routes || []).forEach((route: string) => {
-                    if (!existingPageRoutes.has(route)) {
-                        const pageName = this.routeToPageName(route);
-                        // Only add if page name doesn't already exist
-                        if (!parsed.uiGraph.pages[pageName]) {
-                            console.log(`Adding missing page to graph: ${pageName} (${route})`);
-                            parsed.uiGraph.pages[pageName] = {
-                                route,
-                                components: ['header', 'main', 'footer'],
-                                can_navigate_to: [],
-                                events: parsed.events.map((e: EventSchema) => e.name)
-                            };
-                        }
-                    }
-                });
-                parsed.uiGraph.app_key = input.appKey;
-            } else {
-                console.log('⚠️ LLM did not generate proper UI graph, creating default');
-                parsed.uiGraph = this.generateDefaultUIGraph(input, parsed.events);
-            }
-
-            console.log('✅ Successfully analyzed code');
-            console.log(`   Found ${parsed.events?.length || 0} relevant event types`);
-            console.log(`   Generated UI graph with ${Object.keys(parsed.uiGraph?.pages || {}).length} pages`);
-
-            return {
-                events: parsed.events.length > 0 ? parsed.events : this.getDefaultAutoTrackedEvents(),
-                uiGraph: parsed.uiGraph
-            };
-
-        } catch (error) {
-            console.error('❌ LLM analysis failed, using defaults:', error);
-            const defaultEvents = this.getDefaultAutoTrackedEvents();
-            return {
-                events: defaultEvents,
-                uiGraph: this.generateDefaultUIGraph(input, defaultEvents)
-            };
-        }
-    }
-
-    /**
-     * Validate and ensure required fields in events
-     */
-    private validateAndFixEventSchema(events: any[]): EventSchema[] {
-        return events
-            .filter((event: any) => {
-                if (!event || !event.name || typeof event.name !== 'string') {
-                    console.warn('⚠️ Skipping invalid event:', event);
-                    return false;
-                }
-                return true;
-            })
-            .map((event: any): EventSchema => {
-                const requiredSet = new Set([...REQUIRED_FIELDS, ...(event.required || [])]);
-                return {
-                    name: event.name,
-                    required: Array.from(requiredSet),
-                    optional: event.optional || [],
-                    properties: event.properties || {},
-                    possible_values: event.possible_values || {}
-                };
-            });
-    }
-
-    /**
-     * Get default auto-tracked events schema
-     */
-    private getDefaultAutoTrackedEvents(): EventSchema[] {
-        return [
-            {
-                name: 'page_view',
-                required: ['app_key', 'session_id', 'user_id', 'ts', 'page_url'],
-                optional: ['page_title', 'referrer', 'query_params', 'hash'],
-                properties: {
-                    page_url: 'string',
-                    page_title: 'string',
-                    referrer: 'string',
-                    query_params: 'string',
-                    hash: 'string'
-                },
-                possible_values: {}
-            },
-            {
-                name: 'button_click',
-                required: ['app_key', 'session_id', 'user_id', 'ts', 'button_text', 'page_title'],
-                optional: ['button_id', 'button_location', 'button_class', 'page_url'],
-                properties: {
-                    button_text: 'string',
-                    button_id: 'string',
-                    button_location: 'string',
-                    button_class: 'string',
-                    page_title: 'string',
-                    page_url: 'string'
-                },
-                possible_values: {
-                    button_location: ['header', 'main', 'footer', 'aside', 'nav', 'section', 'unknown']
-                }
-            },
-            {
-                name: 'link_click',
-                required: ['app_key', 'session_id', 'user_id', 'ts', 'link_text', 'link_href', 'page_title'],
-                optional: ['link_location', 'is_external', 'page_url'],
-                properties: {
-                    link_text: 'string',
-                    link_href: 'string',
-                    link_location: 'string',
-                    is_external: 'boolean',
-                    page_title: 'string',
-                    page_url: 'string'
-                },
-                possible_values: {
-                    link_location: ['header', 'main', 'footer', 'aside', 'nav', 'section', 'unknown']
-                }
-            },
-            {
-                name: 'form_started',
-                required: ['app_key', 'session_id', 'user_id', 'ts', 'form_name', 'page_title'],
-                optional: ['form_id', 'first_field_focused', 'page_url'],
-                properties: {
-                    form_name: 'string',
-                    form_id: 'string',
-                    first_field_focused: 'string',
-                    page_title: 'string',
-                    page_url: 'string'
-                },
-                possible_values: {}
-            },
-            {
-                name: 'form_submitted',
-                required: ['app_key', 'session_id', 'user_id', 'ts', 'form_name', 'success', 'page_title'],
-                optional: ['form_id', 'error_message', 'duration_seconds', 'fields_interacted', 'page_url'],
-                properties: {
-                    form_name: 'string',
-                    form_id: 'string',
-                    success: 'boolean',
-                    duration_seconds: 'number',
-                    fields_interacted: 'number',
-                    error_message: 'string',
-                    page_title: 'string',
-                    page_url: 'string'
-                },
-                possible_values: {}
-            },
-            {
-                name: 'form_error',
-                required: ['app_key', 'session_id', 'user_id', 'ts', 'form_name', 'field_name'],
-                optional: ['error_message', 'page_title', 'page_url'],
-                properties: {
-                    form_name: 'string',
-                    field_name: 'string',
-                    error_message: 'string',
-                    page_title: 'string',
-                    page_url: 'string'
-                },
-                possible_values: {}
-            },
-            {
-                name: 'modal_opened',
-                required: ['app_key', 'session_id', 'user_id', 'ts', 'modal_name', 'page_title'],
-                optional: ['modal_id', 'trigger_element', 'page_url'],
-                properties: {
-                    modal_name: 'string',
-                    modal_id: 'string',
-                    trigger_element: 'string',
-                    page_title: 'string',
-                    page_url: 'string'
-                },
-                possible_values: {}
-            },
-            {
-                name: 'modal_closed',
-                required: ['app_key', 'session_id', 'user_id', 'ts', 'modal_name', 'close_method', 'page_title'],
-                optional: ['modal_id', 'page_url'],
-                properties: {
-                    modal_name: 'string',
-                    modal_id: 'string',
-                    close_method: 'string',
-                    page_title: 'string',
-                    page_url: 'string'
-                },
-                possible_values: {
-                    close_method: ['close_button', 'removed_from_dom', 'backdrop_click', 'escape_key']
-                }
-            },
-            {
-                name: 'scroll_depth',
-                required: ['app_key', 'session_id', 'user_id', 'ts', 'depth_percent', 'page_title'],
-                optional: ['page_height', 'viewport_height', 'time_on_page_seconds', 'page_url'],
-                properties: {
-                    depth_percent: 'number',
-                    page_height: 'number',
-                    viewport_height: 'number',
-                    time_on_page_seconds: 'number',
-                    page_title: 'string',
-                    page_url: 'string'
-                },
-                possible_values: {}
-            }
-        ];
-    }
-
-    /**
-     * Generate default UI graph when LLM fails or no analysis possible
-     */
-    private generateDefaultUIGraph(input: GeneratorInput, events: EventSchema[]): any {
-        const routes = input.routes || ['/'];
-        const pages: any = {};
-
-        console.log('🔍 Generating default UI graph for routes:', routes);
-
-        routes.forEach((route: string) => {
-            const pageName = this.routeToPageName(route);
-            pages[pageName] = {
-                route,
-                components: ['header', 'main', 'footer'],
-                can_navigate_to: routes.filter((r: string) => r !== route).map((r: string) => this.routeToPageName(r)),
-                events: events.map(e => e.name)
-            };
-        });
-
-        if (Object.keys(pages).length === 0) {
-            console.warn('⚠️ No pages generated, adding default home page');
-            pages['home'] = {
-                route: '/',
-                components: ['header', 'main', 'footer'],
-                can_navigate_to: [],
-                events: events.map(e => e.name)
-            };
-        }
-
-        return {
-            app_key: input.appKey,
-            relationships: [],
-            pages
-        };
     }
 
     /**
@@ -802,47 +1576,7 @@ CRITICAL RULES:
     }
 
     /**
-     * Generate all implementation files
-     */
-    private async generateImplementation(
-        input: GeneratorInput,
-        events: EventSchema[],
-        uiGraph: any
-    ): Promise<GeneratorOutput> {
-        const backend = input.backendUrl || 'http://localhost:8082/ingest/analytics';
-
-        return {
-            'tracker.js': this.generateTracker(input.appKey, backend),
-            'events-schema.json': {
-                required_fields: {
-                    app_key: { type: 'string', source: 'config' },
-                    session_id: { type: 'string', source: 'sessionStorage' },
-                    user_id: { type: 'string', source: 'context', nullable: true },
-                    ts: { type: 'timestamp', source: 'generated' }
-                },
-                events: events.map(e => ({
-                    type: e.name,
-                    required: e.required,
-                    optional: e.optional,
-                    properties: e.properties || {},
-                    possible_values: e.possible_values || {}
-                }))
-            },
-            'ui-graph.json': uiGraph,
-            'analytics-provider.tsx': this.generateProvider(input.appKey),
-            'analytics.types.ts': this.generateTypes(events),
-            'integration-guide.md': this.generateIntegrationGuide(input.appKey, events),
-            metadata: {
-                generatedAt: new Date().toISOString(),
-                appKey: input.appKey,
-                eventCount: events.length,
-                frameworksDetected: input.frameworks || []
-            }
-        };
-    }
-
-    /**
-     * ENHANCED: Save output with proper UTF-8 encoding
+     * Save output with proper UTF-8 encoding
      */
     private async saveOutput(output: GeneratorOutput, repoId: string, appKey: string): Promise<string> {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -902,429 +1636,6 @@ CRITICAL RULES:
         }
 
         return localOutputPath;
-    }
-
-    /**
-     * Generate the complete tracker.js implementation
-     */
-    private generateTracker(appKey: string, endpoint: string): string {
-        return `(function(root, factory) {
-  if (typeof define === 'function' && define.amd) {
-    define([], factory);
-  } else if (typeof module === 'object' && module.exports) {
-    module.exports = factory();
-  } else {
-    root.Analytics = factory();
-  }
-}(typeof self !== 'undefined' ? self : this, function() {
-  
-  class AnalyticsTracker {
-    constructor() {
-      this.config = {
-        appKey: '${appKey}',
-        endpoint: '${endpoint}',
-        batchSize: 10,
-        flushInterval: 30000
-      };
-      
-      this.eventQueue = [];
-      this.sessionId = this.getOrCreateSession();
-      this.userId = null;
-      this.pageLoadTime = Date.now();
-      this.maxScrollDepth = 0;
-      this.formTracking = new WeakMap();
-      
-      if (typeof window !== 'undefined') {
-        this.setupListeners();
-        this.startFlushTimer();
-        this.initAutoTracking(); // Initialize auto-tracking
-      }
-    }
-
-    getOrCreateSession() {
-      try {
-        let sessionId = sessionStorage.getItem('analytics_session_id');
-        if (!sessionId) {
-          sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-          sessionStorage.setItem('analytics_session_id', sessionId);
-        }
-        return sessionId;
-      } catch {
-        return 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-      }
-    }
-
-    setupListeners() {
-      window.addEventListener('beforeunload', () => this.flush());
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') this.flush();
-      });
-    }
-
-    startFlushTimer() {
-      setInterval(() => {
-        if (this.eventQueue.length > 0) this.flush();
-      }, this.config.flushInterval);
-    }
-
-    // ============ AUTO-TRACKING METHODS ============
-    initAutoTracking() {
-      console.log('🎯 Analytics auto-tracking initialized for ${appKey}');
-      
-      // Track initial page view
-      this.trackPageView();
-      
-      // Setup all automatic tracking
-      this.trackButtonClicks();
-      this.trackLinkClicks();
-      this.trackFormInteractions();
-      this.trackModals();
-      this.trackScrollDepth();
-      this.trackRouteChanges();
-    }
-
-    trackButtonClicks() {
-      document.addEventListener('click', (e) => {
-        const button = e.target.closest('button, [role="button"], input[type="submit"], input[type="button"]');
-        if (button) {
-          const buttonText = (button.innerText || button.value || button.getAttribute('aria-label') || 'Unknown').trim();
-          const buttonId = button.id || null;
-          const buttonClass = button.className || null;
-          
-          // Find parent section for context
-          const section = button.closest('header, main, footer, aside, nav, section, [role="navigation"], [role="main"]');
-          const buttonLocation = section ? (section.tagName.toLowerCase() || section.getAttribute('role')) : 'unknown';
-          
-          this.trackEvent('button_click', {
-            button_text: buttonText.slice(0, 100),
-            button_id: buttonId,
-            button_class: buttonClass,
-            button_location: buttonLocation,
-            page_title: document.title,
-            page_url: window.location.pathname
-          });
-        }
-      }, true);
-    }
-
-    trackLinkClicks() {
-      document.addEventListener('click', (e) => {
-        const link = e.target.closest('a');
-        if (link && !link.closest('button')) {
-          const linkText = (link.innerText || link.getAttribute('aria-label') || 'Unknown').trim();
-          const linkHref = link.getAttribute('href') || '';
-          const isExternal = linkHref.startsWith('http') && !linkHref.includes(window.location.hostname);
-          
-          const section = link.closest('header, main, footer, aside, nav, section');
-          const linkLocation = section ? section.tagName.toLowerCase() : 'unknown';
-          
-          this.trackEvent('link_click', {
-            link_text: linkText.slice(0, 100),
-            link_href: linkHref,
-            link_location: linkLocation,
-            is_external: isExternal,
-            page_title: document.title,
-            page_url: window.location.pathname
-          });
-        }
-      }, true);
-    }
-
-    trackFormInteractions() {
-      // Track form starts
-      document.addEventListener('focusin', (e) => {
-        const field = e.target;
-        const form = field.closest('form');
-        
-        if (form && !this.formTracking.has(form)) {
-          this.formTracking.set(form, {
-            started: true,
-            startTime: Date.now(),
-            fieldsInteracted: new Set()
-          });
-          
-          const formName = this.getFormName(form);
-          
-          this.trackEvent('form_started', {
-            form_name: formName,
-            form_id: form.id || null,
-            first_field_focused: field.name || field.id || field.type,
-            page_title: document.title,
-            page_url: window.location.pathname
-          });
-        }
-        
-        // Track field interactions
-        if (form && this.formTracking.has(form)) {
-          const tracking = this.formTracking.get(form);
-          tracking.fieldsInteracted.add(field.name || field.id || field.type);
-        }
-      });
-
-      // Track form submissions
-      document.addEventListener('submit', (e) => {
-        const form = e.target;
-        const formName = this.getFormName(form);
-        const tracking = this.formTracking.get(form);
-        
-        this.trackEvent('form_submitted', {
-          form_name: formName,
-          form_id: form.id || null,
-          success: true,
-          duration_seconds: tracking ? Math.round((Date.now() - tracking.startTime) / 1000) : null,
-          fields_interacted: tracking ? tracking.fieldsInteracted.size : null,
-          page_title: document.title,
-          page_url: window.location.pathname
-        });
-        
-        // Clear tracking for this form
-        this.formTracking.delete(form);
-      });
-
-      // Track form errors (validation failures)
-      document.addEventListener('invalid', (e) => {
-        const field = e.target;
-        const form = field.closest('form');
-        if (form) {
-          const formName = this.getFormName(form);
-          this.trackEvent('form_error', {
-            form_name: formName,
-            field_name: field.name || field.id || field.type,
-            error_message: field.validationMessage,
-            page_title: document.title,
-            page_url: window.location.pathname
-          });
-        }
-      }, true);
-    }
-
-    getFormName(form) {
-      // Try to intelligently determine form name
-      const formName = form.getAttribute('name') || 
-                      form.getAttribute('aria-label') ||
-                      form.id;
-      
-      if (formName) return formName;
-      
-      // Guess from content
-      const formText = form.innerText.toLowerCase();
-      const formHTML = form.innerHTML.toLowerCase();
-      
-      if (formHTML.includes('password') && formHTML.includes('email')) {
-        return formText.includes('sign up') || formText.includes('register') ? 'register' : 'login';
-      }
-      if (formHTML.includes('email') && formText.includes('subscribe')) return 'subscribe';
-      if (formHTML.includes('search')) return 'search';
-      if (formText.includes('checkout')) return 'checkout';
-      if (formText.includes('payment')) return 'payment';
-      if (formText.includes('shipping')) return 'shipping';
-      if (formText.includes('contact')) return 'contact';
-      if (formText.includes('feedback')) return 'feedback';
-      
-      return 'form';
-    }
-
-    trackModals() {
-      const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-          mutation.addedNodes.forEach((node) => {
-            if (node.nodeType === 1) { // Element node
-              // Check for modal patterns
-              const isModal = node.matches && (
-                node.matches('[role="dialog"], [role="alertdialog"], .modal, .popup, [class*="modal"], [class*="dialog"], [data-modal]') ||
-                node.querySelector('[role="dialog"], [role="alertdialog"]')
-              );
-              
-              if (isModal) {
-                const modalName = node.getAttribute('aria-label') || 
-                                 node.getAttribute('title') ||
-                                 node.id ||
-                                 node.querySelector('h1, h2, h3')?.innerText ||
-                                 'modal';
-                
-                this.trackEvent('modal_opened', {
-                  modal_name: modalName,
-                  modal_id: node.id || null,
-                  trigger_element: document.activeElement?.tagName || 'unknown',
-                  page_title: document.title,
-                  page_url: window.location.pathname
-                });
-
-                // Track modal close
-                this.observeModalClose(node, modalName);
-              }
-            }
-          });
-        });
-      });
-
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true
-      });
-    }
-
-    observeModalClose(modalElement, modalName) {
-      const closeObserver = new MutationObserver(() => {
-        if (!document.contains(modalElement)) {
-          this.trackEvent('modal_closed', {
-            modal_name: modalName,
-            modal_id: modalElement.id || null,
-            close_method: 'removed_from_dom',
-            page_title: document.title,
-            page_url: window.location.pathname
-          });
-          closeObserver.disconnect();
-        }
-      });
-      
-      if (modalElement.parentNode) {
-        closeObserver.observe(modalElement.parentNode, { childList: true });
-      }
-      
-      // Also track close button clicks within modal
-      modalElement.addEventListener('click', (e) => {
-        const closeButton = e.target.closest('[aria-label*="close"], [class*="close"], [data-dismiss], button[type="button"]');
-        if (closeButton) {
-          this.trackEvent('modal_closed', {
-            modal_name: modalName,
-            modal_id: modalElement.id || null,
-            close_method: 'close_button',
-            page_title: document.title,
-            page_url: window.location.pathname
-          });
-        }
-      });
-    }
-
-    trackScrollDepth() {
-      let scrollTimer;
-      
-      const checkScrollDepth = () => {
-        const scrollPercent = Math.round(
-          (window.scrollY + window.innerHeight) / document.body.scrollHeight * 100
-        );
-        
-        // Track milestones: 25%, 50%, 75%, 100%
-        const milestones = [25, 50, 75, 100];
-        const milestone = milestones.find(m => m <= scrollPercent && m > this.maxScrollDepth);
-        
-        if (milestone) {
-          this.maxScrollDepth = milestone;
-          this.trackEvent('scroll_depth', {
-            depth_percent: milestone,
-            page_height: document.body.scrollHeight,
-            viewport_height: window.innerHeight,
-            time_on_page_seconds: Math.round((Date.now() - this.pageLoadTime) / 1000),
-            page_title: document.title,
-            page_url: window.location.pathname
-          });
-        }
-      };
-      
-      window.addEventListener('scroll', () => {
-        clearTimeout(scrollTimer);
-        scrollTimer = setTimeout(checkScrollDepth, 500);
-      });
-      
-      // Also check on page unload
-      window.addEventListener('beforeunload', checkScrollDepth);
-    }
-
-    trackRouteChanges() {
-      // For SPAs - track History API changes
-      const originalPushState = history.pushState;
-      const originalReplaceState = history.replaceState;
-      
-      history.pushState = (...args) => {
-        originalPushState.apply(history, args);
-        setTimeout(() => this.trackPageView(), 0);
-      };
-      
-      history.replaceState = (...args) => {
-        originalReplaceState.apply(history, args);
-        setTimeout(() => this.trackPageView(), 0);
-      };
-      
-      window.addEventListener('popstate', () => {
-        this.trackPageView();
-      });
-      
-      // Track hash changes
-      window.addEventListener('hashchange', () => {
-        this.trackPageView();
-      });
-    }
-
-    // ============ CORE TRACKING METHODS ============
-    trackEvent(eventName, properties = {}) {
-      const event = {
-        name: eventName,
-        props: {
-          app_key: this.config.appKey,
-          session_id: this.sessionId,
-          user_id: this.userId,
-          ts: new Date().toISOString(),
-          ...properties
-        }
-      };
-      
-      this.eventQueue.push(event);
-      
-      if (this.eventQueue.length >= this.config.batchSize) {
-        this.flush();
-      }
-    }
-
-    trackPageView(page) {
-      // Reset scroll depth for new page
-      this.maxScrollDepth = 0;
-      this.pageLoadTime = Date.now();
-      
-      this.trackEvent('page_view', {
-        page_url: page?.url || window.location.href,
-        page_title: page?.title || document.title,
-        referrer: document.referrer,
-        query_params: window.location.search,
-        hash: window.location.hash
-      });
-    }
-
-    identify(userId, traits = {}) {
-      this.userId = userId;
-      this.trackEvent('identify', { user_id: userId, traits });
-    }
-
-    flush() {
-      if (this.eventQueue.length === 0) return;
-      
-      const batch = [...this.eventQueue];
-      this.eventQueue = [];
-      
-      fetch(this.config.endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          app_key: this.config.appKey,
-          events: batch
-        }),
-        keepalive: true
-      }).catch(err => {
-        console.error('Analytics flush error:', err);
-        // Re-add events to queue for retry
-        this.eventQueue.unshift(...batch);
-      });
-    }
-  }
-
-  // Auto-initialize
-  if (typeof window !== 'undefined' && !window.analytics) {
-    window.analytics = new AnalyticsTracker();
-    console.log('✅ Analytics tracker initialized with auto-tracking enabled');
-  }
-
-  return AnalyticsTracker;
-}));`;
     }
 
     private generateProvider(appKey: string): string {
@@ -1450,10 +1761,24 @@ declare global {
 }`;
     }
 
-    private generateIntegrationGuide(appKey: string, events: EventSchema[]): string {
-        return `# Analytics Integration Guide for ${appKey}
+    private generateIntegrationGuide(
+        appKey: string, 
+        events: EventSchema[],
+        analysis: ProgressiveAnalysis
+    ): string {
+        return `# AI-Enhanced Analytics Integration Guide for ${appKey}
 
-## 🚀 One-Line Setup - Zero Configuration Required!
+## 🤖 AI-Discovered Components
+
+The AI analyzed your application and found:
+- **Framework:** ${analysis.discovery.framework}
+- **Interactive Components:** ${analysis.discovery.components.length}
+- **Behavior Patterns:** ${analysis.behaviors.patterns.length}
+
+### Discovered Components:
+${analysis.discovery.components.map(c => `- **${c.name}** (${c.type}): ${c.likely_purpose}`).join('\n')}
+
+## 🚀 One-Line Setup
 
 Just add this single line to your HTML:
 
@@ -1461,111 +1786,62 @@ Just add this single line to your HTML:
 <script src="/tracker.js"></script>
 \`\`\`
 
-**That's it!** Analytics automatically tracks everything:
+**That's it!** The AI-enhanced tracker automatically adapts to your components.
 
-## ✨ Auto-Tracked Events (No Code Required)
-
-The tracker automatically captures ALL of these events without any manual integration:
+## ✨ Auto-Tracked Events
 
 ### 📊 User Interactions
-- **button_click** - Every button click with context (text, location, page)
-- **link_click** - All link navigation with external/internal detection
-- **form_started** - When users begin filling forms
-- **form_submitted** - Successful form submissions with duration
-- **form_error** - Form validation failures
+- **element_click** - All interactive elements with AI-detected context
+- **selection_change** - Option selections with component awareness
+- **form_started/submitted** - Form interactions with smart field detection
 
-### 📱 Page & Navigation
-- **page_view** - Initial load and SPA route changes
-- **scroll_depth** - Engagement milestones (25%, 50%, 75%, 100%)
+### 📱 Navigation & Engagement
+- **page_view** - Page loads and route changes
+- **scroll_depth** - User engagement tracking (25%, 50%, 75%, 100%)
 
-### 🎭 UI Components
-- **modal_opened** - Modal/dialog appearances
-- **modal_closed** - How modals are dismissed
-
-## 📈 Complete Event Details
+## 📈 Event Details
 
 ${events.map(e => {
             const mainProps = e.required.filter(r => !REQUIRED_FIELDS.includes(r as any));
             const optionalProps = e.optional || [];
             return `### ${e.name}
-**Auto-captured:** ${mainProps.join(', ')}
-${optionalProps.length > 0 ? `**Additional:** ${optionalProps.join(', ')}` : ''}`;
+**Required:** ${mainProps.join(', ')}
+${optionalProps.length > 0 ? `**Optional:** ${optionalProps.join(', ')}` : ''}`;
         }).join('\n\n')}
+
+## 🔑 AI-Powered Context Collection
+
+The tracker uses AI-discovered patterns to collect relevant context:
+${analysis.behaviors.patterns.slice(0, 3).map(p => 
+    `- **${p.component}**: Collects ${p.context_collection.extract_fields?.join(', ') || 'contextual data'}`
+).join('\n')}
 
 ## 🧪 Testing Your Integration
 
 1. **Open Browser Console**
-   - Look for: "✅ Analytics auto-tracking initialized"
+   - Look for: "🤖 AI-Enhanced Analytics initialized"
+   - Check: "📊 Tracking X discovered components"
 
-2. **Interact With Your App**
-   - Click any button → see \`button_click\` events
-   - Start typing in a form → see \`form_started\` events
-   - Navigate pages → see \`page_view\` events
-   - Scroll the page → see \`scroll_depth\` at 25/50/75/100%
+2. **Interact With Components**
+   - The AI recognizes your specific components
+   - Context is collected based on learned patterns
 
-3. **Check Network Tab**
+3. **Monitor Network**
    - Filter by: \`/ingest/analytics\`
-   - Events batch every 10 interactions or 30 seconds
-
-## 🔧 Optional: React/Next.js Context Provider
-
-For user identification, add the Analytics Provider:
-
-\`\`\`tsx
-import { AnalyticsProvider } from './analytics-provider';
-
-export default function RootLayout({ children }) {
-  return (
-    <html>
-      <body>
-        <AnalyticsProvider userId={currentUser?.id}>
-          {children}
-        </AnalyticsProvider>
-      </body>
-    </html>
-  );
-}
-\`\`\`
-
-## 📝 Manual Tracking (If Needed)
-
-While auto-tracking covers most use cases, you can still track custom events:
-
-\`\`\`javascript
-// Custom event tracking
-window.analytics.trackEvent('custom_event', {
-  custom_property: 'value'
-});
-
-// Identify users
-window.analytics.identify('user123', {
-  email: 'user@example.com',
-  plan: 'premium'
-});
-\`\`\`
+   - See AI-enhanced event data
 
 ## 🎯 What Makes This Special?
 
-- **Zero Integration** - Just add the script tag
-- **Framework Agnostic** - Works with React, Vue, Angular, vanilla JS
-- **SPA Ready** - Tracks client-side routing automatically
-- **Performance Optimized** - Batching, debouncing, minimal overhead
-- **Privacy Friendly** - No PII collected by default
-- **Complete Coverage** - Captures 90% of analytics needs automatically
-
-## 📊 Default Tracked Properties
-
-Every event includes:
-- \`app_key\`: "${appKey}"
-- \`session_id\`: Auto-generated per session
-- \`user_id\`: From context (can be null)
-- \`ts\`: ISO timestamp
-- \`page_title\`: Current page title
-- \`page_url\`: Current URL path
+- **AI-Powered** - Understands your specific components
+- **Zero Configuration** - Just add the script
+- **Adaptive** - Learns from your code patterns
+- **Framework Aware** - Optimized for ${analysis.discovery.framework}
+- **Context Smart** - Collects relevant data automatically
 
 ---
 
-**Generated:** ${new Date().toISOString()}`;
+**Generated:** ${new Date().toISOString()}
+**AI Model:** Claude 3 Haiku`;
     }
 }
 

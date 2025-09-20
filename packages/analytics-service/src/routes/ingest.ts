@@ -3,6 +3,8 @@ import type { FastifyInstance } from 'fastify';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import crypto from 'node:crypto';
+import { logEvent } from '../utils/event-logger';
+
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -270,12 +272,17 @@ loadAll();
       const eSpec = events.find((e: any) => e?.name === p.verb);
 
       if (!eSpec) {
-        return reply.code(400).send({ ok: false, error: `Unknown event verb "${p.verb}" in schema` });
+        const errorResult = { ok: false, error: `Unknown event verb "${p.verb}" in schema` };
+        logEvent(p, errorResult); // Log failed event
+        return reply.code(400).send(errorResult);
       }
+
       const required = new Set<string>(Array.isArray(eSpec.required) ? eSpec.required : []);
       for (const k of required) {
         if (!(k in p.metadata)) {
-          return reply.code(400).send({ ok: false, error: `Missing required field "${k}" for ${p.verb}` });
+          const errorResult = { ok: false, error: `Missing required field "${k}" for ${p.verb}` };
+          logEvent(p, errorResult); // Log failed event
+          return reply.code(400).send(errorResult);
         }
       }
 
@@ -318,14 +325,26 @@ loadAll();
         verb: p.verb,
         metadata: { ...(p.metadata as Record<string, unknown>), node_id, edge_id }
       };
-      const { error } = await supabase.from('events').insert(row);
-      if (error) return reply.code(500).send({ ok: false, error: error.message });
 
-      return reply.send({ ok: true, node_id, edge_id });
+      const { error } = await supabase.from('events').insert(row);
+
+      if (error) {
+        const errorResult = { ok: false, error: error.message };
+        logEvent(p, errorResult); // Log failed event
+        return reply.code(500).send(errorResult);
+      }
+
+      const successResult = { ok: true, node_id, edge_id };
+      logEvent(p, successResult); // Log successful event with beautiful formatting
+      return reply.send(successResult);
+
     } catch (e: any) {
-      return reply.code(400).send({ ok: false, error: e?.message || 'bad request' });
+      const errorResult = { ok: false, error: e?.message || 'bad request' };
+      logEvent(req.body, errorResult); // Log error
+      return reply.code(400).send(errorResult);
     }
   });
+
   // Basic app management endpoints
   app.get('/apps', async (req, reply) => {
     return reply.send({ apps: [], message: 'app management coming soon' });

@@ -1,20 +1,32 @@
 {
-  "name": "analytics-platform",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@analytics-automation/generator",
+  "version": "1.0.0",
+  "description": "AI-powered analytics schema generator",
+  "main": "dist/server.js",
   "scripts": {
-    "dev": "next dev -p 3002",
-    "build": "next build",
-    "start": "next start -p 3002"
+    "dev": "nodemon --exec ts-node src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "ts-node src/test-generator.ts",
+    "test:app": "ts-node src/test-generator.ts",
+    "test:rich": "ts-node src/test-generator.ts test-app-rich",
+    "test:next": "ts-node src/test-generator.ts demo-next",
+    "test:all": "ts-node src/test-generator.ts",
+    "analyze": "ts-node src/selfcheck.ts"
   },
   "dependencies": {
-    "next": "^14.0.0",
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0"
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@supabase/supabase-js": "^2.43.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "cors": "^2.8.5"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "@types/react": "^18.0.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.14.9",
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "nodemon": "^3.1.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.3"
   }
 }

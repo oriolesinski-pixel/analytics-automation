@@ -11,6 +11,6 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "analytics-dev-proxy.js"],
   "exclude": ["node_modules", "dist"]
 }

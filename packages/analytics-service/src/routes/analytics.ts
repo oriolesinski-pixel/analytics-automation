@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
+import { logAnalyticsEvent } from '../utils/event-logger';
 
 const supabase = createClient(
     process.env.SUPABASE_URL!,
@@ -10,6 +11,100 @@ const supabase = createClient(
 );
 
 async function analyticsRoutes(app: FastifyInstance) {
+    // INGESTION ENDPOINT - THIS IS WHERE YOUR TRACKER SENDS EVENTS
+    app.post('/ingest/analytics', async (req, reply) => {
+        try {
+            const body = z.object({
+                app_key: z.string(),
+                events: z.array(z.record(z.any())),
+                session_id: z.string().optional()
+            }).parse(req.body);
+
+            app.log.info({ app_key: body.app_key, eventCount: body.events.length }, 'Analytics ingestion request received');
+
+            const eventNames = body.events.map((e: any) => e.event || e.verb || 'unknown');
+            app.log.info({ eventNames, sessionId: body.session_id }, 'Processing analytics events');
+
+            // LOG EVENTS TO CONSOLE WITH BEAUTIFUL FORMATTING
+            logAnalyticsEvent(body.events, body.app_key);
+
+            // Get or create app
+            let repo_id: string;
+            try {
+                const appResult = await supabase
+                    .from('apps')
+                    .select('repo_id')
+                    .eq('app_key', body.app_key)
+                    .single();
+
+                if (appResult.error || !appResult.data) {
+                    // Create new app if doesn't exist
+                    const newApp = await supabase
+                        .from('apps')
+                        .insert({
+                            app_key: body.app_key,
+                            name: body.app_key,
+                            repo_id: 'default-repo-id'
+                        })
+                        .select('repo_id')
+                        .single();
+
+                    repo_id = newApp.data?.repo_id || 'default-repo-id';
+                } else {
+                    repo_id = appResult.data.repo_id;
+                }
+            } catch (error: any) {
+                app.log.warn(`App lookup failed for app_key: ${body.app_key}, using default repo_id. Error: ${error.message}`);
+                repo_id = 'default-repo-id';
+            }
+
+            // Process and store events
+            const results = await Promise.all(
+                body.events.map(async (event: any) => {
+                    try {
+                        const eventRecord = {
+                            app_key: body.app_key,
+                            repo_id: repo_id,
+                            verb: event.event || event.verb || 'unknown',
+                            metadata: {
+                                ...event,
+                                session_id: body.session_id || event.session_id
+                            },
+                            ts: new Date().toISOString()
+                        };
+
+                        const { error } = await supabase
+                            .from('events')
+                            .insert(eventRecord);
+
+                        return { success: !error, error };
+                    } catch (err) {
+                        return { success: false, error: err };
+                    }
+                })
+            );
+
+            const stored = results.filter(r => r.success).length;
+            const failed = results.filter(r => !r.success).length;
+
+            app.log.info({ stored, failed, app_key: body.app_key }, 'Analytics events processed');
+
+            return reply.send({
+                ok: true,
+                stored,
+                failed,
+                message: `Processed ${stored} events successfully${failed > 0 ? `, ${failed} failed` : ''}`
+            });
+
+        } catch (error: any) {
+            app.log.error({ error: error.message }, 'Analytics ingestion failed');
+            return reply.code(400).send({
+                ok: false,
+                error: error.message || 'Invalid request'
+            });
+        }
+    });
+
     // Existing overview endpoint
     app.get('/analytics/overview', async (req, reply) => {
         try {
@@ -65,7 +160,7 @@ async function analyticsRoutes(app: FastifyInstance) {
         }
     });
 
-    // NEW: Funnel analysis endpoint that your TopKPIs and BasicFunnel components expect
+    // Funnel analysis endpoint
     app.post('/analytics/funnel/graph', async (req, reply) => {
         try {
             const query = z.object({
@@ -106,7 +201,6 @@ async function analyticsRoutes(app: FastifyInstance) {
             }
 
             // Create funnel steps from events
-            const eventTypes = ['page_view', 'click', 'form_view', 'form_submit', 'purchase'];
             const steps: any[] = [];
 
             // Group events by type and calculate funnel
@@ -169,7 +263,7 @@ async function analyticsRoutes(app: FastifyInstance) {
         }
     });
 
-    // NEW: Daily sessions endpoint that your TopKPIs component expects
+    // Daily sessions endpoint
     app.get('/analytics/session/daily', async (req, reply) => {
         try {
             const query = z.object({

@@ -1,0 +1,771 @@
+{
+  "required_fields": {
+    "app_key": {
+      "type": "string",
+      "source": "config"
+    },
+    "session_id": {
+      "type": "string",
+      "source": "sessionStorage"
+    },
+    "user_id": {
+      "type": "string",
+      "source": "context",
+      "nullable": true
+    },
+    "ts": {
+      "type": "timestamp",
+      "source": "generated"
+    }
+  },
+  "events": [
+    {
+      "type": "page_view",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "page_url"
+      ],
+      "optional": [
+        "page_title",
+        "referrer",
+        "query_params",
+        "hash"
+      ],
+      "properties": {
+        "page_url": "string",
+        "page_title": "string",
+        "referrer": "string",
+        "query_params": "string",
+        "hash": "string"
+      },
+      "possible_values": {}
+    },
+    {
+      "type": "element_click",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "element_text",
+        "element_type"
+      ],
+      "optional": [
+        "element_id",
+        "element_class",
+        "element_location",
+        "context",
+        "component_name",
+        "page_title",
+        "page_url"
+      ],
+      "properties": {
+        "element_text": "string",
+        "element_type": "string",
+        "element_id": "string",
+        "element_class": "string",
+        "element_location": "string",
+        "component_name": "string",
+        "context": "object",
+        "page_title": "string",
+        "page_url": "string"
+      },
+      "possible_values": {
+        "element_type": [
+          "button",
+          "selector",
+          "form",
+          "custom",
+          "link"
+        ]
+      }
+    },
+    {
+      "type": "selection_change",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "selection_type",
+        "selection_value"
+      ],
+      "optional": [
+        "selection_name",
+        "previous_value",
+        "component_name",
+        "page_title",
+        "page_url"
+      ],
+      "properties": {
+        "selection_type": "string",
+        "selection_value": "string",
+        "selection_name": "string",
+        "previous_value": "string",
+        "component_name": "string",
+        "page_title": "string",
+        "page_url": "string"
+      },
+      "possible_values": {}
+    },
+    {
+      "type": "form_started",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "form_name",
+        "page_title"
+      ],
+      "optional": [
+        "form_id",
+        "first_field_focused",
+        "context",
+        "page_url"
+      ],
+      "properties": {
+        "form_name": "string",
+        "form_id": "string",
+        "first_field_focused": "string",
+        "context": "object",
+        "page_title": "string",
+        "page_url": "string"
+      },
+      "possible_values": {}
+    },
+    {
+      "type": "form_submitted",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "form_name",
+        "success",
+        "page_title"
+      ],
+      "optional": [
+        "form_id",
+        "error_message",
+        "duration_seconds",
+        "fields_interacted",
+        "context",
+        "page_url"
+      ],
+      "properties": {
+        "form_name": "string",
+        "form_id": "string",
+        "success": "boolean",
+        "duration_seconds": "number",
+        "fields_interacted": "number",
+        "error_message": "string",
+        "context": "object",
+        "page_title": "string",
+        "page_url": "string"
+      },
+      "possible_values": {}
+    },
+    {
+      "type": "scroll_depth",
+      "required": [
+        "app_key",
+        "session_id",
+        "user_id",
+        "ts",
+        "depth_percent",
+        "page_title"
+      ],
+      "optional": [
+        "page_height",
+        "viewport_height",
+        "time_on_page_seconds",
+        "page_url"
+      ],
+      "properties": {
+        "depth_percent": "number",
+        "page_height": "number",
+        "viewport_height": "number",
+        "time_on_page_seconds": "number",
+        "page_title": "string",
+        "page_url": "string"
+      },
+      "possible_values": {}
+    }
+  ],
+  "ai_components": [
+    {
+      "name": "AddToCartButton",
+      "type": "button",
+      "selector_patterns": [
+        ".product-card__add-to-cart"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Add product to cart",
+      "context_needed": [
+        "product_id"
+      ],
+      "code_patterns": [
+        "onClick={handleAddToCart}"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "WishlistButton",
+      "type": "button",
+      "selector_patterns": [
+        ".product-card__wishlist-btn"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Add/remove product from wishlist",
+      "context_needed": [
+        "product_id"
+      ],
+      "code_patterns": [
+        "onClick={toggleWishlist}"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "QuantitySelector",
+      "type": "selector",
+      "selector_patterns": [
+        ".cart-item__quantity-btn",
+        ".cart-item__quantity-value"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Update product quantity in cart",
+      "context_needed": [
+        "product_id",
+        "quantity"
+      ],
+      "code_patterns": [
+        "onClick={updateQuantity}"
+      ],
+      "actual_values": [
+        "-",
+        "+",
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "name": "RemoveFromCartButton",
+      "type": "button",
+      "selector_patterns": [
+        ".cart-item__remove-btn"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Remove product from cart",
+      "context_needed": [
+        "product_id"
+      ],
+      "code_patterns": [
+        "onClick={removeFromCart}"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "ClearCartButton",
+      "type": "button",
+      "selector_patterns": [
+        ".cart-clear-btn"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Clear all items from cart",
+      "context_needed": [],
+      "code_patterns": [
+        "onClick={clearCart}"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "LoginForm",
+      "type": "form",
+      "selector_patterns": [
+        "form.login-form"
+      ],
+      "interaction_type": "submit",
+      "likely_purpose": "User authentication",
+      "context_needed": [
+        "email",
+        "password"
+      ],
+      "code_patterns": [
+        "onSubmit={handleSubmit}"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "RegisterForm",
+      "type": "form",
+      "selector_patterns": [
+        "form.register-form"
+      ],
+      "interaction_type": "submit",
+      "likely_purpose": "User registration",
+      "context_needed": [
+        "name",
+        "email",
+        "password",
+        "confirmPassword"
+      ],
+      "code_patterns": [
+        "onSubmit={handleSubmit}"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "ShippingInfoForm",
+      "type": "form",
+      "selector_patterns": [
+        "form.shipping-info-form"
+      ],
+      "interaction_type": "submit",
+      "likely_purpose": "Collect shipping information",
+      "context_needed": [
+        "firstName",
+        "lastName",
+        "email",
+        "phone",
+        "address",
+        "city",
+        "state",
+        "zipCode",
+        "country"
+      ],
+      "code_patterns": [
+        "onSubmit={handleSubmit}"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "PaymentForm",
+      "type": "form",
+      "selector_patterns": [
+        "form.payment-form"
+      ],
+      "interaction_type": "submit",
+      "likely_purpose": "Process payment",
+      "context_needed": [
+        "cardNumber",
+        "cardName",
+        "expiryDate",
+        "cvv",
+        "saveCard"
+      ],
+      "code_patterns": [
+        "onSubmit={handleSubmit}"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "TestCredentialsButton",
+      "type": "button",
+      "selector_patterns": [
+        ".login-form__test-credentials"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Prefill login form with test credentials",
+      "context_needed": [],
+      "code_patterns": [
+        "onClick={fillTestCredentials}"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "Carousel",
+      "type": "custom",
+      "selector_patterns": [
+        ".carousel"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Navigate carousel slides",
+      "context_needed": [
+        "currentSlide"
+      ],
+      "code_patterns": [
+        "onClick={prevSlide}",
+        "onClick={nextSlide}",
+        "onClick={goToSlide}"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "ProductLink",
+      "type": "link",
+      "selector_patterns": [
+        ".product-card__link"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Navigate to product details page",
+      "context_needed": [
+        "product_id"
+      ],
+      "code_patterns": [
+        "href={item.link}"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "LogoutButton",
+      "type": "button",
+      "selector_patterns": [
+        ".header__logout-btn"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Log out user",
+      "context_needed": [],
+      "code_patterns": [
+        "onClick={logout}"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "ContinueShoppingButton",
+      "type": "button",
+      "selector_patterns": [
+        ".cart-empty__continue-btn",
+        ".checkout-empty__continue-btn"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Navigate to product listing page",
+      "context_needed": [],
+      "code_patterns": [
+        "href=\"/products\""
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "BackToHomeButton",
+      "type": "button",
+      "selector_patterns": [
+        ".checkout-success__home-btn"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Navigate to home page",
+      "context_needed": [],
+      "code_patterns": [
+        "href=\"/\""
+      ],
+      "actual_values": []
+    }
+  ],
+  "ai_patterns": [
+    {
+      "component": "AddToCartButton",
+      "context_collection": {
+        "search_parents": [
+          ".product-card",
+          "[data-product]"
+        ],
+        "extract_fields": [
+          "product_id"
+        ],
+        "sibling_context": [],
+        "data_attributes": [
+          "data-product-id"
+        ]
+      },
+      "state_changes": [
+        "updates_cart"
+      ],
+      "triggers_events": [
+        "api_call"
+      ]
+    },
+    {
+      "component": "WishlistButton",
+      "context_collection": {
+        "search_parents": [
+          ".product-card",
+          "[data-product]"
+        ],
+        "extract_fields": [
+          "product_id"
+        ],
+        "sibling_context": [],
+        "data_attributes": [
+          "data-product-id"
+        ]
+      },
+      "state_changes": [
+        "toggles_class"
+      ],
+      "triggers_events": [
+        "api_call",
+        "state_update"
+      ]
+    },
+    {
+      "component": "QuantitySelector",
+      "context_collection": {
+        "search_parents": [
+          ".cart-item"
+        ],
+        "extract_fields": [
+          "product_id",
+          "quantity"
+        ],
+        "sibling_context": [],
+        "data_attributes": [
+          "data-product-id"
+        ]
+      },
+      "state_changes": [
+        "updates_cart"
+      ],
+      "triggers_events": [
+        "api_call"
+      ]
+    },
+    {
+      "component": "RemoveFromCartButton",
+      "context_collection": {
+        "search_parents": [
+          ".cart-item"
+        ],
+        "extract_fields": [
+          "product_id"
+        ],
+        "sibling_context": [],
+        "data_attributes": [
+          "data-product-id"
+        ]
+      },
+      "state_changes": [
+        "updates_cart"
+      ],
+      "triggers_events": [
+        "api_call"
+      ]
+    },
+    {
+      "component": "ClearCartButton",
+      "context_collection": {
+        "search_parents": [
+          ".cart"
+        ],
+        "extract_fields": [],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "updates_cart"
+      ],
+      "triggers_events": [
+        "api_call"
+      ]
+    },
+    {
+      "component": "LoginForm",
+      "context_collection": {
+        "search_parents": [
+          "form.login-form"
+        ],
+        "extract_fields": [
+          "email",
+          "password"
+        ],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": [
+        "form_submit",
+        "api_call"
+      ]
+    },
+    {
+      "component": "RegisterForm",
+      "context_collection": {
+        "search_parents": [
+          "form.register-form"
+        ],
+        "extract_fields": [
+          "name",
+          "email",
+          "password",
+          "confirmPassword"
+        ],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": [
+        "form_submit",
+        "api_call"
+      ]
+    },
+    {
+      "component": "ShippingInfoForm",
+      "context_collection": {
+        "search_parents": [
+          "form.shipping-info-form"
+        ],
+        "extract_fields": [
+          "firstName",
+          "lastName",
+          "email",
+          "phone",
+          "address",
+          "city",
+          "state",
+          "zipCode",
+          "country"
+        ],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": [
+        "form_submit",
+        "api_call"
+      ]
+    },
+    {
+      "component": "PaymentForm",
+      "context_collection": {
+        "search_parents": [
+          "form.payment-form"
+        ],
+        "extract_fields": [
+          "cardNumber",
+          "cardName",
+          "expiryDate",
+          "cvv",
+          "saveCard"
+        ],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": [
+        "form_submit",
+        "api_call"
+      ]
+    },
+    {
+      "component": "TestCredentialsButton",
+      "context_collection": {
+        "search_parents": [
+          ".login-form"
+        ],
+        "extract_fields": [],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "updates_form"
+      ],
+      "triggers_events": [
+        "state_update"
+      ]
+    },
+    {
+      "component": "Carousel",
+      "context_collection": {
+        "search_parents": [
+          ".carousel"
+        ],
+        "extract_fields": [
+          "currentSlide"
+        ],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "updates_carousel"
+      ],
+      "triggers_events": [
+        "state_update"
+      ]
+    },
+    {
+      "component": "ProductLink",
+      "context_collection": {
+        "search_parents": [
+          ".product-card"
+        ],
+        "extract_fields": [
+          "product_id"
+        ],
+        "sibling_context": [],
+        "data_attributes": [
+          "data-product-id"
+        ]
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": [
+        "navigation"
+      ]
+    },
+    {
+      "component": "LogoutButton",
+      "context_collection": {
+        "search_parents": [
+          ".header"
+        ],
+        "extract_fields": [],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": [
+        "api_call",
+        "state_update"
+      ]
+    },
+    {
+      "component": "ContinueShoppingButton",
+      "context_collection": {
+        "search_parents": [
+          ".cart-empty",
+          ".checkout-empty"
+        ],
+        "extract_fields": [],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": [
+        "navigation"
+      ]
+    },
+    {
+      "component": "BackToHomeButton",
+      "context_collection": {
+        "search_parents": [
+          ".checkout-success"
+        ],
+        "extract_fields": [],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": [
+        "navigation"
+      ]
+    }
+  ]
+}
