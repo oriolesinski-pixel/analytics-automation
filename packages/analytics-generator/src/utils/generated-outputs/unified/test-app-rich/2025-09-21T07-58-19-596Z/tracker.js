@@ -8,10 +8,108 @@
   }
 }(typeof self !== 'undefined' ? self : this, function() {
   
+  // ============ USER ID GENERATOR ============
+  class UserIdGenerator {
+    constructor() {
+      this.STORAGE_KEY = 'analytics_user_id';
+      this.userId = null;
+    }
+
+    init() {
+      this.userId = this.getOrCreateUserId();
+      return this.userId;
+    }
+
+    getOrCreateUserId() {
+      // Try to get existing user ID from storage
+      let userId = this.getFromStorage();
+      
+      if (!userId) {
+        // Generate new 8-10 digit integer ID
+        userId = this.generateUserId();
+        this.saveToStorage(userId);
+      }
+      
+      return userId;
+    }
+
+generateUserId() {
+      // Generate a random 8-10 digit integer
+      const min = 10000000;   // 8 digits minimum
+      const max = 9999999999;  // 10 digits maximum
+      
+      if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        // Use crypto for better randomness
+        const array = new Uint32Array(1);
+        crypto.getRandomValues(array);
+        
+        // Scale the random value to our range
+        const randomNum = min + (array[0] % (max - min + 1));
+        return Math.abs(randomNum).toString();
+      }
+      
+      // Fallback for older browsers
+      const randomNum = min + Math.floor(Math.random() * (max - min + 1));
+      return randomNum.toString();
+    }
+
+    getFromStorage() {
+      // Try multiple storage methods for resilience
+      try {
+        // Try localStorage first (most persistent)
+        const localStorageId = localStorage.getItem(this.STORAGE_KEY);
+        if (localStorageId) return localStorageId;
+      } catch (e) {
+        console.debug('localStorage not available');
+      }
+      
+      try {
+        // Try cookies
+        const cookieMatch = document.cookie.match(new RegExp('(^| )' + this.STORAGE_KEY + '=([^;]+)'));
+        if (cookieMatch) return cookieMatch[2];
+      } catch (e) {
+        console.debug('Cookies not available');
+      }
+      
+      try {
+        // Fallback to sessionStorage (least persistent)
+        return sessionStorage.getItem(this.STORAGE_KEY);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    saveToStorage(userId) {
+      // Save to multiple storage locations for resilience
+      try {
+        localStorage.setItem(this.STORAGE_KEY, userId);
+        localStorage.setItem(this.STORAGE_KEY + '_created', new Date().toISOString());
+      } catch (e) {
+        console.debug('localStorage write failed');
+      }
+      
+      try {
+        // Set cookie with 1 year expiration
+        const expires = new Date();
+        expires.setFullYear(expires.getFullYear() + 1);
+        document.cookie = this.STORAGE_KEY + '=' + userId + '; expires=' + expires.toUTCString() + '; path=/; SameSite=Lax';
+      } catch (e) {
+        console.debug('Cookie write failed');
+      }
+      
+      try {
+        sessionStorage.setItem(this.STORAGE_KEY, userId);
+      } catch (e) {
+        console.debug('sessionStorage write failed');
+      }
+    }
+  }
+  
+  // ============ MAIN ANALYTICS TRACKER ============
   class AnalyticsTracker {
     constructor() {
       this.config = {
-        appKey: 'test-app-rich-1758388507977',
+        appKey: 'test-app-rich-1758441478000',
         endpoint: 'http://localhost:8082/ingest/analytics',
         batchSize: 10,
         flushInterval: 30000
@@ -19,7 +117,8 @@
       
       this.eventQueue = [];
       this.sessionId = this.getOrCreateSession();
-      this.userId = null;
+      this.userIdGenerator = new UserIdGenerator();
+      this.userId = this.userIdGenerator.init();
       this.pageLoadTime = Date.now();
       this.maxScrollDepth = 0;
       this.formTracking = new WeakMap();
@@ -34,7 +133,7 @@
             selectors: [".product-card__add-to-cart"],
             purpose: 'Add product to cart',
             contextNeeded: ["product_id"],
-            contextCollection: {"search_parents":[".product-card","[data-product]"],"extract_fields":["product_id"],"sibling_context":[],"data_attributes":["data-product-id"]}
+            contextCollection: {"search_parents":[".product-card","[data-product]"],"extract_fields":["product-id"],"sibling_context":[],"data_attributes":["data-product-id"]}
         },
 
         {
@@ -43,7 +142,7 @@
             selectors: [".product-card__wishlist-btn"],
             purpose: 'Add/remove product from wishlist',
             contextNeeded: ["product_id"],
-            contextCollection: {"search_parents":[".product-card","[data-product]"],"extract_fields":["product_id"],"sibling_context":[],"data_attributes":["data-product-id"]}
+            contextCollection: {"search_parents":[".product-card","[data-product]"],"extract_fields":["product-id"],"sibling_context":[],"data_attributes":["data-product-id"]}
         },
 
         {
@@ -52,7 +151,7 @@
             selectors: [".cart-item__quantity-btn",".cart-item__quantity-value"],
             purpose: 'Update product quantity in cart',
             contextNeeded: ["product_id","quantity"],
-            contextCollection: {"search_parents":[".cart-item"],"extract_fields":["product_id","quantity"],"sibling_context":[],"data_attributes":["data-product-id"]}
+            contextCollection: {"search_parents":[".cart-item"],"extract_fields":["product-id","quantity"],"sibling_context":[],"data_attributes":["data-product-id"]}
         },
 
         {
@@ -61,7 +160,7 @@
             selectors: [".cart-item__remove-btn"],
             purpose: 'Remove product from cart',
             contextNeeded: ["product_id"],
-            contextCollection: {"search_parents":[".cart-item"],"extract_fields":["product_id"],"sibling_context":[],"data_attributes":["data-product-id"]}
+            contextCollection: {"search_parents":[".cart-item"],"extract_fields":["product-id"],"sibling_context":[],"data_attributes":["data-product-id"]}
         },
 
         {
@@ -70,7 +169,7 @@
             selectors: [".cart-clear-btn"],
             purpose: 'Clear all items from cart',
             contextNeeded: [],
-            contextCollection: {"search_parents":[".cart"],"extract_fields":[],"sibling_context":[],"data_attributes":[]}
+            contextCollection: {"search_parents":["form.cart"],"extract_fields":[],"sibling_context":[],"data_attributes":[]}
         },
 
         {
@@ -112,10 +211,10 @@
         {
             name: 'TestCredentialsButton',
             type: 'button',
-            selectors: [".login-form__test-credentials"],
+            selectors: [".login-form__test-credentials-btn"],
             purpose: 'Prefill login form with test credentials',
             contextNeeded: [],
-            contextCollection: {"search_parents":[".login-form"],"extract_fields":[],"sibling_context":[],"data_attributes":[]}
+            contextCollection: {"search_parents":[".login-form"],"extract_fields":[],"sibling_context":["input[name='email']","input[name='password']"],"data_attributes":[]}
         },
 
         {
@@ -128,39 +227,12 @@
         },
 
         {
-            name: 'ProductLink',
-            type: 'link',
-            selectors: [".product-card__link"],
-            purpose: 'Navigate to product details page',
-            contextNeeded: ["product_id"],
-            contextCollection: {"search_parents":[".product-card"],"extract_fields":["product_id"],"sibling_context":[],"data_attributes":["data-product-id"]}
-        },
-
-        {
-            name: 'LogoutButton',
-            type: 'button',
-            selectors: [".header__logout-btn"],
-            purpose: 'Log out user',
+            name: 'NavigationMenu',
+            type: 'custom',
+            selectors: [".nav-menu",".nav-menu-toggle"],
+            purpose: 'Toggle mobile navigation menu',
             contextNeeded: [],
-            contextCollection: {"search_parents":[".header"],"extract_fields":[],"sibling_context":[],"data_attributes":[]}
-        },
-
-        {
-            name: 'ContinueShoppingButton',
-            type: 'button',
-            selectors: [".cart-empty__continue-btn",".checkout-empty__continue-btn"],
-            purpose: 'Navigate to product listing page',
-            contextNeeded: [],
-            contextCollection: {"search_parents":[".cart-empty",".checkout-empty"],"extract_fields":[],"sibling_context":[],"data_attributes":[]}
-        },
-
-        {
-            name: 'BackToHomeButton',
-            type: 'button',
-            selectors: [".checkout-success__home-btn"],
-            purpose: 'Navigate to home page',
-            contextNeeded: [],
-            contextCollection: {"search_parents":[".checkout-success"],"extract_fields":[],"sibling_context":[],"data_attributes":[]}
+            contextCollection: {"search_parents":[".nav-menu",".nav-menu-toggle"],"extract_fields":[],"sibling_context":[],"data_attributes":[]}
         }
       ];
       
@@ -199,8 +271,9 @@
 
     // ============ AI-ENHANCED AUTO-TRACKING ============
     initAutoTracking() {
-      console.log('🤖 AI-Enhanced Analytics initialized for test-app-rich-1758388507977');
-      console.log('📊 Tracking 15 discovered components');
+      console.log('🤖 AI-Enhanced Analytics initialized for test-app-rich-1758441478000');
+      console.log('📊 Tracking 12 discovered components');
+      console.log('🔑 User ID:', this.userId);
       
       this.trackPageView();
       this.trackAllClicks();
@@ -625,8 +698,12 @@
     }
 
     identify(userId, traits = {}) {
-      this.userId = userId;
-      this.trackEvent('identify', { user_id: userId, traits });
+      // Update the user ID if explicitly identified
+      if (userId) {
+        this.userId = userId;
+        this.userIdGenerator.saveToStorage(userId);
+      }
+      this.trackEvent('identify', { user_id: this.userId, traits });
     }
 
     flush() {
@@ -653,7 +730,7 @@
   // Auto-initialize
   if (typeof window !== 'undefined' && !window.analytics) {
     window.analytics = new AnalyticsTracker();
-    console.log('✅ AI-Enhanced Analytics tracker initialized');
+    console.log('✅ AI-Enhanced Analytics tracker with User ID initialized');
   }
 
   return AnalyticsTracker;

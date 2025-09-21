@@ -30,7 +30,7 @@ export function AnalyticsProvider({
   
   return (
     <AnalyticsContext.Provider value={{
-      appKey: 'test-app-rich-1758388507977',
+      appKey: 'test-app-rich-1758441478000',
       sessionId,
       userId
     }}>

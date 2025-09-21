@@ -11,7 +11,8 @@
     "user_id": {
       "type": "string",
       "source": "context",
-      "nullable": true
+      "nullable": false,
+      "description": "8-10 digit integer ID"
     },
     "ts": {
       "type": "timestamp",
@@ -78,8 +79,7 @@
           "button",
           "selector",
           "form",
-          "custom",
-          "link"
+          "custom"
         ]
       }
     },
@@ -367,7 +367,7 @@
       "name": "TestCredentialsButton",
       "type": "button",
       "selector_patterns": [
-        ".login-form__test-credentials"
+        ".login-form__test-credentials-btn"
       ],
       "interaction_type": "click",
       "likely_purpose": "Prefill login form with test credentials",
@@ -396,61 +396,17 @@
       "actual_values": []
     },
     {
-      "name": "ProductLink",
-      "type": "link",
+      "name": "NavigationMenu",
+      "type": "custom",
       "selector_patterns": [
-        ".product-card__link"
+        ".nav-menu",
+        ".nav-menu-toggle"
       ],
       "interaction_type": "click",
-      "likely_purpose": "Navigate to product details page",
-      "context_needed": [
-        "product_id"
-      ],
-      "code_patterns": [
-        "href={item.link}"
-      ],
-      "actual_values": []
-    },
-    {
-      "name": "LogoutButton",
-      "type": "button",
-      "selector_patterns": [
-        ".header__logout-btn"
-      ],
-      "interaction_type": "click",
-      "likely_purpose": "Log out user",
+      "likely_purpose": "Toggle mobile navigation menu",
       "context_needed": [],
       "code_patterns": [
-        "onClick={logout}"
-      ],
-      "actual_values": []
-    },
-    {
-      "name": "ContinueShoppingButton",
-      "type": "button",
-      "selector_patterns": [
-        ".cart-empty__continue-btn",
-        ".checkout-empty__continue-btn"
-      ],
-      "interaction_type": "click",
-      "likely_purpose": "Navigate to product listing page",
-      "context_needed": [],
-      "code_patterns": [
-        "href=\"/products\""
-      ],
-      "actual_values": []
-    },
-    {
-      "name": "BackToHomeButton",
-      "type": "button",
-      "selector_patterns": [
-        ".checkout-success__home-btn"
-      ],
-      "interaction_type": "click",
-      "likely_purpose": "Navigate to home page",
-      "context_needed": [],
-      "code_patterns": [
-        "href=\"/\""
+        "onClick={toggleMobileMenu}"
       ],
       "actual_values": []
     }
@@ -464,7 +420,7 @@
           "[data-product]"
         ],
         "extract_fields": [
-          "product_id"
+          "product-id"
         ],
         "sibling_context": [],
         "data_attributes": [
@@ -475,7 +431,8 @@
         "updates_cart"
       ],
       "triggers_events": [
-        "api_call"
+        "api_call",
+        "state_update"
       ]
     },
     {
@@ -486,7 +443,7 @@
           "[data-product]"
         ],
         "extract_fields": [
-          "product_id"
+          "product-id"
         ],
         "sibling_context": [],
         "data_attributes": [
@@ -508,7 +465,7 @@
           ".cart-item"
         ],
         "extract_fields": [
-          "product_id",
+          "product-id",
           "quantity"
         ],
         "sibling_context": [],
@@ -520,7 +477,8 @@
         "updates_cart"
       ],
       "triggers_events": [
-        "api_call"
+        "api_call",
+        "state_update"
       ]
     },
     {
@@ -530,7 +488,7 @@
           ".cart-item"
         ],
         "extract_fields": [
-          "product_id"
+          "product-id"
         ],
         "sibling_context": [],
         "data_attributes": [
@@ -541,24 +499,26 @@
         "updates_cart"
       ],
       "triggers_events": [
-        "api_call"
+        "api_call",
+        "state_update"
       ]
     },
     {
       "component": "ClearCartButton",
       "context_collection": {
         "search_parents": [
-          ".cart"
+          "form.cart"
         ],
         "extract_fields": [],
         "sibling_context": [],
         "data_attributes": []
       },
       "state_changes": [
-        "updates_cart"
+        "clears_cart"
       ],
       "triggers_events": [
-        "api_call"
+        "api_call",
+        "state_update"
       ]
     },
     {
@@ -575,11 +535,11 @@
         "data_attributes": []
       },
       "state_changes": [
-        "navigates_to"
+        "updates_user"
       ],
       "triggers_events": [
-        "form_submit",
-        "api_call"
+        "api_call",
+        "state_update"
       ]
     },
     {
@@ -598,11 +558,11 @@
         "data_attributes": []
       },
       "state_changes": [
-        "navigates_to"
+        "updates_user"
       ],
       "triggers_events": [
-        "form_submit",
-        "api_call"
+        "api_call",
+        "state_update"
       ]
     },
     {
@@ -626,11 +586,11 @@
         "data_attributes": []
       },
       "state_changes": [
-        "navigates_to"
+        "updates_order"
       ],
       "triggers_events": [
-        "form_submit",
-        "api_call"
+        "api_call",
+        "state_update"
       ]
     },
     {
@@ -650,11 +610,11 @@
         "data_attributes": []
       },
       "state_changes": [
-        "navigates_to"
+        "updates_order"
       ],
       "triggers_events": [
-        "form_submit",
-        "api_call"
+        "api_call",
+        "state_update"
       ]
     },
     {
@@ -664,7 +624,10 @@
           ".login-form"
         ],
         "extract_fields": [],
-        "sibling_context": [],
+        "sibling_context": [
+          "input[name='email']",
+          "input[name='password']"
+        ],
         "data_attributes": []
       },
       "state_changes": [
@@ -687,84 +650,28 @@
         "data_attributes": []
       },
       "state_changes": [
-        "updates_carousel"
+        "updates_slide"
       ],
       "triggers_events": [
         "state_update"
       ]
     },
     {
-      "component": "ProductLink",
+      "component": "NavigationMenu",
       "context_collection": {
         "search_parents": [
-          ".product-card"
-        ],
-        "extract_fields": [
-          "product_id"
-        ],
-        "sibling_context": [],
-        "data_attributes": [
-          "data-product-id"
-        ]
-      },
-      "state_changes": [
-        "navigates_to"
-      ],
-      "triggers_events": [
-        "navigation"
-      ]
-    },
-    {
-      "component": "LogoutButton",
-      "context_collection": {
-        "search_parents": [
-          ".header"
+          ".nav-menu",
+          ".nav-menu-toggle"
         ],
         "extract_fields": [],
         "sibling_context": [],
         "data_attributes": []
       },
       "state_changes": [
-        "navigates_to"
+        "toggles_menu"
       ],
       "triggers_events": [
-        "api_call",
         "state_update"
-      ]
-    },
-    {
-      "component": "ContinueShoppingButton",
-      "context_collection": {
-        "search_parents": [
-          ".cart-empty",
-          ".checkout-empty"
-        ],
-        "extract_fields": [],
-        "sibling_context": [],
-        "data_attributes": []
-      },
-      "state_changes": [
-        "navigates_to"
-      ],
-      "triggers_events": [
-        "navigation"
-      ]
-    },
-    {
-      "component": "BackToHomeButton",
-      "context_collection": {
-        "search_parents": [
-          ".checkout-success"
-        ],
-        "extract_fields": [],
-        "sibling_context": [],
-        "data_attributes": []
-      },
-      "state_changes": [
-        "navigates_to"
-      ],
-      "triggers_events": [
-        "navigation"
       ]
     }
   ]

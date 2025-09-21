@@ -2,7 +2,7 @@
 export interface PageViewEvent {
   app_key: string;
   session_id: string;
-  user_id: string | null;
+  user_id: string;
   ts: string;
   page_url: string;
   page_title?: string;
@@ -14,10 +14,10 @@ export interface PageViewEvent {
 export interface ElementClickEvent {
   app_key: string;
   session_id: string;
-  user_id: string | null;
+  user_id: string;
   ts: string;
   element_text: string;
-  element_type: 'button' | 'selector' | 'form' | 'custom' | 'link';
+  element_type: 'button' | 'selector' | 'form' | 'custom';
   element_id?: string;
   element_class?: string;
   element_location?: string;
@@ -30,7 +30,7 @@ export interface ElementClickEvent {
 export interface SelectionChangeEvent {
   app_key: string;
   session_id: string;
-  user_id: string | null;
+  user_id: string;
   ts: string;
   selection_type: string;
   selection_value: string;
@@ -44,7 +44,7 @@ export interface SelectionChangeEvent {
 export interface FormStartedEvent {
   app_key: string;
   session_id: string;
-  user_id: string | null;
+  user_id: string;
   ts: string;
   form_name: string;
   form_id?: string;
@@ -57,7 +57,7 @@ export interface FormStartedEvent {
 export interface FormSubmittedEvent {
   app_key: string;
   session_id: string;
-  user_id: string | null;
+  user_id: string;
   ts: string;
   form_name: string;
   form_id?: string;
@@ -73,7 +73,7 @@ export interface FormSubmittedEvent {
 export interface ScrollDepthEvent {
   app_key: string;
   session_id: string;
-  user_id: string | null;
+  user_id: string;
   ts: string;
   depth_percent: number;
   page_height?: number;

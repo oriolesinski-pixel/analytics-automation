@@ -255,7 +255,7 @@ export class AnalyticsIntelligenceGenerator {
 
         // Phase 3: Generate optimized events schema
         const events = await this.generateEventsFromAnalysis(discovery, behaviors);
-        
+
         // Phase 4: Create UI graph
         const uiGraph = await this.generateUIGraphWithAI(input, discovery, behaviors);
 
@@ -421,7 +421,7 @@ Make selectors SPECIFIC to avoid matching everything.`;
 
             const content = response.content[0].type === 'text' ? response.content[0].text : '';
             const parsed = this.extractJSON(content);
-            
+
             return parsed as ComponentDiscovery;
         } catch (error) {
             console.error('❌ Component discovery failed:', error);
@@ -433,7 +433,7 @@ Make selectors SPECIFIC to avoid matching everything.`;
      * AI-driven behavior analysis
      */
     private async analyzeBehaviorsWithAI(
-        input: GeneratorInput, 
+        input: GeneratorInput,
         discovery: ComponentDiscovery
     ): Promise<BehaviorAnalysis> {
         if (!input.files || discovery.components.length === 0) {
@@ -491,7 +491,7 @@ Return behavior patterns as JSON:
 
             const content = response.content[0].type === 'text' ? response.content[0].text : '';
             const parsed = this.extractJSON(content);
-            
+
             return parsed as BehaviorAnalysis;
         } catch (error) {
             console.error('❌ Behavior analysis failed:', error);
@@ -559,7 +559,7 @@ Return behavior patterns as JSON:
 
         // Add discovered interaction-specific events
         const interactionTypes = new Set(discovery.components.map(c => c.interaction_type));
-        
+
         if (interactionTypes.has('submit') || discovery.framework === 'react') {
             events.push(
                 {
@@ -629,10 +629,10 @@ Return behavior patterns as JSON:
         // Create simplified page entries without component lists
         routes.forEach((route: string) => {
             const pageName = this.routeToPageName(route);
-            
+
             // Determine which types of widgets/modals might be on this page based on route
             const pageType = this.determinePageType(route);
-            
+
             pages[pageName] = {
                 route,
                 page_type: pageType,
@@ -678,8 +678,8 @@ Return behavior patterns as JSON:
      */
     private getWidgetsForPageType(pageType: string): string[] {
         const widgets: string[] = ['header', 'footer'];
-        
-        switch(pageType) {
+
+        switch (pageType) {
             case 'home':
                 widgets.push('product_carousel', 'featured_products', 'search_bar');
                 break;
@@ -699,7 +699,7 @@ Return behavior patterns as JSON:
                 widgets.push('wishlist_grid');
                 break;
         }
-        
+
         return widgets;
     }
 
@@ -708,7 +708,7 @@ Return behavior patterns as JSON:
      */
     private getModalsForPageType(pageType: string): string[] {
         const modals: string[] = [];
-        
+
         if (pageType === 'product_detail') {
             modals.push('size_guide', 'quick_view');
         }
@@ -718,7 +718,7 @@ Return behavior patterns as JSON:
         if (pageType === 'auth') {
             modals.push('forgot_password');
         }
-        
+
         return modals;
     }
 
@@ -727,7 +727,7 @@ Return behavior patterns as JSON:
      */
     private identifyGlobalWidgets(discovery: ComponentDiscovery): string[] {
         const widgets = new Set<string>();
-        
+
         discovery.components.forEach(comp => {
             if (comp.name.toLowerCase().includes('header')) widgets.add('header');
             if (comp.name.toLowerCase().includes('footer')) widgets.add('footer');
@@ -735,7 +735,7 @@ Return behavior patterns as JSON:
             if (comp.name.toLowerCase().includes('search')) widgets.add('search_bar');
             if (comp.name.toLowerCase().includes('cart') && comp.type === 'icon') widgets.add('cart_icon');
         });
-        
+
         return Array.from(widgets);
     }
 
@@ -744,13 +744,13 @@ Return behavior patterns as JSON:
      */
     private identifyModals(discovery: ComponentDiscovery): string[] {
         const modals = new Set<string>();
-        
+
         discovery.components.forEach(comp => {
             if (comp.name.toLowerCase().includes('modal')) modals.add(comp.name);
             if (comp.name.toLowerCase().includes('dialog')) modals.add(comp.name);
             if (comp.name.toLowerCase().includes('popup')) modals.add(comp.name);
         });
-        
+
         return Array.from(modals);
     }
 
@@ -770,7 +770,7 @@ Return behavior patterns as JSON:
                 required_fields: {
                     app_key: { type: 'string', source: 'config' },
                     session_id: { type: 'string', source: 'sessionStorage' },
-                    user_id: { type: 'string', source: 'context', nullable: true },
+                    user_id: { type: 'string', source: 'context', nullable: false, description: '8-10 digit integer ID' },
                     ts: { type: 'timestamp', source: 'generated' }
                 },
                 events: events.map(e => ({
@@ -797,10 +797,10 @@ Return behavior patterns as JSON:
     }
 
     /**
-     * Generate AI-enhanced tracker with discovered patterns
+     * Generate AI-enhanced tracker with user ID management
      */
     private generateAIEnhancedTracker(
-        appKey: string, 
+        appKey: string,
         endpoint: string,
         analysis: ProgressiveAnalysis
     ): string {
@@ -828,6 +828,104 @@ Return behavior patterns as JSON:
   }
 }(typeof self !== 'undefined' ? self : this, function() {
   
+  // ============ USER ID GENERATOR ============
+  class UserIdGenerator {
+    constructor() {
+      this.STORAGE_KEY = 'analytics_user_id';
+      this.userId = null;
+    }
+
+    init() {
+      this.userId = this.getOrCreateUserId();
+      return this.userId;
+    }
+
+    getOrCreateUserId() {
+      // Try to get existing user ID from storage
+      let userId = this.getFromStorage();
+      
+      if (!userId) {
+        // Generate new 8-10 digit integer ID
+        userId = this.generateUserId();
+        this.saveToStorage(userId);
+      }
+      
+      return userId;
+    }
+
+generateUserId() {
+      // Generate a random 8-10 digit integer
+      const min = 10000000;   // 8 digits minimum
+      const max = 9999999999;  // 10 digits maximum
+      
+      if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        // Use crypto for better randomness
+        const array = new Uint32Array(1);
+        crypto.getRandomValues(array);
+        
+        // Scale the random value to our range
+        const randomNum = min + (array[0] % (max - min + 1));
+        return Math.abs(randomNum).toString();
+      }
+      
+      // Fallback for older browsers
+      const randomNum = min + Math.floor(Math.random() * (max - min + 1));
+      return randomNum.toString();
+    }
+
+    getFromStorage() {
+      // Try multiple storage methods for resilience
+      try {
+        // Try localStorage first (most persistent)
+        const localStorageId = localStorage.getItem(this.STORAGE_KEY);
+        if (localStorageId) return localStorageId;
+      } catch (e) {
+        console.debug('localStorage not available');
+      }
+      
+      try {
+        // Try cookies
+        const cookieMatch = document.cookie.match(new RegExp('(^| )' + this.STORAGE_KEY + '=([^;]+)'));
+        if (cookieMatch) return cookieMatch[2];
+      } catch (e) {
+        console.debug('Cookies not available');
+      }
+      
+      try {
+        // Fallback to sessionStorage (least persistent)
+        return sessionStorage.getItem(this.STORAGE_KEY);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    saveToStorage(userId) {
+      // Save to multiple storage locations for resilience
+      try {
+        localStorage.setItem(this.STORAGE_KEY, userId);
+        localStorage.setItem(this.STORAGE_KEY + '_created', new Date().toISOString());
+      } catch (e) {
+        console.debug('localStorage write failed');
+      }
+      
+      try {
+        // Set cookie with 1 year expiration
+        const expires = new Date();
+        expires.setFullYear(expires.getFullYear() + 1);
+        document.cookie = this.STORAGE_KEY + '=' + userId + '; expires=' + expires.toUTCString() + '; path=/; SameSite=Lax';
+      } catch (e) {
+        console.debug('Cookie write failed');
+      }
+      
+      try {
+        sessionStorage.setItem(this.STORAGE_KEY, userId);
+      } catch (e) {
+        console.debug('sessionStorage write failed');
+      }
+    }
+  }
+  
+  // ============ MAIN ANALYTICS TRACKER ============
   class AnalyticsTracker {
     constructor() {
       this.config = {
@@ -839,7 +937,8 @@ Return behavior patterns as JSON:
       
       this.eventQueue = [];
       this.sessionId = this.getOrCreateSession();
-      this.userId = null;
+      this.userIdGenerator = new UserIdGenerator();
+      this.userId = this.userIdGenerator.init();
       this.pageLoadTime = Date.now();
       this.maxScrollDepth = 0;
       this.formTracking = new WeakMap();
@@ -887,6 +986,7 @@ Return behavior patterns as JSON:
     initAutoTracking() {
       console.log('🤖 AI-Enhanced Analytics initialized for ${appKey}');
       console.log('📊 Tracking ${analysis.discovery.components.length} discovered components');
+      console.log('🔑 User ID:', this.userId);
       
       this.trackPageView();
       this.trackAllClicks();
@@ -1311,8 +1411,12 @@ Return behavior patterns as JSON:
     }
 
     identify(userId, traits = {}) {
-      this.userId = userId;
-      this.trackEvent('identify', { user_id: userId, traits });
+      // Update the user ID if explicitly identified
+      if (userId) {
+        this.userId = userId;
+        this.userIdGenerator.saveToStorage(userId);
+      }
+      this.trackEvent('identify', { user_id: this.userId, traits });
     }
 
     flush() {
@@ -1339,7 +1443,7 @@ Return behavior patterns as JSON:
   // Auto-initialize
   if (typeof window !== 'undefined' && !window.analytics) {
     window.analytics = new AnalyticsTracker();
-    console.log('✅ AI-Enhanced Analytics tracker initialized');
+    console.log('✅ AI-Enhanced Analytics tracker with User ID initialized');
   }
 
   return AnalyticsTracker;
@@ -1355,14 +1459,14 @@ Return behavior patterns as JSON:
         if (jsonMatch) {
             return JSON.parse(jsonMatch[1]);
         }
-        
+
         // Try to find raw JSON
         const jsonStart = content.indexOf('{');
         const jsonEnd = content.lastIndexOf('}') + 1;
         if (jsonStart >= 0 && jsonEnd > jsonStart) {
             return JSON.parse(content.slice(jsonStart, jsonEnd));
         }
-        
+
         throw new Error('No valid JSON found in response');
     }
 
@@ -1729,7 +1833,7 @@ declare global {
             return `export interface ${eventName}Event {
   app_key: string;
   session_id: string;
-  user_id: string | null;
+  user_id: string;
   ts: string;
 ${properties}
 }`;
@@ -1762,7 +1866,7 @@ declare global {
     }
 
     private generateIntegrationGuide(
-        appKey: string, 
+        appKey: string,
         events: EventSchema[],
         analysis: ProgressiveAnalysis
     ): string {
@@ -1788,6 +1892,14 @@ Just add this single line to your HTML:
 
 **That's it!** The AI-enhanced tracker automatically adapts to your components.
 
+## 🔑 User ID System
+
+The tracker automatically generates and persists user IDs:
+- **Format:** 8-10 digit integer (e.g., 87654321)
+- **Persistence:** 1-2 years across sessions
+- **Storage:** localStorage, cookies, and sessionStorage for resilience
+- **Privacy:** No personal information, just anonymous integers
+
 ## ✨ Auto-Tracked Events
 
 ### 📊 User Interactions
@@ -1812,15 +1924,16 @@ ${optionalProps.length > 0 ? `**Optional:** ${optionalProps.join(', ')}` : ''}`;
 ## 🔑 AI-Powered Context Collection
 
 The tracker uses AI-discovered patterns to collect relevant context:
-${analysis.behaviors.patterns.slice(0, 3).map(p => 
-    `- **${p.component}**: Collects ${p.context_collection.extract_fields?.join(', ') || 'contextual data'}`
-).join('\n')}
+${analysis.behaviors.patterns.slice(0, 3).map(p =>
+            `- **${p.component}**: Collects ${p.context_collection.extract_fields?.join(', ') || 'contextual data'}`
+        ).join('\n')}
 
 ## 🧪 Testing Your Integration
 
 1. **Open Browser Console**
    - Look for: "🤖 AI-Enhanced Analytics initialized"
    - Check: "📊 Tracking X discovered components"
+   - See: "🔑 User ID: [8-10 digit number]"
 
 2. **Interact With Components**
    - The AI recognizes your specific components
@@ -1828,12 +1941,13 @@ ${analysis.behaviors.patterns.slice(0, 3).map(p =>
 
 3. **Monitor Network**
    - Filter by: \`/ingest/analytics\`
-   - See AI-enhanced event data
+   - See AI-enhanced event data with user IDs
 
 ## 🎯 What Makes This Special?
 
 - **AI-Powered** - Understands your specific components
 - **Zero Configuration** - Just add the script
+- **Smart User Tracking** - Persistent 8-10 digit user IDs
 - **Adaptive** - Learns from your code patterns
 - **Framework Aware** - Optimized for ${analysis.discovery.framework}
 - **Context Smart** - Collects relevant data automatically

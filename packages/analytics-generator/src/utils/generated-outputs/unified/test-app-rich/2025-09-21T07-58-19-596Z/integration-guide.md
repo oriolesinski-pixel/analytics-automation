@@ -1,11 +1,11 @@
-# AI-Enhanced Analytics Integration Guide for test-app-rich-1758388507977
+# AI-Enhanced Analytics Integration Guide for test-app-rich-1758441478000
 
 ## 🤖 AI-Discovered Components
 
 The AI analyzed your application and found:
 - **Framework:** react
-- **Interactive Components:** 15
-- **Behavior Patterns:** 15
+- **Interactive Components:** 12
+- **Behavior Patterns:** 12
 
 ### Discovered Components:
 - **AddToCartButton** (button): Add product to cart
@@ -19,10 +19,7 @@ The AI analyzed your application and found:
 - **PaymentForm** (form): Process payment
 - **TestCredentialsButton** (button): Prefill login form with test credentials
 - **Carousel** (custom): Navigate carousel slides
-- **ProductLink** (link): Navigate to product details page
-- **LogoutButton** (button): Log out user
-- **ContinueShoppingButton** (button): Navigate to product listing page
-- **BackToHomeButton** (button): Navigate to home page
+- **NavigationMenu** (custom): Toggle mobile navigation menu
 
 ## 🚀 One-Line Setup
 
@@ -33,6 +30,14 @@ Just add this single line to your HTML:
 ```
 
 **That's it!** The AI-enhanced tracker automatically adapts to your components.
+
+## 🔑 User ID System
+
+The tracker automatically generates and persists user IDs:
+- **Format:** 8-10 digit integer (e.g., 87654321)
+- **Persistence:** 1-2 years across sessions
+- **Storage:** localStorage, cookies, and sessionStorage for resilience
+- **Privacy:** No personal information, just anonymous integers
 
 ## ✨ Auto-Tracked Events
 
@@ -74,15 +79,16 @@ Just add this single line to your HTML:
 ## 🔑 AI-Powered Context Collection
 
 The tracker uses AI-discovered patterns to collect relevant context:
-- **AddToCartButton**: Collects product_id
-- **WishlistButton**: Collects product_id
-- **QuantitySelector**: Collects product_id, quantity
+- **AddToCartButton**: Collects product-id
+- **WishlistButton**: Collects product-id
+- **QuantitySelector**: Collects product-id, quantity
 
 ## 🧪 Testing Your Integration
 
 1. **Open Browser Console**
    - Look for: "🤖 AI-Enhanced Analytics initialized"
    - Check: "📊 Tracking X discovered components"
+   - See: "🔑 User ID: [8-10 digit number]"
 
 2. **Interact With Components**
    - The AI recognizes your specific components
@@ -90,17 +96,18 @@ The tracker uses AI-discovered patterns to collect relevant context:
 
 3. **Monitor Network**
    - Filter by: `/ingest/analytics`
-   - See AI-enhanced event data
+   - See AI-enhanced event data with user IDs
 
 ## 🎯 What Makes This Special?
 
 - **AI-Powered** - Understands your specific components
 - **Zero Configuration** - Just add the script
+- **Smart User Tracking** - Persistent 8-10 digit user IDs
 - **Adaptive** - Learns from your code patterns
 - **Framework Aware** - Optimized for react
 - **Context Smart** - Collects relevant data automatically
 
 ---
 
-**Generated:** 2025-09-20T17:15:34.834Z
+**Generated:** 2025-09-21T07:58:19.592Z
 **AI Model:** Claude 3 Haiku
