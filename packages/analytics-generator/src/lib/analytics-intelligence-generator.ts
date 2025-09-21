@@ -35,15 +35,15 @@ const CONFIG = {
     LLM_MAX_TOKENS: 4096
 };
 
-// Required fields that MUST be in every event
-const REQUIRED_FIELDS = ['app_key', 'session_id', 'user_id', 'ts'] as const;
+// Required base fields that MUST be in every event
+const REQUIRED_BASE_FIELDS = ['id', 'ts', 'app_key', 'session_id', 'user_id', 'event_type'] as const;
 
 interface EventSchema {
-    name: string;
-    required: string[];
-    optional: string[];
+    event_type: string;
+    data_fields: {
+        required: string[];
+    };
     properties?: Record<string, any>;
-    possible_values?: Record<string, string[]>;
 }
 
 interface FileContent {
@@ -227,13 +227,10 @@ export class AnalyticsIntelligenceGenerator {
         // Step 3: Progressive AI Analysis
         const analysis = await this.performProgressiveAnalysis(input);
 
-        // Step 4: Ensure required fields in all events
-        const eventsWithRequiredFields = this.ensureRequiredFields(analysis.events);
+        // Step 4: Generate implementation with AI insights
+        const output = await this.generateImplementation(input, analysis.events, analysis);
 
-        // Step 5: Generate implementation with AI insights
-        const output = await this.generateImplementation(input, eventsWithRequiredFields, analysis);
-
-        // Step 6: Save to both cloud and local storage
+        // Step 5: Save to both cloud and local storage
         await this.saveOutput(output, input.repoId, input.appKey);
 
         return output;
@@ -500,117 +497,87 @@ Return behavior patterns as JSON:
     }
 
     /**
-     * Generate events schema from AI analysis
+     * Generate events schema from AI analysis with new format
      */
     private async generateEventsFromAnalysis(
         discovery: ComponentDiscovery,
         behaviors: BehaviorAnalysis
     ): Promise<EventSchema[]> {
-        // Always include base events
         const events: EventSchema[] = [
             {
-                name: 'page_view',
-                required: ['app_key', 'session_id', 'user_id', 'ts', 'page_url'],
-                optional: ['page_title', 'referrer', 'query_params', 'hash'],
-                properties: {
-                    page_url: 'string',
-                    page_title: 'string',
-                    referrer: 'string',
-                    query_params: 'string',
-                    hash: 'string'
+                event_type: 'PAGE_VIEW',
+                data_fields: {
+                    required: ['url', 'path', 'title', 'referrer', 'is_first_view', 'entry_type']
                 },
-                possible_values: {}
+                properties: {
+                    url: 'string',
+                    path: 'string',
+                    title: 'string',
+                    referrer: 'string | null',
+                    is_first_view: 'boolean',
+                    entry_type: '"navigation" | "reload" | "back_forward" | "spa_transition"'
+                }
             },
             {
-                name: 'element_click',
-                required: ['app_key', 'session_id', 'user_id', 'ts', 'element_text', 'element_type'],
-                optional: ['element_id', 'element_class', 'element_location', 'context', 'component_name', 'page_title', 'page_url'],
+                event_type: 'BUTTON_CLICK',
+                data_fields: {
+                    required: ['element_text', 'element_id', 'element_type', 'surface', 'page_path', 'is_primary_cta', 'cta_category']
+                },
                 properties: {
                     element_text: 'string',
-                    element_type: 'string',
-                    element_id: 'string',
-                    element_class: 'string',
-                    element_location: 'string',
-                    component_name: 'string',
-                    context: 'object',
-                    page_title: 'string',
-                    page_url: 'string'
-                },
-                possible_values: {
-                    element_type: Array.from(new Set(discovery.components.map(c => c.type)))
+                    element_id: 'string | null',
+                    element_type: '"button" | "link" | "icon" | "tab"',
+                    surface: 'string',
+                    page_path: 'string',
+                    is_primary_cta: 'boolean',
+                    cta_category: '"conversion" | "navigation" | "engagement"'
                 }
             },
             {
-                name: 'selection_change',
-                required: ['app_key', 'session_id', 'user_id', 'ts', 'selection_type', 'selection_value'],
-                optional: ['selection_name', 'previous_value', 'component_name', 'page_title', 'page_url'],
-                properties: {
-                    selection_type: 'string',
-                    selection_value: 'string',
-                    selection_name: 'string',
-                    previous_value: 'string',
-                    component_name: 'string',
-                    page_title: 'string',
-                    page_url: 'string'
+                event_type: 'FORM_INTERACTION',
+                data_fields: {
+                    required: ['action', 'form_name', 'form_id', 'form_type', 'surface', 'page_path', 'fields_total', 'fields_completed']
                 },
-                possible_values: {}
+                properties: {
+                    action: '"started" | "submitted" | "abandoned"',
+                    form_name: 'string',
+                    form_id: 'string | null',
+                    form_type: '"contact" | "signup" | "login" | "checkout" | "newsletter" | "other"',
+                    surface: 'string',
+                    page_path: 'string',
+                    fields_total: 'number',
+                    fields_completed: 'number'
+                }
+            },
+            {
+                event_type: 'ELEMENT_VISIBILITY',
+                data_fields: {
+                    required: ['action', 'element_type', 'element_name', 'element_id', 'trigger_source', 'page_path', 'has_cta']
+                },
+                properties: {
+                    action: '"shown" | "hidden" | "dismissed"',
+                    element_type: '"modal" | "popup" | "drawer" | "tooltip" | "dropdown" | "toast" | "unknown"',
+                    element_name: 'string',
+                    element_id: 'string | null',
+                    trigger_source: '"button_click" | "auto_trigger" | "scroll_trigger" | "unknown"',
+                    page_path: 'string',
+                    has_cta: 'boolean'
+                }
+            },
+            {
+                event_type: 'SCROLL_INTERACTION',
+                data_fields: {
+                    required: ['action', 'depth_percentage', 'milestone', 'page_path', 'direction']
+                },
+                properties: {
+                    action: '"depth_reached"',
+                    depth_percentage: 'number',
+                    milestone: '"25%" | "50%" | "75%" | "90%" | "100%" | "none"',
+                    page_path: 'string',
+                    direction: '"up" | "down"'
+                }
             }
         ];
-
-        // Add discovered interaction-specific events
-        const interactionTypes = new Set(discovery.components.map(c => c.interaction_type));
-
-        if (interactionTypes.has('submit') || discovery.framework === 'react') {
-            events.push(
-                {
-                    name: 'form_started',
-                    required: ['app_key', 'session_id', 'user_id', 'ts', 'form_name', 'page_title'],
-                    optional: ['form_id', 'first_field_focused', 'context', 'page_url'],
-                    properties: {
-                        form_name: 'string',
-                        form_id: 'string',
-                        first_field_focused: 'string',
-                        context: 'object',
-                        page_title: 'string',
-                        page_url: 'string'
-                    },
-                    possible_values: {}
-                },
-                {
-                    name: 'form_submitted',
-                    required: ['app_key', 'session_id', 'user_id', 'ts', 'form_name', 'success', 'page_title'],
-                    optional: ['form_id', 'error_message', 'duration_seconds', 'fields_interacted', 'context', 'page_url'],
-                    properties: {
-                        form_name: 'string',
-                        form_id: 'string',
-                        success: 'boolean',
-                        duration_seconds: 'number',
-                        fields_interacted: 'number',
-                        error_message: 'string',
-                        context: 'object',
-                        page_title: 'string',
-                        page_url: 'string'
-                    },
-                    possible_values: {}
-                }
-            );
-        }
-
-        // Always add scroll depth
-        events.push({
-            name: 'scroll_depth',
-            required: ['app_key', 'session_id', 'user_id', 'ts', 'depth_percent', 'page_title'],
-            optional: ['page_height', 'viewport_height', 'time_on_page_seconds', 'page_url'],
-            properties: {
-                depth_percent: 'number',
-                page_height: 'number',
-                viewport_height: 'number',
-                time_on_page_seconds: 'number',
-                page_title: 'string',
-                page_url: 'string'
-            },
-            possible_values: {}
-        });
 
         return events;
     }
@@ -639,10 +606,10 @@ Return behavior patterns as JSON:
                 widgets: this.getWidgetsForPageType(pageType),
                 modals: this.getModalsForPageType(pageType),
                 can_navigate_to: routes.filter((r: string) => r !== route).map((r: string) => this.routeToPageName(r)),
-                events: ['page_view', 'element_click', 'selection_change', 'scroll_depth'],
+                events: ['PAGE_VIEW', 'BUTTON_CLICK', 'FORM_INTERACTION', 'SCROLL_INTERACTION'],
                 ai_insights: {
                     framework: discovery.framework,
-                    interaction_types: Array.from(new Set(discovery.components.map(c => c.interaction_type))),
+                    interaction_types: Array.from(new Set(discovery.components.map((c: any) => c.interaction_type))),
                     has_forms: pageType.includes('auth') || pageType.includes('checkout'),
                     has_product_interactions: pageType.includes('product') || route === '/'
                 }
@@ -728,7 +695,7 @@ Return behavior patterns as JSON:
     private identifyGlobalWidgets(discovery: ComponentDiscovery): string[] {
         const widgets = new Set<string>();
 
-        discovery.components.forEach(comp => {
+        discovery.components.forEach((comp: any) => {
             if (comp.name.toLowerCase().includes('header')) widgets.add('header');
             if (comp.name.toLowerCase().includes('footer')) widgets.add('footer');
             if (comp.name.toLowerCase().includes('nav')) widgets.add('navigation');
@@ -745,7 +712,7 @@ Return behavior patterns as JSON:
     private identifyModals(discovery: ComponentDiscovery): string[] {
         const modals = new Set<string>();
 
-        discovery.components.forEach(comp => {
+        discovery.components.forEach((comp: any) => {
             if (comp.name.toLowerCase().includes('modal')) modals.add(comp.name);
             if (comp.name.toLowerCase().includes('dialog')) modals.add(comp.name);
             if (comp.name.toLowerCase().includes('popup')) modals.add(comp.name);
@@ -767,18 +734,18 @@ Return behavior patterns as JSON:
         return {
             'tracker.js': this.generateAIEnhancedTracker(input.appKey, backend, analysis),
             'events-schema.json': {
-                required_fields: {
+                base_fields: {
+                    id: { type: 'string', format: 'uuid', source: 'generated' },
+                    ts: { type: 'number', format: 'unix_timestamp', source: 'generated' },
                     app_key: { type: 'string', source: 'config' },
                     session_id: { type: 'string', source: 'sessionStorage' },
-                    user_id: { type: 'string', source: 'context', nullable: false, description: '8-10 digit integer ID' },
-                    ts: { type: 'timestamp', source: 'generated' }
+                    user_id: { type: 'string', source: 'persistent_storage', description: '8-10 digit string' },
+                    event_type: { type: 'string', source: 'code' }
                 },
                 events: events.map(e => ({
-                    type: e.name,
-                    required: e.required,
-                    optional: e.optional,
-                    properties: e.properties || {},
-                    possible_values: e.possible_values || {}
+                    event_type: e.event_type,
+                    data_fields: e.data_fields.required,
+                    properties: e.properties || {}
                 })),
                 ai_components: analysis.discovery.components,
                 ai_patterns: analysis.behaviors.patterns
@@ -797,7 +764,7 @@ Return behavior patterns as JSON:
     }
 
     /**
-     * Generate AI-enhanced tracker with user ID management
+     * Generate AI-enhanced tracker with user ID management and new event schema
      */
     private generateAIEnhancedTracker(
         appKey: string,
@@ -805,8 +772,8 @@ Return behavior patterns as JSON:
         analysis: ProgressiveAnalysis
     ): string {
         // Generate component detectors from AI analysis
-        const componentDetectors = analysis.discovery.components.map(comp => {
-            const pattern = analysis.behaviors.patterns.find(p => p.component === comp.name);
+        const componentDetectors = analysis.discovery.components.map((comp: any) => {
+            const pattern = analysis.behaviors.patterns.find((p: any) => p.component === comp.name);
             return `
         {
             name: '${comp.name}',
@@ -853,7 +820,7 @@ Return behavior patterns as JSON:
       return userId;
     }
 
-generateUserId() {
+    generateUserId() {
       // Generate a random 8-10 digit integer
       const min = 10000000;   // 8 digits minimum
       const max = 9999999999;  // 10 digits maximum
@@ -941,8 +908,13 @@ generateUserId() {
       this.userId = this.userIdGenerator.init();
       this.pageLoadTime = Date.now();
       this.maxScrollDepth = 0;
+      this.hasViewedPage = false;
+      this.scrollDirection = 'down';
+      this.lastScrollY = 0;
+      this.reachedMilestones = new Set();
       this.formTracking = new WeakMap();
       this.clickedElements = new WeakSet();
+      this.visibleElements = new WeakMap();
       this.pageContext = {};
       
       // AI-discovered component patterns
@@ -990,10 +962,10 @@ generateUserId() {
       
       this.trackPageView();
       this.trackAllClicks();
-      this.trackSelectionChanges();
       this.trackFormInteractions();
       this.trackScrollDepth();
       this.trackRouteChanges();
+      this.trackElementVisibility();
     }
 
     // Detect component using AI-discovered patterns
@@ -1012,82 +984,7 @@ generateUserId() {
       return null;
     }
 
-    // Collect context using AI-discovered patterns
-    collectContextWithAI(element, componentInfo) {
-      const context = {};
-      
-      if (!componentInfo || !componentInfo.contextCollection) {
-        return this.collectGenericContext(element);
-      }
-      
-      const collection = componentInfo.contextCollection;
-      
-      // Search parent containers
-      if (collection.search_parents) {
-        for (const parentSelector of collection.search_parents) {
-          const parent = element.closest(parentSelector);
-          if (parent) {
-            // Extract specified fields
-            if (collection.extract_fields) {
-              for (const field of collection.extract_fields) {
-                const value = parent.dataset[field] || 
-                             parent.querySelector(\`[data-\${field}]\`)?.dataset[field];
-                if (value) context[field] = value;
-              }
-            }
-            break;
-          }
-        }
-      }
-      
-      // Get sibling context
-      if (collection.sibling_context) {
-        const container = element.closest('.product, .card, form, section') || document.body;
-        for (const siblingSelector of collection.sibling_context) {
-          const sibling = container.querySelector(siblingSelector);
-          if (sibling) {
-            const contextKey = siblingSelector.includes('color') ? 'color' :
-                             siblingSelector.includes('size') ? 'size' :
-                             siblingSelector.includes('quantity') ? 'quantity' : 'value';
-            context[contextKey] = sibling.value || sibling.textContent || sibling.dataset.value;
-          }
-        }
-      }
-      
-      return Object.keys(context).length > 0 ? context : null;
-    }
-
-    // Fallback to generic context collection
-    collectGenericContext(element) {
-      const context = {};
-      const container = element.closest('.product, .product-card, .item, .card, form, section, article') || document.body;
-      
-      // Try common patterns
-      const patterns = {
-        color: ['[data-color].selected', 'input[name="color"]:checked', '[class*="color"][class*="active"]'],
-        size: ['[data-size].selected', 'input[name="size"]:checked', 'select[name="size"]'],
-        quantity: ['input[type="number"][name*="qty"]', 'input[type="number"][name*="quantity"]', 'select[name*="quantity"]'],
-        product_id: ['[data-product-id]', '[data-sku]', '[data-item-id]'],
-        price: ['[data-price]', '.price', '.product-price']
-      };
-      
-      for (const [key, selectors] of Object.entries(patterns)) {
-        for (const selector of selectors) {
-          const el = container.querySelector(selector);
-          if (el) {
-            const value = el.value || el.dataset[key.replace('_', '-')] || el.textContent?.trim();
-            if (value) {
-              context[key] = key === 'price' ? parseFloat(value.replace(/[^0-9.]/g, '')) : value;
-              break;
-            }
-          }
-        }
-      }
-      
-      return Object.keys(context).length > 0 ? context : null;
-    }
-
-    // Enhanced click tracking with AI component detection
+    // Enhanced click tracking with new BUTTON_CLICK event
     trackAllClicks() {
       document.addEventListener('click', (e) => {
         const target = e.target;
@@ -1109,153 +1006,17 @@ generateUserId() {
         if (clickable || componentInfo) {
           const element = clickable || target;
           
-          // Skip regular link handling if it's a link
-          if (element.tagName === 'A' && element.href && !componentInfo) {
-            this.trackLinkClick(element);
-            return;
-          }
-          
-          // Collect context with AI insights
-          const context = componentInfo 
-            ? this.collectContextWithAI(element, componentInfo)
-            : this.collectGenericContext(element);
-          
-          this.trackEvent('element_click', {
+          this.trackEvent('BUTTON_CLICK', {
             element_text: this.getElementText(element).slice(0, 100),
-            element_type: componentInfo?.type || this.getElementType(element),
-            component_name: componentInfo?.name || null,
-            component_purpose: componentInfo?.purpose || null,
             element_id: element.id || null,
-            element_class: element.className || null,
-            element_location: this.getElementLocation(element),
-            context: context,
-            page_title: document.title,
-            page_url: window.location.pathname
+            element_type: this.getButtonType(element),
+            surface: this.getSurface(element),
+            page_path: window.location.pathname,
+            is_primary_cta: this.isPrimaryCTA(element),
+            cta_category: this.getCTACategory(element, componentInfo)
           });
         }
       }, true);
-    }
-
-    trackSelectionChanges() {
-      document.addEventListener('click', (e) => {
-        const target = e.target;
-        const componentInfo = this.detectComponent(target);
-        
-        const isSelection = target.matches(\`
-          [data-color], [data-size], [data-variant], [data-option],
-          input[type="radio"], input[type="checkbox"]
-        \`) || componentInfo?.purpose === 'selection';
-        
-        if (isSelection) {
-          const selectionType = this.getSelectionType(target);
-          const selectionValue = this.getSelectionValue(target);
-          const selectionName = target.name || target.dataset.optionName || selectionType;
-          
-          const previousValue = this.pageContext[selectionName] || null;
-          this.pageContext[selectionName] = selectionValue;
-          
-          this.trackEvent('selection_change', {
-            selection_type: selectionType,
-            selection_value: selectionValue,
-            selection_name: selectionName,
-            previous_value: previousValue,
-            component_name: componentInfo?.name || null,
-            page_title: document.title,
-            page_url: window.location.pathname
-          });
-        }
-      });
-      
-      document.addEventListener('change', (e) => {
-        const target = e.target;
-        const componentInfo = this.detectComponent(target);
-        
-        if (target.tagName === 'SELECT' || target.tagName === 'INPUT') {
-          const selectionType = this.getSelectionType(target);
-          const selectionValue = target.value;
-          const selectionName = target.name || target.id || selectionType;
-          
-          const previousValue = this.pageContext[selectionName] || null;
-          this.pageContext[selectionName] = selectionValue;
-          
-          this.trackEvent('selection_change', {
-            selection_type: selectionType,
-            selection_value: selectionValue,
-            selection_name: selectionName,
-            previous_value: previousValue,
-            component_name: componentInfo?.name || null,
-            page_title: document.title,
-            page_url: window.location.pathname
-          });
-        }
-      });
-    }
-
-    trackLinkClick(link) {
-      const linkText = (link.innerText || link.getAttribute('aria-label') || 'Unknown').trim();
-      const linkHref = link.getAttribute('href') || '';
-      const isExternal = linkHref.startsWith('http') && !linkHref.includes(window.location.hostname);
-      const componentInfo = this.detectComponent(link);
-      const context = componentInfo 
-        ? this.collectContextWithAI(link, componentInfo)
-        : this.collectGenericContext(link);
-      
-      this.trackEvent('element_click', {
-        element_text: linkText.slice(0, 100),
-        element_type: 'link',
-        component_name: componentInfo?.name || null,
-        element_id: link.id || null,
-        element_class: link.className || null,
-        element_location: this.getElementLocation(link),
-        context: context,
-        link_href: linkHref,
-        is_external: isExternal,
-        page_title: document.title,
-        page_url: window.location.pathname
-      });
-    }
-
-    getSelectionType(element) {
-      if (element.dataset.color) return 'color';
-      if (element.dataset.size) return 'size';
-      if (element.dataset.variant) return 'variant';
-      
-      const name = (element.name || '').toLowerCase();
-      if (name.includes('color')) return 'color';
-      if (name.includes('size')) return 'size';
-      if (name.includes('variant')) return 'variant';
-      if (name.includes('quantity')) return 'quantity';
-      
-      return element.type === 'number' ? 'quantity' : 'other';
-    }
-
-    getSelectionValue(element) {
-      return element.value || 
-             element.dataset.value ||
-             element.textContent?.trim() ||
-             'unknown';
-    }
-
-    getElementText(element) {
-      return element.innerText || 
-             element.textContent ||
-             element.value ||
-             element.getAttribute('aria-label') ||
-             element.getAttribute('title') ||
-             'Unknown';
-    }
-
-    getElementType(element) {
-      if (element.tagName === 'BUTTON') return 'button';
-      if (element.tagName === 'A') return 'link';
-      if (element.tagName === 'INPUT') return element.type || 'input';
-      if (element.tagName === 'SVG' || element.querySelector('svg')) return 'icon';
-      return element.tagName.toLowerCase();
-    }
-
-    getElementLocation(element) {
-      const section = element.closest('header, main, footer, aside, nav, section');
-      return section ? section.tagName.toLowerCase() : 'unknown';
     }
 
     trackFormInteractions() {
@@ -1264,24 +1025,21 @@ generateUserId() {
         const form = field.closest('form');
         
         if (form && !this.formTracking.has(form)) {
-          const componentInfo = this.detectComponent(form);
-          const context = componentInfo 
-            ? this.collectContextWithAI(form, componentInfo)
-            : this.collectGenericContext(form);
-          
           this.formTracking.set(form, {
             started: true,
             startTime: Date.now(),
             fieldsInteracted: new Set()
           });
           
-          this.trackEvent('form_started', {
+          this.trackEvent('FORM_INTERACTION', {
+            action: 'started',
             form_name: this.getFormName(form),
             form_id: form.id || null,
-            first_field_focused: field.name || field.id || field.type,
-            context: context,
-            page_title: document.title,
-            page_url: window.location.pathname
+            form_type: this.getFormType(form),
+            surface: this.getSurface(form),
+            page_path: window.location.pathname,
+            fields_total: form.elements ? form.elements.length : 0,
+            fields_completed: 0
           });
         }
         
@@ -1294,53 +1052,116 @@ generateUserId() {
       document.addEventListener('submit', (e) => {
         const form = e.target;
         const tracking = this.formTracking.get(form);
-        const componentInfo = this.detectComponent(form);
-        const context = componentInfo 
-          ? this.collectContextWithAI(form, componentInfo)
-          : this.collectGenericContext(form);
         
-        this.trackEvent('form_submitted', {
+        this.trackEvent('FORM_INTERACTION', {
+          action: 'submitted',
           form_name: this.getFormName(form),
           form_id: form.id || null,
-          success: true,
-          duration_seconds: tracking ? Math.round((Date.now() - tracking.startTime) / 1000) : null,
-          fields_interacted: tracking ? tracking.fieldsInteracted.size : null,
-          context: context,
-          page_title: document.title,
-          page_url: window.location.pathname
+          form_type: this.getFormType(form),
+          surface: this.getSurface(form),
+          page_path: window.location.pathname,
+          fields_total: form.elements ? form.elements.length : 0,
+          fields_completed: tracking ? tracking.fieldsInteracted.size : 0
         });
         
         this.formTracking.delete(form);
       });
+
+      // Track form abandonment
+      window.addEventListener('beforeunload', () => {
+        this.formTracking.forEach((tracking, form) => {
+          if (tracking.started && Date.now() - tracking.startTime > 1000) {
+            this.trackEvent('FORM_INTERACTION', {
+              action: 'abandoned',
+              form_name: this.getFormName(form),
+              form_id: form.id || null,
+              form_type: this.getFormType(form),
+              surface: this.getSurface(form),
+              page_path: window.location.pathname,
+              fields_total: form.elements ? form.elements.length : 0,
+              fields_completed: tracking.fieldsInteracted.size
+            });
+          }
+        });
+      });
     }
 
-    getFormName(form) {
-      return form.getAttribute('name') || 
-             form.getAttribute('aria-label') ||
-             form.id ||
-             'form';
+    trackElementVisibility() {
+      // Track modal/popup/dialog visibility
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && 
+              (mutation.attributeName === 'class' || 
+               mutation.attributeName === 'style' || 
+               mutation.attributeName === 'aria-hidden')) {
+            
+            const element = mutation.target;
+            const isOverlay = this.isOverlayElement(element);
+            
+            if (isOverlay) {
+              const isVisible = this.isElementVisible(element);
+              const wasVisible = this.visibleElements.get(element);
+              
+              if (isVisible && !wasVisible) {
+                this.visibleElements.set(element, true);
+                this.trackEvent('ELEMENT_VISIBILITY', {
+                  action: 'shown',
+                  element_type: this.getOverlayType(element),
+                  element_name: this.getElementName(element),
+                  element_id: element.id || null,
+                  trigger_source: 'auto_trigger',
+                  page_path: window.location.pathname,
+                  has_cta: this.hasCallToAction(element)
+                });
+              } else if (!isVisible && wasVisible) {
+                this.visibleElements.set(element, false);
+                this.trackEvent('ELEMENT_VISIBILITY', {
+                  action: 'hidden',
+                  element_type: this.getOverlayType(element),
+                  element_name: this.getElementName(element),
+                  element_id: element.id || null,
+                  trigger_source: 'button_click',
+                  page_path: window.location.pathname,
+                  has_cta: this.hasCallToAction(element)
+                });
+              }
+            }
+          }
+        });
+      });
+
+      observer.observe(document.body, {
+        attributes: true,
+        subtree: true,
+        attributeFilter: ['class', 'style', 'aria-hidden']
+      });
     }
 
     trackScrollDepth() {
       let scrollTimer;
       
       const checkScrollDepth = () => {
+        const currentY = window.scrollY;
+        this.scrollDirection = currentY > this.lastScrollY ? 'down' : 'up';
+        this.lastScrollY = currentY;
+        
         const scrollPercent = Math.round(
           (window.scrollY + window.innerHeight) / document.body.scrollHeight * 100
         );
         
-        const milestones = [25, 50, 75, 100];
-        const milestone = milestones.find(m => m <= scrollPercent && m > this.maxScrollDepth);
+        const milestones = [25, 50, 75, 90, 100];
+        const milestone = milestones.find(m => 
+          m <= scrollPercent && !this.reachedMilestones.has(m)
+        );
         
         if (milestone) {
-          this.maxScrollDepth = milestone;
-          this.trackEvent('scroll_depth', {
-            depth_percent: milestone,
-            page_height: document.body.scrollHeight,
-            viewport_height: window.innerHeight,
-            time_on_page_seconds: Math.round((Date.now() - this.pageLoadTime) / 1000),
-            page_title: document.title,
-            page_url: window.location.pathname
+          this.reachedMilestones.add(milestone);
+          this.trackEvent('SCROLL_INTERACTION', {
+            action: 'depth_reached',
+            depth_percentage: milestone,
+            milestone: milestone + '%',
+            page_path: window.location.pathname,
+            direction: this.scrollDirection
           });
         }
       };
@@ -1359,6 +1180,7 @@ generateUserId() {
         originalPushState.apply(history, args);
         setTimeout(() => {
           this.pageContext = {};
+          this.reachedMilestones.clear();
           this.trackPageView();
         }, 0);
       };
@@ -1367,27 +1189,167 @@ generateUserId() {
         originalReplaceState.apply(history, args);
         setTimeout(() => {
           this.pageContext = {};
+          this.reachedMilestones.clear();
           this.trackPageView();
         }, 0);
       };
       
       window.addEventListener('popstate', () => {
         this.pageContext = {};
+        this.reachedMilestones.clear();
         this.trackPageView();
       });
     }
 
-    // ============ CORE METHODS ============
-    trackEvent(eventName, properties = {}) {
-      const event = {
-        name: eventName,
-        props: {
-          app_key: this.config.appKey,
-          session_id: this.sessionId,
-          user_id: this.userId,
-          ts: new Date().toISOString(),
-          ...properties
+    // ============ HELPER METHODS ============
+    getElementText(element) {
+      return element.innerText || 
+             element.textContent ||
+             element.value ||
+             element.getAttribute('aria-label') ||
+             element.getAttribute('title') ||
+             'Unknown';
+    }
+
+    getElementName(element) {
+      return element.getAttribute('aria-label') ||
+             element.getAttribute('title') ||
+             element.dataset.name ||
+             element.id ||
+             'unnamed';
+    }
+
+    getFormName(form) {
+      return form.getAttribute('name') || 
+             form.getAttribute('aria-label') ||
+             form.id ||
+             'form';
+    }
+
+    getEntryType() {
+      if (typeof performance !== 'undefined' && performance.getEntriesByType) {
+        const navType = performance.getEntriesByType('navigation')[0];
+        if (navType && navType.type) {
+          switch(navType.type) {
+            case 'reload': return 'reload';
+            case 'back_forward': return 'back_forward';
+            default: return 'navigation';
+          }
         }
+      }
+      return 'navigation';
+    }
+
+    getSurface(element) {
+      const section = element.closest('header, nav, main, footer, aside, section[data-component], [data-surface]');
+      if (section) {
+        return section.dataset.surface || 
+               section.dataset.component ||
+               section.tagName.toLowerCase();
+      }
+      return 'unknown';
+    }
+
+    getButtonType(element) {
+      if (element.tagName === 'A') return 'link';
+      if (element.querySelector('svg') || (element.className && element.className.toString().includes('icon'))) return 'icon';
+      if (element.getAttribute('role') === 'tab') return 'tab';
+      return 'button';
+    }
+
+    isPrimaryCTA(element) {
+      const classes = (element.className || '').toString().toLowerCase();
+      return classes.includes('primary') || 
+             classes.includes('cta') ||
+             classes.includes('hero') ||
+             element.dataset.primary === 'true';
+    }
+
+    getCTACategory(element, componentInfo) {
+      const text = this.getElementText(element).toLowerCase();
+      const purpose = componentInfo?.purpose || '';
+      
+      if (text.match(/buy|purchase|checkout|cart|order/)) return 'conversion';
+      if (text.match(/learn|view|browse|explore|next|previous/)) return 'navigation';
+      return 'engagement';
+    }
+
+    getFormType(form) {
+      const formId = (form.id || '').toLowerCase();
+      const formName = (form.name || '').toLowerCase();
+      const inputs = form.elements ? Array.from(form.elements) : [];
+      
+      if (formId.includes('checkout') || formName.includes('checkout')) return 'checkout';
+      if (formId.includes('login') || formName.includes('login')) return 'login';
+      if (formId.includes('signup') || formName.includes('signup')) return 'signup';
+      if (formId.includes('newsletter') || inputs.length === 1) return 'newsletter';
+      if (formId.includes('contact') || formName.includes('contact')) return 'contact';
+      
+      return 'other';
+    }
+
+    getOverlayType(element) {
+      const role = element.getAttribute('role');
+      const classes = (element.className || '').toString().toLowerCase();
+      
+      if (role === 'dialog' || classes.includes('modal')) return 'modal';
+      if (classes.includes('popup')) return 'popup';
+      if (classes.includes('drawer')) return 'drawer';
+      if (classes.includes('tooltip')) return 'tooltip';
+      if (classes.includes('dropdown')) return 'dropdown';
+      if (classes.includes('toast')) return 'toast';
+      
+      return 'unknown';
+    }
+
+    isOverlayElement(element) {
+      const role = element.getAttribute('role');
+      const classes = (element.className || '').toString().toLowerCase();
+      
+      return role === 'dialog' ||
+             classes.includes('modal') ||
+             classes.includes('popup') ||
+             classes.includes('drawer') ||
+             classes.includes('overlay') ||
+             classes.includes('tooltip') ||
+             classes.includes('dropdown') ||
+             classes.includes('toast');
+    }
+
+    isElementVisible(element) {
+      const style = window.getComputedStyle(element);
+      const ariaHidden = element.getAttribute('aria-hidden');
+      
+      return style.display !== 'none' &&
+             style.visibility !== 'hidden' &&
+             style.opacity !== '0' &&
+             ariaHidden !== 'true' &&
+             element.offsetParent !== null;
+    }
+
+    hasCallToAction(element) {
+      return element.querySelector('button, a[href], [role="button"]') !== null;
+    }
+
+    // ============ CORE METHODS WITH NEW SCHEMA ============
+    generateUUID() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
+    trackEvent(eventType, data = {}) {
+      // All 6 base fields are REQUIRED and NEVER null
+      const event = {
+        id: this.generateUUID(),                  // Always generated, never null
+        ts: Math.floor(Date.now() / 1000),       // Unix timestamp, never null
+        app_key: this.config.appKey,             // From config, never null
+        session_id: this.sessionId,              // Generated on init, never null
+        user_id: this.userId,                    // Generated/retrieved on init, never null
+        event_type: eventType,                   // Passed parameter, never null
+        data: data                               // Event-specific data object
       };
       
       this.eventQueue.push(event);
@@ -1401,13 +1363,16 @@ generateUserId() {
       this.maxScrollDepth = 0;
       this.pageLoadTime = Date.now();
       
-      this.trackEvent('page_view', {
-        page_url: page?.url || window.location.href,
-        page_title: page?.title || document.title,
-        referrer: document.referrer,
-        query_params: window.location.search,
-        hash: window.location.hash
+      this.trackEvent('PAGE_VIEW', {
+        url: page?.url || window.location.href,
+        path: window.location.pathname,
+        title: page?.title || document.title,
+        referrer: document.referrer || null,
+        is_first_view: !this.hasViewedPage,
+        entry_type: this.getEntryType()
       });
+      
+      this.hasViewedPage = true;
     }
 
     identify(userId, traits = {}) {
@@ -1416,7 +1381,8 @@ generateUserId() {
         this.userId = userId;
         this.userIdGenerator.saveToStorage(userId);
       }
-      this.trackEvent('identify', { user_id: this.userId, traits });
+      // Note: identify events are not part of the new schema, 
+      // but keeping for backwards compatibility
     }
 
     flush() {
@@ -1443,7 +1409,7 @@ generateUserId() {
   // Auto-initialize
   if (typeof window !== 'undefined' && !window.analytics) {
     window.analytics = new AnalyticsTracker();
-    console.log('✅ AI-Enhanced Analytics tracker with User ID initialized');
+    console.log('✅ AI-Enhanced Analytics tracker with new event schema initialized');
   }
 
   return AnalyticsTracker;
@@ -1670,16 +1636,6 @@ generateUserId() {
     }
 
     /**
-     * Ensure required fields in all events
-     */
-    private ensureRequiredFields(events: EventSchema[]): EventSchema[] {
-        return events.map(event => ({
-            ...event,
-            required: Array.from(new Set([...REQUIRED_FIELDS, ...(event.required || [])]))
-        }));
-    }
-
-    /**
      * Save output with proper UTF-8 encoding
      */
     private async saveOutput(output: GeneratorOutput, repoId: string, appKey: string): Promise<string> {
@@ -1786,75 +1742,89 @@ export function AnalyticsProvider({
     }
 
     private generateTypes(events: EventSchema[]): string {
-        const validEvents = events.filter(e => e && e.name && typeof e.name === 'string');
-
-        if (validEvents.length === 0) {
-            console.warn('⚠️ No valid events to generate types for');
-            return `export type AnalyticsEvent = never;
-
-export interface AnalyticsTracker {
-  trackEvent(eventName: string, properties: Record<string, any>): void;
-  trackPageView(page?: { url?: string; title?: string }): void;
-  identify(userId: string, traits?: Record<string, any>): void;
-  flush(): void;
-}
-
-declare global {
-  interface Window {
-    analytics?: AnalyticsTracker;
-  }
-}`;
-        }
-
-        const eventInterfaces = validEvents.map(e => {
-            const properties = Object.entries(e.properties || {})
-                .map(([key, type]) => {
-                    const isOptional = e.optional?.includes(key);
-                    const possibleValues = e.possible_values?.[key];
-
-                    if (possibleValues && possibleValues.length > 0 && type === 'string') {
-                        const valueType = possibleValues.map(v => typeof v === 'string' ? `'${v}'` : v).join(' | ');
-                        return `  ${key}${isOptional ? '?' : ''}: ${valueType};`;
-                    }
-
-                    return `  ${key}${isOptional ? '?' : ''}: ${type};`;
-                })
-                .join('\n');
-
-            const eventName = e.name.split('_').map((part) =>
-                part ? part.charAt(0).toUpperCase() + part.slice(1) : ''
-            ).filter(p => p).join('');
-
-            if (!eventName) {
-                console.error('Could not generate type name for event:', e.name);
-                return '';
-            }
-
-            return `export interface ${eventName}Event {
+        return `// Auto-generated analytics types with new event schema
+export interface BaseEvent {
+  id: string;
+  ts: number;
   app_key: string;
   session_id: string;
   user_id: string;
-  ts: string;
-${properties}
-}`;
-        }).filter(i => i);
+  event_type: string;
+  data: Record<string, any>;
+}
 
-        const eventUnion = validEvents.map(e => {
-            const eventName = e.name.split('_').map((part) =>
-                part ? part.charAt(0).toUpperCase() + part.slice(1) : ''
-            ).filter(p => p).join('');
-            return eventName ? `${eventName}Event` : null;
-        }).filter(n => n).join(' | ');
+export interface PageViewEvent extends BaseEvent {
+  event_type: 'PAGE_VIEW';
+  data: {
+    url: string;
+    path: string;
+    title: string;
+    referrer: string | null;
+    is_first_view: boolean;
+    entry_type: 'navigation' | 'reload' | 'back_forward' | 'spa_transition';
+  };
+}
 
-        return `// Auto-generated analytics types
-${eventInterfaces.join('\n\n')}
+export interface ButtonClickEvent extends BaseEvent {
+  event_type: 'BUTTON_CLICK';
+  data: {
+    element_text: string;
+    element_id: string | null;
+    element_type: 'button' | 'link' | 'icon' | 'tab';
+    surface: string;
+    page_path: string;
+    is_primary_cta: boolean;
+    cta_category: 'conversion' | 'navigation' | 'engagement';
+  };
+}
 
-export type AnalyticsEvent = ${eventUnion || 'never'};
+export interface FormInteractionEvent extends BaseEvent {
+  event_type: 'FORM_INTERACTION';
+  data: {
+    action: 'started' | 'submitted' | 'abandoned';
+    form_name: string;
+    form_id: string | null;
+    form_type: 'contact' | 'signup' | 'login' | 'checkout' | 'newsletter' | 'other';
+    surface: string;
+    page_path: string;
+    fields_total: number;
+    fields_completed: number;
+  };
+}
+
+export interface ElementVisibilityEvent extends BaseEvent {
+  event_type: 'ELEMENT_VISIBILITY';
+  data: {
+    action: 'shown' | 'hidden' | 'dismissed';
+    element_type: 'modal' | 'popup' | 'drawer' | 'tooltip' | 'dropdown' | 'toast' | 'unknown';
+    element_name: string;
+    element_id: string | null;
+    trigger_source: 'button_click' | 'auto_trigger' | 'scroll_trigger' | 'unknown';
+    page_path: string;
+    has_cta: boolean;
+  };
+}
+
+export interface ScrollInteractionEvent extends BaseEvent {
+  event_type: 'SCROLL_INTERACTION';
+  data: {
+    action: 'depth_reached';
+    depth_percentage: number;
+    milestone: '25%' | '50%' | '75%' | '90%' | '100%' | 'none';
+    page_path: string;
+    direction: 'up' | 'down';
+  };
+}
+
+export type AnalyticsEvent = 
+  | PageViewEvent 
+  | ButtonClickEvent 
+  | FormInteractionEvent 
+  | ElementVisibilityEvent 
+  | ScrollInteractionEvent;
 
 export interface AnalyticsTracker {
-  trackEvent(eventName: string, properties: Record<string, any>): void;
-  trackPageView(page?: { url?: string; title?: string }): void;
-  identify(userId: string, traits?: Record<string, any>): void;
+  trackEvent(eventType: string, data: Record<string, any>): void;
   flush(): void;
 }
 
@@ -1872,15 +1842,33 @@ declare global {
     ): string {
         return `# AI-Enhanced Analytics Integration Guide for ${appKey}
 
-## 🤖 AI-Discovered Components
+## 🤖 New Event Schema
 
-The AI analyzed your application and found:
-- **Framework:** ${analysis.discovery.framework}
-- **Interactive Components:** ${analysis.discovery.components.length}
-- **Behavior Patterns:** ${analysis.behaviors.patterns.length}
+All events now follow a consistent structure with exactly 7 fields:
+- **id**: UUID (generated)
+- **ts**: Unix timestamp (generated)  
+- **app_key**: Your application key
+- **session_id**: Session identifier
+- **user_id**: 8-10 digit persistent user ID
+- **event_type**: UPPERCASE event name
+- **data**: Event-specific data object
 
-### Discovered Components:
-${analysis.discovery.components.map(c => `- **${c.name}** (${c.type}): ${c.likely_purpose}`).join('\n')}
+## 📊 Event Types
+
+### PAGE_VIEW
+Tracks page loads and navigation with fields: url, path, title, referrer, is_first_view, entry_type
+
+### BUTTON_CLICK  
+Tracks all clickable elements with fields: element_text, element_id, element_type, surface, page_path, is_primary_cta, cta_category
+
+### FORM_INTERACTION
+Tracks form interactions with fields: action, form_name, form_id, form_type, surface, page_path, fields_total, fields_completed
+
+### ELEMENT_VISIBILITY
+Tracks modal/popup visibility with fields: action, element_type, element_name, element_id, trigger_source, page_path, has_cta
+
+### SCROLL_INTERACTION
+Tracks scroll depth with fields: action, depth_percentage, milestone, page_path, direction
 
 ## 🚀 One-Line Setup
 
@@ -1895,38 +1883,20 @@ Just add this single line to your HTML:
 ## 🔑 User ID System
 
 The tracker automatically generates and persists user IDs:
-- **Format:** 8-10 digit integer (e.g., 87654321)
+- **Format:** 8-10 digit string (e.g., "87654321")
 - **Persistence:** 1-2 years across sessions
 - **Storage:** localStorage, cookies, and sessionStorage for resilience
 - **Privacy:** No personal information, just anonymous integers
 
-## ✨ Auto-Tracked Events
+## 🤖 AI-Discovered Components
 
-### 📊 User Interactions
-- **element_click** - All interactive elements with AI-detected context
-- **selection_change** - Option selections with component awareness
-- **form_started/submitted** - Form interactions with smart field detection
+The AI analyzed your application and found:
+- **Framework:** ${analysis.discovery.framework}
+- **Interactive Components:** ${analysis.discovery.components.length}
+- **Behavior Patterns:** ${analysis.behaviors.patterns.length}
 
-### 📱 Navigation & Engagement
-- **page_view** - Page loads and route changes
-- **scroll_depth** - User engagement tracking (25%, 50%, 75%, 100%)
-
-## 📈 Event Details
-
-${events.map(e => {
-            const mainProps = e.required.filter(r => !REQUIRED_FIELDS.includes(r as any));
-            const optionalProps = e.optional || [];
-            return `### ${e.name}
-**Required:** ${mainProps.join(', ')}
-${optionalProps.length > 0 ? `**Optional:** ${optionalProps.join(', ')}` : ''}`;
-        }).join('\n\n')}
-
-## 🔑 AI-Powered Context Collection
-
-The tracker uses AI-discovered patterns to collect relevant context:
-${analysis.behaviors.patterns.slice(0, 3).map(p =>
-            `- **${p.component}**: Collects ${p.context_collection.extract_fields?.join(', ') || 'contextual data'}`
-        ).join('\n')}
+### Discovered Components:
+${analysis.discovery.components.map((c: any) => `- **${c.name}** (${c.type}): ${c.likely_purpose}`).join('\n')}
 
 ## 🧪 Testing Your Integration
 
@@ -1935,22 +1905,21 @@ ${analysis.behaviors.patterns.slice(0, 3).map(p =>
    - Check: "📊 Tracking X discovered components"
    - See: "🔑 User ID: [8-10 digit number]"
 
-2. **Interact With Components**
-   - The AI recognizes your specific components
-   - Context is collected based on learned patterns
-
-3. **Monitor Network**
+2. **Monitor Network**
    - Filter by: \`/ingest/analytics\`
-   - See AI-enhanced event data with user IDs
+   - Verify event structure with base fields + data object
+
+3. **Check Event Format**
+   - All events have the same 7 base fields
+   - Data field structure is consistent per event_type
 
 ## 🎯 What Makes This Special?
 
+- **Consistent Schema** - All events follow the same structure
 - **AI-Powered** - Understands your specific components
 - **Zero Configuration** - Just add the script
 - **Smart User Tracking** - Persistent 8-10 digit user IDs
-- **Adaptive** - Learns from your code patterns
 - **Framework Aware** - Optimized for ${analysis.discovery.framework}
-- **Context Smart** - Collects relevant data automatically
 
 ---
 

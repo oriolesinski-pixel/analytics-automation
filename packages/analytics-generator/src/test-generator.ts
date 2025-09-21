@@ -54,25 +54,35 @@ async function testGenerator(config: TestConfig) {
         console.log('  🔧 Frameworks Detected:', result.metadata.frameworksDetected.join(', ') || 'none');
         console.log('  🗓️  Generated At:', result.metadata.generatedAt);
 
-        // Display event summary
+        // Display event summary - UPDATED FOR NEW SCHEMA
         const schema = result['events-schema.json'];
         if (schema && schema.events) {
             console.log('\n📋 Event Types:');
             schema.events.forEach((event: any) => {
-                console.log(`  - ${event.type}:`);
-                console.log(`    Required: ${event.required.filter((f: string) =>
-                    !['app_key', 'session_id', 'user_id', 'ts'].includes(f)
-                ).join(', ') || 'none (only defaults)'}`);
+                console.log(`  - ${event.event_type}:`);
 
-                if (event.possible_values && Object.keys(event.possible_values).length > 0) {
-                    const sampleValues = Object.entries(event.possible_values)
-                        .slice(0, 2)
-                        .map(([key, values]: [string, any]) =>
-                            `${key}: [${(values as string[]).slice(0, 2).join(', ')}${values.length > 2 ? '...' : ''}]`
-                        );
-                    console.log(`    Sample Values: ${sampleValues.join(', ')}`);
+                // Display data fields for the new schema structure
+                if (event.data_fields && event.data_fields.length > 0) {
+                    console.log(`    Data fields: ${event.data_fields.join(', ')}`);
+                }
+
+                // Show properties if available
+                if (event.properties && Object.keys(event.properties).length > 0) {
+                    const propTypes = Object.entries(event.properties)
+                        .slice(0, 3)
+                        .map(([key, type]) => `${key}(${type})`)
+                        .join(', ');
+                    console.log(`    Types: ${propTypes}${Object.keys(event.properties).length > 3 ? '...' : ''}`);
                 }
             });
+
+            // Display base fields information
+            if (schema.base_fields) {
+                console.log('\n📌 Base Fields (present in all events):');
+                Object.entries(schema.base_fields).forEach(([field, info]: [string, any]) => {
+                    console.log(`  - ${field}: ${info.type} (${info.source})`);
+                });
+            }
         }
 
         // Display UI graph summary
@@ -81,6 +91,27 @@ async function testGenerator(config: TestConfig) {
             console.log('\n🗺️  UI Graph:');
             console.log('  Pages:', Object.keys(uiGraph.pages).join(', '));
             console.log('  Relationships:', uiGraph.relationships?.length || 0);
+
+            // Show framework detection
+            if (uiGraph.framework) {
+                console.log('  Framework:', uiGraph.framework);
+            }
+
+            // Show widget and modal counts
+            if (uiGraph.widgets) {
+                console.log('  Global Widgets:', uiGraph.widgets.length);
+            }
+            if (uiGraph.modals) {
+                console.log('  Modals:', uiGraph.modals.length);
+            }
+        }
+
+        // Display AI insights if available
+        if (schema.ai_components && schema.ai_components.length > 0) {
+            console.log('\n🤖 AI-Discovered Components:');
+            console.log(`  Total: ${schema.ai_components.length} components`);
+            const types = [...new Set(schema.ai_components.map((c: any) => c.type))];
+            console.log(`  Types: ${types.join(', ')}`);
         }
 
         console.log('\n✅ Test completed successfully!');

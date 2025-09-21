@@ -1,5 +1,5 @@
 {
-  "app_key": "test-app-rich-1758441478000",
+  "app_key": "test-app-rich-1758445096860",
   "framework": "react",
   "relationships": [],
   "pages": {
@@ -29,15 +29,16 @@
         "wishlist"
       ],
       "events": [
-        "page_view",
-        "element_click",
-        "selection_change",
-        "scroll_depth"
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "SCROLL_INTERACTION"
       ],
       "ai_insights": {
         "framework": "react",
         "interaction_types": [
           "click",
+          "change",
           "submit"
         ],
         "has_forms": false,
@@ -67,15 +68,16 @@
         "wishlist"
       ],
       "events": [
-        "page_view",
-        "element_click",
-        "selection_change",
-        "scroll_depth"
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "SCROLL_INTERACTION"
       ],
       "ai_insights": {
         "framework": "react",
         "interaction_types": [
           "click",
+          "change",
           "submit"
         ],
         "has_forms": false,
@@ -108,15 +110,16 @@
         "wishlist"
       ],
       "events": [
-        "page_view",
-        "element_click",
-        "selection_change",
-        "scroll_depth"
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "SCROLL_INTERACTION"
       ],
       "ai_insights": {
         "framework": "react",
         "interaction_types": [
           "click",
+          "change",
           "submit"
         ],
         "has_forms": true,
@@ -149,15 +152,16 @@
         "wishlist"
       ],
       "events": [
-        "page_view",
-        "element_click",
-        "selection_change",
-        "scroll_depth"
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "SCROLL_INTERACTION"
       ],
       "ai_insights": {
         "framework": "react",
         "interaction_types": [
           "click",
+          "change",
           "submit"
         ],
         "has_forms": true,
@@ -193,15 +197,16 @@
         "wishlist"
       ],
       "events": [
-        "page_view",
-        "element_click",
-        "selection_change",
-        "scroll_depth"
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "SCROLL_INTERACTION"
       ],
       "ai_insights": {
         "framework": "react",
         "interaction_types": [
           "click",
+          "change",
           "submit"
         ],
         "has_forms": false,
@@ -236,15 +241,16 @@
         "wishlist"
       ],
       "events": [
-        "page_view",
-        "element_click",
-        "selection_change",
-        "scroll_depth"
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "SCROLL_INTERACTION"
       ],
       "ai_insights": {
         "framework": "react",
         "interaction_types": [
           "click",
+          "change",
           "submit"
         ],
         "has_forms": true,
@@ -279,15 +285,16 @@
         "wishlist"
       ],
       "events": [
-        "page_view",
-        "element_click",
-        "selection_change",
-        "scroll_depth"
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "SCROLL_INTERACTION"
       ],
       "ai_insights": {
         "framework": "react",
         "interaction_types": [
           "click",
+          "change",
           "submit"
         ],
         "has_forms": true,
@@ -322,15 +329,16 @@
         "wishlist"
       ],
       "events": [
-        "page_view",
-        "element_click",
-        "selection_change",
-        "scroll_depth"
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "SCROLL_INTERACTION"
       ],
       "ai_insights": {
         "framework": "react",
         "interaction_types": [
           "click",
+          "change",
           "submit"
         ],
         "has_forms": true,
@@ -367,15 +375,16 @@
         "wishlist"
       ],
       "events": [
-        "page_view",
-        "element_click",
-        "selection_change",
-        "scroll_depth"
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "SCROLL_INTERACTION"
       ],
       "ai_insights": {
         "framework": "react",
         "interaction_types": [
           "click",
+          "change",
           "submit"
         ],
         "has_forms": false,
@@ -412,15 +421,16 @@
         "wishlist"
       ],
       "events": [
-        "page_view",
-        "element_click",
-        "selection_change",
-        "scroll_depth"
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "SCROLL_INTERACTION"
       ],
       "ai_insights": {
         "framework": "react",
         "interaction_types": [
           "click",
+          "change",
           "submit"
         ],
         "has_forms": false,
@@ -450,15 +460,16 @@
         "wishlist"
       ],
       "events": [
-        "page_view",
-        "element_click",
-        "selection_change",
-        "scroll_depth"
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "SCROLL_INTERACTION"
       ],
       "ai_insights": {
         "framework": "react",
         "interaction_types": [
           "click",
+          "change",
           "submit"
         ],
         "has_forms": false,
@@ -488,15 +499,16 @@
         "wishlist"
       ],
       "events": [
-        "page_view",
-        "element_click",
-        "selection_change",
-        "scroll_depth"
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "SCROLL_INTERACTION"
       ],
       "ai_insights": {
         "framework": "react",
         "interaction_types": [
           "click",
+          "change",
           "submit"
         ],
         "has_forms": false,
@@ -527,15 +539,16 @@
         "shipping"
       ],
       "events": [
-        "page_view",
-        "element_click",
-        "selection_change",
-        "scroll_depth"
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "SCROLL_INTERACTION"
       ],
       "ai_insights": {
         "framework": "react",
         "interaction_types": [
           "click",
+          "change",
           "submit"
         ],
         "has_forms": false,
