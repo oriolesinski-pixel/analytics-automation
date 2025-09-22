@@ -109,7 +109,7 @@
   class AnalyticsTracker {
     constructor() {
       this.config = {
-        appKey: 'test-app-rich-1758445096860',
+        appKey: 'test-app-rich-1758466234599',
         endpoint: 'http://localhost:8082/ingest/analytics',
         batchSize: 10,
         flushInterval: 30000
@@ -136,7 +136,7 @@
             name: 'AddToCartButton',
             type: 'button',
             selectors: [".cart-btn","[data-action='add-to-cart']"],
-            purpose: 'Add product to cart',
+            purpose: 'Add a product to the shopping cart',
             contextNeeded: ["product_id"],
             contextCollection: {"search_parents":[".product-card","[data-product]"],"extract_fields":["product-id","price"],"sibling_context":[],"data_attributes":["data-product-id"]}
         },
@@ -145,7 +145,7 @@
             name: 'WishlistButton',
             type: 'button',
             selectors: [".wishlist-btn","[data-action='toggle-wishlist']"],
-            purpose: 'Add/remove product from wishlist',
+            purpose: 'Add or remove a product from the wishlist',
             contextNeeded: ["product_id"],
             contextCollection: {"search_parents":[".product-card","[data-product]"],"extract_fields":["product-id"],"sibling_context":[],"data_attributes":["data-product-id"]}
         },
@@ -154,16 +154,34 @@
             name: 'QuantitySelector',
             type: 'selector',
             selectors: [".quantity-input","[data-action='update-quantity']"],
-            purpose: 'Update product quantity in cart',
+            purpose: 'Update the quantity of a product in the cart',
             contextNeeded: ["product_id","quantity"],
-            contextCollection: {"search_parents":[".product-card","[data-product]","form"],"extract_fields":["product-id","quantity"],"sibling_context":[],"data_attributes":["data-product-id"]}
+            contextCollection: {"search_parents":[".cart-item"],"extract_fields":["product-id","quantity"],"sibling_context":[],"data_attributes":["data-product-id"]}
+        },
+
+        {
+            name: 'RemoveFromCartButton',
+            type: 'button',
+            selectors: [".remove-from-cart","[data-action='remove-from-cart']"],
+            purpose: 'Remove a product from the shopping cart',
+            contextNeeded: ["product_id"],
+            contextCollection: {"search_parents":[".cart-item"],"extract_fields":["product-id"],"sibling_context":[],"data_attributes":["data-product-id"]}
+        },
+
+        {
+            name: 'ClearCartButton',
+            type: 'button',
+            selectors: [".clear-cart","[data-action='clear-cart']"],
+            purpose: 'Clear all items from the shopping cart',
+            contextNeeded: [],
+            contextCollection: {"search_parents":["form"],"extract_fields":[],"sibling_context":[],"data_attributes":[]}
         },
 
         {
             name: 'LoginForm',
             type: 'form',
             selectors: ["form[onSubmit='handleSubmit']","#login-form"],
-            purpose: 'User authentication',
+            purpose: 'Allow users to log in to their account',
             contextNeeded: ["email","password"],
             contextCollection: {"search_parents":["form"],"extract_fields":["email","password"],"sibling_context":[],"data_attributes":[]}
         },
@@ -172,16 +190,16 @@
             name: 'RegisterForm',
             type: 'form',
             selectors: ["form[onSubmit='handleSubmit']","#register-form"],
-            purpose: 'User registration',
+            purpose: 'Allow users to create a new account',
             contextNeeded: ["name","email","password","confirmPassword"],
             contextCollection: {"search_parents":["form"],"extract_fields":["name","email","password","confirmPassword"],"sibling_context":[],"data_attributes":[]}
         },
 
         {
-            name: 'ShippingForm',
+            name: 'ShippingInfoForm',
             type: 'form',
-            selectors: ["form[onSubmit='handleSubmit']","#shipping-form"],
-            purpose: 'Capture shipping information',
+            selectors: ["form[onSubmit='handleSubmit']","#shipping-info-form"],
+            purpose: 'Allow users to enter their shipping information',
             contextNeeded: ["firstName","lastName","email","phone","address","city","state","zipCode","country"],
             contextCollection: {"search_parents":["form"],"extract_fields":["firstName","lastName","email","phone","address","city","state","zipCode","country"],"sibling_context":[],"data_attributes":[]}
         },
@@ -190,54 +208,27 @@
             name: 'PaymentForm',
             type: 'form',
             selectors: ["form[onSubmit='handleSubmit']","#payment-form"],
-            purpose: 'Process payment',
+            purpose: 'Allow users to enter their payment information and complete the checkout process',
             contextNeeded: ["cardNumber","cardName","expiryDate","cvv","saveCard"],
             contextCollection: {"search_parents":["form"],"extract_fields":["cardNumber","cardName","expiryDate","cvv","saveCard"],"sibling_context":[],"data_attributes":[]}
-        },
-
-        {
-            name: 'ClearCartButton',
-            type: 'button',
-            selectors: [".clear-cart-btn","[data-action='clear-cart']"],
-            purpose: 'Remove all items from the cart',
-            contextNeeded: [],
-            contextCollection: {"search_parents":[".cart-container"],"extract_fields":[],"sibling_context":[],"data_attributes":[]}
-        },
-
-        {
-            name: 'RemoveFromCartButton',
-            type: 'button',
-            selectors: [".remove-from-cart","[data-action='remove-from-cart']"],
-            purpose: 'Remove a specific item from the cart',
-            contextNeeded: ["product_id"],
-            contextCollection: {"search_parents":[".cart-item"],"extract_fields":["product-id"],"sibling_context":[],"data_attributes":["data-product-id"]}
         },
 
         {
             name: 'Carousel',
             type: 'custom',
             selectors: [".carousel","#carousel"],
-            purpose: 'Navigate through carousel slides',
-            contextNeeded: ["slide_index"],
-            contextCollection: {"search_parents":[".carousel"],"extract_fields":["slide-index"],"sibling_context":[],"data_attributes":[]}
+            purpose: 'Display a rotating carousel of product promotions or featured items',
+            contextNeeded: ["currentSlide"],
+            contextCollection: {"search_parents":[".carousel"],"extract_fields":["currentSlide"],"sibling_context":[],"data_attributes":[]}
         },
 
         {
-            name: 'NavigationMenu',
-            type: 'custom',
-            selectors: [".nav-menu","#nav-menu"],
-            purpose: 'Navigate to different pages',
-            contextNeeded: ["page_url"],
-            contextCollection: {"search_parents":[".nav-menu"],"extract_fields":["page-url"],"sibling_context":[],"data_attributes":[]}
-        },
-
-        {
-            name: 'LogoutButton',
-            type: 'button',
-            selectors: [".logout-btn","[data-action='logout']"],
-            purpose: 'Log out the user',
-            contextNeeded: [],
-            contextCollection: {"search_parents":[".user-menu"],"extract_fields":[],"sibling_context":[],"data_attributes":[]}
+            name: 'ProductLink',
+            type: 'link',
+            selectors: [".product-link","[data-product-id]"],
+            purpose: 'Navigate to the product details page for a specific product',
+            contextNeeded: ["product_id"],
+            contextCollection: {"search_parents":[".product-card","[data-product]"],"extract_fields":["product-id"],"sibling_context":[],"data_attributes":["data-product-id"]}
         }
       ];
       
@@ -276,8 +267,8 @@
 
     // ============ AI-ENHANCED AUTO-TRACKING ============
     initAutoTracking() {
-      console.log('🤖 AI-Enhanced Analytics initialized for test-app-rich-1758445096860');
-      console.log('📊 Tracking 12 discovered components');
+      console.log('🤖 AI-Enhanced Analytics initialized for test-app-rich-1758466234599');
+      console.log('📊 Tracking 11 discovered components');
       console.log('🔑 User ID:', this.userId);
       
       this.trackPageView();

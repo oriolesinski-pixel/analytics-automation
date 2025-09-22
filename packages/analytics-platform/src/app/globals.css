@@ -1,5 +1,4 @@
-/* @tailwind base;
+/* packages/analytics-platform/src/app/globals.css */
+@tailwind base;
 @tailwind components;
-@tailwind utilities; */
-
-@import 'https://cdn.tailwindcss.com';
+@tailwind utilities;

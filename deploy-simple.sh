@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# deploy-simple.sh - Simple deployment script with beautiful event logging
+# deploy-simple.sh - Enhanced deployment script with automatic app registration for ANY app
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -13,12 +13,17 @@ NC='\033[0m'
 PROJECT_ROOT="/Users/oriolesinski/analytics-automation"
 GENERATOR_PATH="${PROJECT_ROOT}/packages/analytics-generator"
 OUTPUTS_PATH="${GENERATOR_PATH}/src/utils/generated-outputs/unified"
-TARGET_APP="test-app-rich"
+TARGET_APP="${1:-test-app-rich}"  # Accept app_key as parameter, default to test-app-rich
 TIMESTAMP=$(date +"%Y-%m-%dT%H-%M-%S")
+ANALYTICS_PORT=8082
+
+# Generate a nice display name from app_key (e.g., test-app-rich -> Test App Rich)
+APP_DISPLAY_NAME=$(echo "$TARGET_APP" | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
 
 echo -e "${CYAN}═══════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}🚀 Analytics Deployment with Event Visualization${NC}"
 echo -e "${CYAN}═══════════════════════════════════════════════════════${NC}\n"
+echo -e "${YELLOW}Target App: ${GREEN}${TARGET_APP}${NC} (${APP_DISPLAY_NAME})\n"
 
 # Step 1: Kill existing processes
 echo -e "${BLUE}Step 1: Stopping existing services...${NC}"
@@ -26,46 +31,8 @@ killall node 2>/dev/null || true
 sleep 2
 echo -e "${GREEN}✓ Services stopped${NC}\n"
 
-# Step 2: Clean old outputs
-echo -e "${BLUE}Step 2: Cleaning old generated files...${NC}"
-rm -rf "${OUTPUTS_PATH}/${TARGET_APP}"
-echo -e "${GREEN}✓ Old files cleaned${NC}\n"
-
-# Step 3: Generate new tracker using the simple command
-echo -e "${BLUE}Step 3: Generating new tracker...${NC}"
-cd "${GENERATOR_PATH}"
-npx ts-node src/test-generator.ts ${TARGET_APP}
-
-if [ $? -ne 0 ]; then
-    echo -e "${RED}✗ Generation failed${NC}"
-    exit 1
-fi
-echo -e "${GREEN}✓ Tracker generated${NC}\n"
-
-# Step 4: Find and copy the generated files
-echo -e "${BLUE}Step 4: Deploying files...${NC}"
-LATEST_DIR=$(ls -t "${OUTPUTS_PATH}/${TARGET_APP}" 2>/dev/null | head -1)
-
-if [ -z "${LATEST_DIR}" ]; then
-    echo -e "${RED}✗ No generated files found${NC}"
-    exit 1
-fi
-
-GENERATED_PATH="${OUTPUTS_PATH}/${TARGET_APP}/${LATEST_DIR}"
-
-# Copy tracker.js
-cp "${GENERATED_PATH}/tracker.js" "${PROJECT_ROOT}/examples/${TARGET_APP}/public/tracker.js"
-echo -e "${GREEN}✓ tracker.js deployed${NC}"
-
-# Copy analytics-provider.tsx if it exists
-if [ -f "${GENERATED_PATH}/analytics-provider.tsx" ]; then
-    cp "${GENERATED_PATH}/analytics-provider.tsx" "${PROJECT_ROOT}/examples/${TARGET_APP}/app/components/analytics-provider.tsx"
-    echo -e "${GREEN}✓ analytics-provider.tsx deployed${NC}"
-fi
-echo ""
-
-# Step 5: Prepare analytics service with beautiful logging
-echo -e "${BLUE}Step 5: Preparing analytics service with event visualization...${NC}"
+# Step 2: Start analytics service first (needed for app registration)
+echo -e "${BLUE}Step 2: Starting analytics service...${NC}"
 cd "${PROJECT_ROOT}/packages/analytics-service"
 
 # Check if chalk is installed, if not install it
@@ -76,7 +43,7 @@ if [ ! -f "node_modules/chalk/package.json" ]; then
     echo -e "${GREEN}✓ Chalk installed${NC}"
 fi
 
-# Create the IMPROVED event-logger with better formatting
+# Create the event logger (keeping all your existing beautiful logging)
 echo -e "${YELLOW}Creating/updating event logger utility...${NC}"
 mkdir -p src/utils
 cat > src/utils/event-logger.ts << 'EOF'
@@ -298,26 +265,266 @@ EOF
 echo -e "${GREEN}✓ Event logger created/updated${NC}"
 
 # Start analytics service
-echo -e "\n${BLUE}Starting analytics service with event visualization...${NC}"
+echo -e "${YELLOW}Starting analytics service...${NC}"
 npm run dev &
 ANALYTICS_PID=$!
-sleep 3
-echo -e "${GREEN}✓ Analytics service running on :8082 with beautiful logging${NC}\n"
 
-# Step 6: Use the existing start.sh to run the app
-echo -e "${BLUE}Step 6: Starting application...${NC}"
+# Wait for service to be ready
+echo -e "${YELLOW}Waiting for analytics service to be ready...${NC}"
+for i in {1..30}; do
+    if curl -s http://localhost:${ANALYTICS_PORT}/healthz > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ Analytics service ready on port ${ANALYTICS_PORT}${NC}\n"
+        break
+    fi
+    sleep 1
+    echo -n "."
+done
+
+# Step 3: Check and register/fix app - handles null repo_id
+echo -e "${BLUE}Step 3: Checking app registration for '${TARGET_APP}'...${NC}"
+
+# Load environment variables - fix the spaces issue
 cd "${PROJECT_ROOT}"
-./start.sh &
-APP_PID=$!
+sed 's/ = /=/g' .env > .env.tmp
+source .env.tmp
+rm .env.tmp
 
-# Show welcome message with improved formatting
+# Check if app exists and get its details
+APP_DATA=$(curl -s http://localhost:${ANALYTICS_PORT}/apps/list | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+apps = data.get('apps', [])
+for app in apps:
+    if app['app_key'] == '${TARGET_APP}':
+        print(json.dumps(app))
+        break
+" 2>/dev/null || echo "")
+
+if [ -z "${APP_DATA}" ]; then
+    # App doesn't exist - create it
+    echo -e "${YELLOW}App '${TARGET_APP}' not found. Creating new app with repo...${NC}"
+    ACTION="create"
+else
+    # Check if app has null repo_id
+    HAS_REPO=$(echo "${APP_DATA}" | python3 -c "
+import sys, json
+app = json.load(sys.stdin)
+print('true' if app.get('repo_id') else 'false')
+" 2>/dev/null || echo "false")
+    
+    if [ "${HAS_REPO}" = "false" ]; then
+        echo -e "${YELLOW}App '${TARGET_APP}' has null repo_id. Fixing...${NC}"
+        ACTION="update"
+    else
+        echo -e "${GREEN}✓ App '${TARGET_APP}' already properly configured${NC}\n"
+        ACTION="skip"
+    fi
+fi
+
+# Perform action if needed
+if [ "${ACTION}" != "skip" ]; then
+    cd "${PROJECT_ROOT}/packages/analytics-service"
+    
+    node -e "
+    const { createClient } = require('@supabase/supabase-js');
+    const crypto = require('crypto');
+    
+    const supabaseUrl = '${SUPABASE_URL}';
+    const supabaseKey = '${SUPABASE_SERVICE_ROLE_KEY}';
+    
+    if (!supabaseUrl || !supabaseKey) {
+        console.error('Missing Supabase credentials');
+        process.exit(1);
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    (async () => {
+      try {
+        const action = '${ACTION}';
+        
+        // First, create a new repo record
+        const repoData = {
+          id: crypto.randomUUID(),
+          name: '${TARGET_APP}-repo',
+          full: 'analytics/${TARGET_APP}',
+          owner: 'analytics-system',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        
+        console.log('Creating repo record...');
+        const { data: newRepo, error: repoError } = await supabase
+          .from('repos')
+          .insert(repoData)
+          .select()
+          .single();
+        
+        if (repoError) {
+          console.error('Failed to create repo:', repoError.message);
+          // Try to get an existing repo_id instead
+          const { data: existingRepo } = await supabase
+            .from('repos')
+            .select('id')
+            .limit(1)
+            .single();
+          
+          if (existingRepo) {
+            repoData.id = existingRepo.id;
+            console.log('Using existing repo_id:', repoData.id);
+          } else {
+            throw new Error('Could not create or find a repo');
+          }
+        } else {
+          console.log('✅ Created repo:', newRepo.id);
+        }
+        
+        if (action === 'create') {
+          // Create new app with repo_id
+          const appData = {
+            app_key: '${TARGET_APP}',
+            name: '${APP_DISPLAY_NAME}',
+            domain: 'localhost:3000',
+            repo_id: repoData.id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          
+          const { data: newApp, error: appError } = await supabase
+            .from('apps')
+            .insert(appData)
+            .select()
+            .single();
+          
+          if (appError) {
+            console.error('Failed to create app:', appError.message);
+          } else {
+            console.log('✅ Created app with repo:', newApp.app_key);
+          }
+        } else if (action === 'update') {
+          // Update existing app with new repo_id
+          const { data: updatedApp, error: updateError } = await supabase
+            .from('apps')
+            .update({ 
+              repo_id: repoData.id,
+              updated_at: new Date().toISOString()
+            })
+            .eq('app_key', '${TARGET_APP}')
+            .select()
+            .single();
+          
+          if (updateError) {
+            console.error('Failed to update app:', updateError.message);
+          } else {
+            console.log('✅ Updated app with new repo:', updatedApp.app_key);
+          }
+        }
+      } catch (err) {
+        console.error('Error:', err.message);
+        // Continue anyway - app might work without repo_id
+      }
+    })();
+    " || {
+        echo -e "${YELLOW}Note: Repo handling encountered an issue, continuing anyway${NC}"
+    }
+    
+    sleep 2
+    echo -e "${GREEN}✓ App configuration completed${NC}\n"
+fi
+
+# Verify app is now registered
+echo -e "${YELLOW}Verifying registration...${NC}"
+curl -s http://localhost:${ANALYTICS_PORT}/apps/list | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+apps = [app['app_key'] for app in data.get('apps', [])]
+if '${TARGET_APP}' in apps:
+    print('✅ ${TARGET_APP} is registered and ready')
+else:
+    print('⚠️  ${TARGET_APP} not found in list, but continuing deployment')
+print('All registered apps:', ', '.join(apps))
+" || echo "⚠️ Could not verify registration"
+echo ""
+
+# Step 4: Clean old outputs
+echo -e "${BLUE}Step 4: Cleaning old generated files...${NC}"
+rm -rf "${OUTPUTS_PATH}/${TARGET_APP}"
+echo -e "${GREEN}✓ Old files cleaned${NC}\n"
+
+# Step 5: Generate new tracker
+echo -e "${BLUE}Step 5: Generating new tracker for '${TARGET_APP}'...${NC}"
+cd "${GENERATOR_PATH}"
+
+# Check if the app example exists, if not create a basic structure
+if [ ! -d "${PROJECT_ROOT}/examples/${TARGET_APP}" ]; then
+    echo -e "${YELLOW}Creating example app structure for ${TARGET_APP}...${NC}"
+    mkdir -p "${PROJECT_ROOT}/examples/${TARGET_APP}/public"
+    mkdir -p "${PROJECT_ROOT}/examples/${TARGET_APP}/app/components"
+    echo -e "${GREEN}✓ Created app structure${NC}"
+fi
+
+npx ts-node src/test-generator.ts ${TARGET_APP}
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}✗ Generation failed${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ Tracker generated${NC}\n"
+
+# Step 6: Find and copy the generated files
+echo -e "${BLUE}Step 6: Deploying files...${NC}"
+LATEST_DIR=$(ls -t "${OUTPUTS_PATH}/${TARGET_APP}" 2>/dev/null | head -1)
+
+if [ -z "${LATEST_DIR}" ]; then
+    echo -e "${RED}✗ No generated files found${NC}"
+    exit 1
+fi
+
+GENERATED_PATH="${OUTPUTS_PATH}/${TARGET_APP}/${LATEST_DIR}"
+
+# Copy tracker.js
+cp "${GENERATED_PATH}/tracker.js" "${PROJECT_ROOT}/examples/${TARGET_APP}/public/tracker.js"
+echo -e "${GREEN}✓ tracker.js deployed${NC}"
+
+# Copy analytics-provider.tsx if it exists
+if [ -f "${GENERATED_PATH}/analytics-provider.tsx" ]; then
+    cp "${GENERATED_PATH}/analytics-provider.tsx" "${PROJECT_ROOT}/examples/${TARGET_APP}/app/components/analytics-provider.tsx"
+    echo -e "${GREEN}✓ analytics-provider.tsx deployed${NC}"
+fi
+echo ""
+
+# Step 7: Start the application (if start.sh exists)
+echo -e "${BLUE}Step 7: Starting application...${NC}"
+cd "${PROJECT_ROOT}"
+if [ -f "./start.sh" ]; then
+    ./start.sh &
+    APP_PID=$!
+    echo -e "${GREEN}✓ Application started${NC}"
+else
+    echo -e "${YELLOW}No start.sh found, skipping app start${NC}"
+    APP_PID=""
+fi
+
+# Step 8: Start the analytics platform dashboard
+echo -e "${BLUE}Step 8: Starting analytics dashboard...${NC}"
+cd "${PROJECT_ROOT}/packages/analytics-platform"
+npm run dev &
+DASHBOARD_PID=$!
+echo -e "${GREEN}✓ Dashboard starting on port 3002${NC}\n"
+
+# Show welcome message
 echo -e "\n${CYAN}═══════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}✅ Deployment Complete with Event Visualization!${NC}"
 echo -e "${CYAN}═══════════════════════════════════════════════════════${NC}\n"
+echo -e "${YELLOW}Deployed App:${NC} ${GREEN}${TARGET_APP}${NC} (${APP_DISPLAY_NAME})\n"
 echo -e "${YELLOW}Services Running:${NC}"
 echo -e "  🌐 Frontend:  ${GREEN}http://localhost:3000${NC}"
-echo -e "  📊 Analytics: ${GREEN}http://localhost:8082${NC}"
-echo -e "  🔧 Backend:   ${GREEN}http://localhost:3001${NC}\n"
+echo -e "  📊 Analytics: ${GREEN}http://localhost:${ANALYTICS_PORT}${NC}"
+echo -e "  📊 Dashboard: ${GREEN}http://localhost:3002/dashboard${NC}"
+if [ ! -z "$APP_PID" ]; then
+    echo -e "  🔧 Backend:   ${GREEN}http://localhost:3001${NC}"
+fi
+echo ""
 echo -e "${YELLOW}Event Flow:${NC}"
 echo -e "  1. User interacts with app"
 echo -e "  2. Tracker sends event to ${CYAN}/ingest/analytics${NC}"
@@ -334,15 +541,23 @@ echo -e "    ${GREEN}🖱️  ELEMENT CLICK${NC} - element_click events"
 echo -e "    ${CYAN}📜 SCROLL DEPTH${NC} - scroll_depth events"
 echo -e "    ${MAGENTA}📝 FORM STARTED${NC} - form_started events"
 echo -e "    ${YELLOW}✅ FORM SUBMITTED${NC} - form_submitted events\n"
+echo -e "${YELLOW}Dashboard Access:${NC}"
+echo -e "  1. Open ${GREEN}http://localhost:3002/dashboard${NC}"
+echo -e "  2. Select '${GREEN}${APP_DISPLAY_NAME}${NC}' from the dropdown"
+echo -e "  3. View real-time analytics for your app\n"
+echo -e "${YELLOW}Usage:${NC}"
+echo -e "  Deploy different app: ${CYAN}./deploy-simple.sh another-app-key${NC}"
+echo -e "  Default app: ${CYAN}./deploy-simple.sh${NC} (uses test-app-rich)\n"
 echo -e "${YELLOW}Tips:${NC}"
 echo -e "  • Open ${GREEN}http://localhost:3000${NC} and interact with the page"
 echo -e "  • Watch this terminal for real-time events"
-echo -e "  • Check browser DevTools Network tab for raw data\n"
+echo -e "  • Check browser DevTools Network tab for raw data"
+echo -e "  • All apps auto-register if they don't exist\n"
 echo -e "${CYAN}Press Ctrl+C to stop all services and see final statistics${NC}\n"
 echo -e "${CYAN}────────────────────────────────────────────────────────${NC}"
-echo -e "${YELLOW}Waiting for events...${NC}\n"
+echo -e "${YELLOW}Waiting for events from ${TARGET_APP}...${NC}\n"
 
 # Trap to handle Ctrl+C and show stats
-trap 'echo -e "\n${YELLOW}Stopping services...${NC}"; kill $ANALYTICS_PID $APP_PID 2>/dev/null; exit' INT TERM
+trap 'echo -e "\n${YELLOW}Stopping services...${NC}"; kill $ANALYTICS_PID $APP_PID $DASHBOARD_PID 2>/dev/null; exit' INT TERM
 
 wait

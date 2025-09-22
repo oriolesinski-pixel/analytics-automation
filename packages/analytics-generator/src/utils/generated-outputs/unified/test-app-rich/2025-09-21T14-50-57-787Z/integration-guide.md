@@ -1,4 +1,4 @@
-# AI-Enhanced Analytics Integration Guide for test-app-rich-1758445096860
+# AI-Enhanced Analytics Integration Guide for test-app-rich-1758466234599
 
 ## 🤖 New Event Schema
 
@@ -50,22 +50,21 @@ The tracker automatically generates and persists user IDs:
 
 The AI analyzed your application and found:
 - **Framework:** react
-- **Interactive Components:** 12
-- **Behavior Patterns:** 12
+- **Interactive Components:** 11
+- **Behavior Patterns:** 11
 
 ### Discovered Components:
-- **AddToCartButton** (button): Add product to cart
-- **WishlistButton** (button): Add/remove product from wishlist
-- **QuantitySelector** (selector): Update product quantity in cart
-- **LoginForm** (form): User authentication
-- **RegisterForm** (form): User registration
-- **ShippingForm** (form): Capture shipping information
-- **PaymentForm** (form): Process payment
-- **ClearCartButton** (button): Remove all items from the cart
-- **RemoveFromCartButton** (button): Remove a specific item from the cart
-- **Carousel** (custom): Navigate through carousel slides
-- **NavigationMenu** (custom): Navigate to different pages
-- **LogoutButton** (button): Log out the user
+- **AddToCartButton** (button): Add a product to the shopping cart
+- **WishlistButton** (button): Add or remove a product from the wishlist
+- **QuantitySelector** (selector): Update the quantity of a product in the cart
+- **RemoveFromCartButton** (button): Remove a product from the shopping cart
+- **ClearCartButton** (button): Clear all items from the shopping cart
+- **LoginForm** (form): Allow users to log in to their account
+- **RegisterForm** (form): Allow users to create a new account
+- **ShippingInfoForm** (form): Allow users to enter their shipping information
+- **PaymentForm** (form): Allow users to enter their payment information and complete the checkout process
+- **Carousel** (custom): Display a rotating carousel of product promotions or featured items
+- **ProductLink** (link): Navigate to the product details page for a specific product
 
 ## 🧪 Testing Your Integration
 
@@ -92,5 +91,5 @@ The AI analyzed your application and found:
 
 ---
 
-**Generated:** 2025-09-21T08:58:39.946Z
+**Generated:** 2025-09-21T14:50:57.784Z
 **AI Model:** Claude 3 Haiku
