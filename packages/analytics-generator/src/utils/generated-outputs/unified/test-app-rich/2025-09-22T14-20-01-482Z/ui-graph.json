@@ -1,5 +1,5 @@
 {
-  "app_key": "test-app-rich-1758466234599",
+  "app_key": "test-app-rich-1758550776847",
   "framework": "react",
   "relationships": [],
   "pages": {
@@ -556,6 +556,8 @@
       }
     }
   },
-  "widgets": [],
+  "widgets": [
+    "navigation"
+  ],
   "modals": []
 }

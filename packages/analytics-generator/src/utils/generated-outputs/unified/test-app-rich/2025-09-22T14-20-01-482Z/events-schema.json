@@ -140,13 +140,12 @@
         "[data-action='add-to-cart']"
       ],
       "interaction_type": "click",
-      "likely_purpose": "Add a product to the shopping cart",
+      "likely_purpose": "Add product to cart",
       "context_needed": [
         "product_id"
       ],
       "code_patterns": [
-        "onClick={handleAddToCart}",
-        "data-action=\"add-to-cart\""
+        "onClick={handleAddToCart}"
       ],
       "actual_values": []
     },
@@ -158,13 +157,12 @@
         "[data-action='toggle-wishlist']"
       ],
       "interaction_type": "click",
-      "likely_purpose": "Add or remove a product from the wishlist",
+      "likely_purpose": "Add/remove product from wishlist",
       "context_needed": [
         "product_id"
       ],
       "code_patterns": [
-        "onClick={toggleWishlist}",
-        "data-action=\"toggle-wishlist\""
+        "onClick={toggleWishlist}"
       ],
       "actual_values": []
     },
@@ -176,14 +174,13 @@
         "[data-action='update-quantity']"
       ],
       "interaction_type": "change",
-      "likely_purpose": "Update the quantity of a product in the cart",
+      "likely_purpose": "Update product quantity in cart",
       "context_needed": [
         "product_id",
         "quantity"
       ],
       "code_patterns": [
-        "onChange={updateQuantity}",
-        "data-action=\"update-quantity\""
+        "onChange={updateQuantity}"
       ],
       "actual_values": [
         "1",
@@ -194,55 +191,19 @@
       ]
     },
     {
-      "name": "RemoveFromCartButton",
-      "type": "button",
-      "selector_patterns": [
-        ".remove-from-cart",
-        "[data-action='remove-from-cart']"
-      ],
-      "interaction_type": "click",
-      "likely_purpose": "Remove a product from the shopping cart",
-      "context_needed": [
-        "product_id"
-      ],
-      "code_patterns": [
-        "onClick={() => removeFromCart(item.id)}",
-        "data-action=\"remove-from-cart\""
-      ],
-      "actual_values": []
-    },
-    {
-      "name": "ClearCartButton",
-      "type": "button",
-      "selector_patterns": [
-        ".clear-cart",
-        "[data-action='clear-cart']"
-      ],
-      "interaction_type": "click",
-      "likely_purpose": "Clear all items from the shopping cart",
-      "context_needed": [],
-      "code_patterns": [
-        "onClick={clearCart}",
-        "data-action=\"clear-cart\""
-      ],
-      "actual_values": []
-    },
-    {
       "name": "LoginForm",
       "type": "form",
       "selector_patterns": [
-        "form[onSubmit='handleSubmit']",
-        "#login-form"
+        "form[action='/auth/login']"
       ],
       "interaction_type": "submit",
-      "likely_purpose": "Allow users to log in to their account",
+      "likely_purpose": "User authentication",
       "context_needed": [
         "email",
         "password"
       ],
       "code_patterns": [
-        "onSubmit={handleSubmit}",
-        "id=\"login-form\""
+        "onSubmit={handleSubmit}"
       ],
       "actual_values": []
     },
@@ -250,11 +211,10 @@
       "name": "RegisterForm",
       "type": "form",
       "selector_patterns": [
-        "form[onSubmit='handleSubmit']",
-        "#register-form"
+        "form[action='/auth/register']"
       ],
       "interaction_type": "submit",
-      "likely_purpose": "Allow users to create a new account",
+      "likely_purpose": "User registration",
       "context_needed": [
         "name",
         "email",
@@ -262,20 +222,18 @@
         "confirmPassword"
       ],
       "code_patterns": [
-        "onSubmit={handleSubmit}",
-        "id=\"register-form\""
+        "onSubmit={handleSubmit}"
       ],
       "actual_values": []
     },
     {
-      "name": "ShippingInfoForm",
+      "name": "CheckoutForm",
       "type": "form",
       "selector_patterns": [
-        "form[onSubmit='handleSubmit']",
-        "#shipping-info-form"
+        "form[onSubmit='handleSubmit']"
       ],
       "interaction_type": "submit",
-      "likely_purpose": "Allow users to enter their shipping information",
+      "likely_purpose": "Checkout process",
       "context_needed": [
         "firstName",
         "lastName",
@@ -288,8 +246,7 @@
         "country"
       ],
       "code_patterns": [
-        "onSubmit={handleSubmit}",
-        "id=\"shipping-info-form\""
+        "onSubmit={handleSubmit}"
       ],
       "actual_values": []
     },
@@ -297,11 +254,10 @@
       "name": "PaymentForm",
       "type": "form",
       "selector_patterns": [
-        "form[onSubmit='handleSubmit']",
-        "#payment-form"
+        "form[onSubmit='handleSubmit']"
       ],
       "interaction_type": "submit",
-      "likely_purpose": "Allow users to enter their payment information and complete the checkout process",
+      "likely_purpose": "Payment processing",
       "context_needed": [
         "cardNumber",
         "cardName",
@@ -310,45 +266,112 @@
         "saveCard"
       ],
       "code_patterns": [
-        "onSubmit={handleSubmit}",
-        "id=\"payment-form\""
+        "onSubmit={handleSubmit}"
       ],
       "actual_values": []
     },
     {
-      "name": "Carousel",
-      "type": "custom",
+      "name": "ClearCartButton",
+      "type": "button",
       "selector_patterns": [
-        ".carousel",
-        "#carousel"
+        ".clear-cart-btn",
+        "[data-action='clear-cart']"
       ],
       "interaction_type": "click",
-      "likely_purpose": "Display a rotating carousel of product promotions or featured items",
-      "context_needed": [
-        "currentSlide"
-      ],
+      "likely_purpose": "Clear all items from the cart",
+      "context_needed": [],
       "code_patterns": [
-        "onClick={prevSlide}",
-        "onClick={nextSlide}",
-        "onClick={() => goToSlide(index)}"
+        "onClick={clearCart}"
       ],
       "actual_values": []
+    },
+    {
+      "name": "RemoveFromCartButton",
+      "type": "button",
+      "selector_patterns": [
+        ".remove-from-cart",
+        "[data-action='remove-from-cart']"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Remove a specific item from the cart",
+      "context_needed": [
+        "product_id"
+      ],
+      "code_patterns": [
+        "onClick={() => removeFromCart(item.id)}"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "CarouselNavigation",
+      "type": "button",
+      "selector_patterns": [
+        ".carousel-prev",
+        ".carousel-next",
+        "[data-action='prev-slide']",
+        "[data-action='next-slide']"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Navigate between carousel slides",
+      "context_needed": [],
+      "code_patterns": [
+        "onClick={prevSlide}",
+        "onClick={nextSlide}"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "CarouselDotIndicator",
+      "type": "button",
+      "selector_patterns": [
+        ".carousel-dot",
+        "[data-slide-index]"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Select a specific carousel slide",
+      "context_needed": [
+        "slide_index"
+      ],
+      "code_patterns": [
+        "onClick={() => goToSlide(index)}"
+      ],
+      "actual_values": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
     },
     {
       "name": "ProductLink",
       "type": "link",
       "selector_patterns": [
-        ".product-link",
-        "[data-product-id]"
+        ".product-card__link",
+        "[href^='/products/']"
       ],
       "interaction_type": "click",
-      "likely_purpose": "Navigate to the product details page for a specific product",
+      "likely_purpose": "Navigate to a specific product page",
       "context_needed": [
         "product_id"
       ],
       "code_patterns": [
-        "href=\"/products/[id]\"",
-        "data-product-id=\"[id]\""
+        "<Link href={`/products/${item.id}`}>"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "LogoutButton",
+      "type": "button",
+      "selector_patterns": [
+        ".logout-btn",
+        "[data-action='logout']"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Log out the user",
+      "context_needed": [],
+      "code_patterns": [
+        "onClick={logout}"
       ],
       "actual_values": []
     }
@@ -374,7 +397,8 @@
         "updates_cart"
       ],
       "triggers_events": [
-        "api_call"
+        "api_call",
+        "state_update"
       ]
     },
     {
@@ -404,7 +428,9 @@
       "component": "QuantitySelector",
       "context_collection": {
         "search_parents": [
-          ".cart-item"
+          ".product-card",
+          "[data-product]",
+          "form"
         ],
         "extract_fields": [
           "product-id",
@@ -419,7 +445,125 @@
         "updates_cart"
       ],
       "triggers_events": [
-        "api_call"
+        "api_call",
+        "state_update"
+      ]
+    },
+    {
+      "component": "LoginForm",
+      "context_collection": {
+        "search_parents": [
+          "form[action='/auth/login']"
+        ],
+        "extract_fields": [
+          "email",
+          "password"
+        ],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": [
+        "form_submit",
+        "api_call",
+        "state_update"
+      ]
+    },
+    {
+      "component": "RegisterForm",
+      "context_collection": {
+        "search_parents": [
+          "form[action='/auth/register']"
+        ],
+        "extract_fields": [
+          "name",
+          "email",
+          "password",
+          "confirmPassword"
+        ],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": [
+        "form_submit",
+        "api_call",
+        "state_update"
+      ]
+    },
+    {
+      "component": "CheckoutForm",
+      "context_collection": {
+        "search_parents": [
+          "form[onSubmit='handleSubmit']"
+        ],
+        "extract_fields": [
+          "firstName",
+          "lastName",
+          "email",
+          "phone",
+          "address",
+          "city",
+          "state",
+          "zipCode",
+          "country"
+        ],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": [
+        "form_submit",
+        "api_call",
+        "state_update"
+      ]
+    },
+    {
+      "component": "PaymentForm",
+      "context_collection": {
+        "search_parents": [
+          "form[onSubmit='handleSubmit']"
+        ],
+        "extract_fields": [
+          "cardNumber",
+          "cardName",
+          "expiryDate",
+          "cvv",
+          "saveCard"
+        ],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": [
+        "form_submit",
+        "api_call",
+        "state_update"
+      ]
+    },
+    {
+      "component": "ClearCartButton",
+      "context_collection": {
+        "search_parents": [
+          ".cart-container"
+        ],
+        "extract_fields": [],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "clears_cart"
+      ],
+      "triggers_events": [
+        "state_update"
       ]
     },
     {
@@ -440,132 +584,45 @@
         "updates_cart"
       ],
       "triggers_events": [
-        "api_call"
+        "api_call",
+        "state_update"
       ]
     },
     {
-      "component": "ClearCartButton",
+      "component": "CarouselNavigation",
       "context_collection": {
         "search_parents": [
-          "form"
+          ".carousel"
         ],
         "extract_fields": [],
         "sibling_context": [],
-        "data_attributes": []
+        "data_attributes": [
+          "data-slide-index"
+        ]
       },
       "state_changes": [
-        "clears_cart"
+        "navigates_carousel"
       ],
       "triggers_events": [
-        "api_call"
+        "state_update"
       ]
     },
     {
-      "component": "LoginForm",
-      "context_collection": {
-        "search_parents": [
-          "form"
-        ],
-        "extract_fields": [
-          "email",
-          "password"
-        ],
-        "sibling_context": [],
-        "data_attributes": []
-      },
-      "state_changes": [
-        "updates_auth_state"
-      ],
-      "triggers_events": [
-        "api_call"
-      ]
-    },
-    {
-      "component": "RegisterForm",
-      "context_collection": {
-        "search_parents": [
-          "form"
-        ],
-        "extract_fields": [
-          "name",
-          "email",
-          "password",
-          "confirmPassword"
-        ],
-        "sibling_context": [],
-        "data_attributes": []
-      },
-      "state_changes": [
-        "updates_auth_state"
-      ],
-      "triggers_events": [
-        "api_call"
-      ]
-    },
-    {
-      "component": "ShippingInfoForm",
-      "context_collection": {
-        "search_parents": [
-          "form"
-        ],
-        "extract_fields": [
-          "firstName",
-          "lastName",
-          "email",
-          "phone",
-          "address",
-          "city",
-          "state",
-          "zipCode",
-          "country"
-        ],
-        "sibling_context": [],
-        "data_attributes": []
-      },
-      "state_changes": [
-        "updates_order_state"
-      ],
-      "triggers_events": [
-        "api_call"
-      ]
-    },
-    {
-      "component": "PaymentForm",
-      "context_collection": {
-        "search_parents": [
-          "form"
-        ],
-        "extract_fields": [
-          "cardNumber",
-          "cardName",
-          "expiryDate",
-          "cvv",
-          "saveCard"
-        ],
-        "sibling_context": [],
-        "data_attributes": []
-      },
-      "state_changes": [
-        "updates_order_state"
-      ],
-      "triggers_events": [
-        "api_call"
-      ]
-    },
-    {
-      "component": "Carousel",
+      "component": "CarouselDotIndicator",
       "context_collection": {
         "search_parents": [
           ".carousel"
         ],
         "extract_fields": [
-          "currentSlide"
+          "slide-index"
         ],
         "sibling_context": [],
-        "data_attributes": []
+        "data_attributes": [
+          "data-slide-index"
+        ]
       },
       "state_changes": [
-        "updates_carousel_state"
+        "navigates_carousel"
       ],
       "triggers_events": [
         "state_update"
@@ -575,8 +632,7 @@
       "component": "ProductLink",
       "context_collection": {
         "search_parents": [
-          ".product-card",
-          "[data-product]"
+          ".product-card"
         ],
         "extract_fields": [
           "product-id"
@@ -591,6 +647,24 @@
       ],
       "triggers_events": [
         "navigation"
+      ]
+    },
+    {
+      "component": "LogoutButton",
+      "context_collection": {
+        "search_parents": [
+          ".user-menu"
+        ],
+        "extract_fields": [],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": [
+        "api_call",
+        "state_update"
       ]
     }
   ]

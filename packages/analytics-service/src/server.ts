@@ -4,6 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 import ingestRoutes from './routes/ingest';
 import analyticsRoutes from './routes/analytics';
 import selfcheck from "./selfcheck";
+import deployRoutes from './routes/deploy';
+
 
 const app = Fastify({ logger: true });
 const PORT = Number(process.env.ANALYTICS_PORT || 8082);
@@ -153,6 +155,7 @@ async function start() {
     await app.register(ingestRoutes);
     await app.register(selfcheck);
     await app.register(analyticsRoutes);
+    await app.register(deployRoutes);
 
     await app.listen({ port: PORT, host: '0.0.0.0' });
     app.log.info(`Analytics service listening on :${PORT}`);

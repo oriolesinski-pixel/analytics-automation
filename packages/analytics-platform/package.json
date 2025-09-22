@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@octokit/auth-oauth-app": "^9.0.1",
+    "@octokit/rest": "^22.0.0",
     "@supabase/supabase-js": "^2.38.0",
     "@tailwindcss/forms": "^0.5.10",
     "date-fns": "^2.30.0",
@@ -16,7 +18,8 @@
     "next": "^14.2.32",
     "react": "^18",
     "react-dom": "^18",
-    "recharts": "^2.15.4"
+    "recharts": "^2.15.4",
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@types/node": "^20",

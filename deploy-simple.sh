@@ -346,11 +346,12 @@ if [ "${ACTION}" != "skip" ]; then
         // First, create a new repo record
         const repoData = {
           id: crypto.randomUUID(),
-          name: '${TARGET_APP}-repo',
-          full: 'analytics/${TARGET_APP}',
-          owner: 'analytics-system',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          name: '${TARGET_APP}',
+          owner: 'local-system',
+          provider: 'local',
+          default_branch: 'main',
+          default_app_key: '${TARGET_APP}',
+          created_at: new Date().toISOString()
         };
         
         console.log('Creating repo record...');
