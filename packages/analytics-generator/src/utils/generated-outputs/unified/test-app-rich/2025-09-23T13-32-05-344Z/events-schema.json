@@ -271,17 +271,32 @@
       "actual_values": []
     },
     {
-      "name": "ClearCartButton",
+      "name": "PrevSlideButton",
       "type": "button",
       "selector_patterns": [
-        ".clear-cart-btn",
-        "[data-action='clear-cart']"
+        "button[onClick='prevSlide']",
+        "[aria-label='Previous slide']"
       ],
       "interaction_type": "click",
-      "likely_purpose": "Clear all items from the cart",
+      "likely_purpose": "Navigate to previous carousel slide",
       "context_needed": [],
       "code_patterns": [
-        "onClick={clearCart}"
+        "onClick={prevSlide}"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "NextSlideButton",
+      "type": "button",
+      "selector_patterns": [
+        "button[onClick='nextSlide']",
+        "[aria-label='Next slide']"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Navigate to next carousel slide",
+      "context_needed": [],
+      "code_patterns": [
+        "onClick={nextSlide}"
       ],
       "actual_values": []
     },
@@ -289,11 +304,11 @@
       "name": "RemoveFromCartButton",
       "type": "button",
       "selector_patterns": [
-        ".remove-from-cart",
+        "button[onClick='removeFromCart']",
         "[data-action='remove-from-cart']"
       ],
       "interaction_type": "click",
-      "likely_purpose": "Remove a specific item from the cart",
+      "likely_purpose": "Remove product from cart",
       "context_needed": [
         "product_id"
       ],
@@ -303,75 +318,62 @@
       "actual_values": []
     },
     {
-      "name": "CarouselNavigation",
+      "name": "ClearCartButton",
       "type": "button",
       "selector_patterns": [
-        ".carousel-prev",
-        ".carousel-next",
-        "[data-action='prev-slide']",
-        "[data-action='next-slide']"
+        "button[onClick='clearCart']",
+        "[data-action='clear-cart']"
       ],
       "interaction_type": "click",
-      "likely_purpose": "Navigate between carousel slides",
+      "likely_purpose": "Clear all items from cart",
       "context_needed": [],
       "code_patterns": [
-        "onClick={prevSlide}",
-        "onClick={nextSlide}"
+        "onClick={clearCart}"
       ],
       "actual_values": []
     },
     {
-      "name": "CarouselDotIndicator",
-      "type": "button",
-      "selector_patterns": [
-        ".carousel-dot",
-        "[data-slide-index]"
-      ],
-      "interaction_type": "click",
-      "likely_purpose": "Select a specific carousel slide",
-      "context_needed": [
-        "slide_index"
-      ],
-      "code_patterns": [
-        "onClick={() => goToSlide(index)}"
-      ],
-      "actual_values": [
-        "0",
-        "1",
-        "2",
-        "3",
-        "4"
-      ]
-    },
-    {
-      "name": "ProductLink",
+      "name": "ContinueShoppingLink",
       "type": "link",
       "selector_patterns": [
-        ".product-card__link",
-        "[href^='/products/']"
+        "a[href='/products']",
+        "[data-action='continue-shopping']"
       ],
       "interaction_type": "click",
-      "likely_purpose": "Navigate to a specific product page",
-      "context_needed": [
-        "product_id"
-      ],
+      "likely_purpose": "Navigate to product listing page",
+      "context_needed": [],
       "code_patterns": [
-        "<Link href={`/products/${item.id}`}>"
+        "href='/products'"
       ],
       "actual_values": []
     },
     {
-      "name": "LogoutButton",
-      "type": "button",
+      "name": "RegisterLink",
+      "type": "link",
       "selector_patterns": [
-        ".logout-btn",
-        "[data-action='logout']"
+        "a[href='/auth/register']",
+        "[data-action='register']"
       ],
       "interaction_type": "click",
-      "likely_purpose": "Log out the user",
+      "likely_purpose": "Navigate to registration page",
       "context_needed": [],
       "code_patterns": [
-        "onClick={logout}"
+        "href='/auth/register'"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "LoginLink",
+      "type": "link",
+      "selector_patterns": [
+        "a[href='/auth/login']",
+        "[data-action='login']"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Navigate to login page",
+      "context_needed": [],
+      "code_patterns": [
+        "href='/auth/login'"
       ],
       "actual_values": []
     }
@@ -397,8 +399,7 @@
         "updates_cart"
       ],
       "triggers_events": [
-        "api_call",
-        "state_update"
+        "api_call"
       ]
     },
     {
@@ -429,8 +430,7 @@
       "context_collection": {
         "search_parents": [
           ".product-card",
-          "[data-product]",
-          "form"
+          "[data-product]"
         ],
         "extract_fields": [
           "product-id",
@@ -445,8 +445,7 @@
         "updates_cart"
       ],
       "triggers_events": [
-        "api_call",
-        "state_update"
+        "api_call"
       ]
     },
     {
@@ -467,8 +466,7 @@
       ],
       "triggers_events": [
         "form_submit",
-        "api_call",
-        "state_update"
+        "api_call"
       ]
     },
     {
@@ -491,8 +489,7 @@
       ],
       "triggers_events": [
         "form_submit",
-        "api_call",
-        "state_update"
+        "api_call"
       ]
     },
     {
@@ -520,8 +517,7 @@
       ],
       "triggers_events": [
         "form_submit",
-        "api_call",
-        "state_update"
+        "api_call"
       ]
     },
     {
@@ -545,22 +541,40 @@
       ],
       "triggers_events": [
         "form_submit",
-        "api_call",
-        "state_update"
+        "api_call"
       ]
     },
     {
-      "component": "ClearCartButton",
+      "component": "PrevSlideButton",
       "context_collection": {
         "search_parents": [
-          ".cart-container"
+          "button[onClick='prevSlide']",
+          "[aria-label='Previous slide']"
         ],
         "extract_fields": [],
         "sibling_context": [],
         "data_attributes": []
       },
       "state_changes": [
-        "clears_cart"
+        "updates_carousel"
+      ],
+      "triggers_events": [
+        "state_update"
+      ]
+    },
+    {
+      "component": "NextSlideButton",
+      "context_collection": {
+        "search_parents": [
+          "button[onClick='nextSlide']",
+          "[aria-label='Next slide']"
+        ],
+        "extract_fields": [],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "updates_carousel"
       ],
       "triggers_events": [
         "state_update"
@@ -570,7 +584,8 @@
       "component": "RemoveFromCartButton",
       "context_collection": {
         "search_parents": [
-          ".cart-item"
+          "button[onClick='removeFromCart']",
+          "[data-action='remove-from-cart']"
         ],
         "extract_fields": [
           "product-id"
@@ -584,76 +599,33 @@
         "updates_cart"
       ],
       "triggers_events": [
-        "api_call",
-        "state_update"
+        "api_call"
       ]
     },
     {
-      "component": "CarouselNavigation",
+      "component": "ClearCartButton",
       "context_collection": {
         "search_parents": [
-          ".carousel"
+          "button[onClick='clearCart']",
+          "[data-action='clear-cart']"
         ],
         "extract_fields": [],
         "sibling_context": [],
-        "data_attributes": [
-          "data-slide-index"
-        ]
+        "data_attributes": []
       },
       "state_changes": [
-        "navigates_carousel"
+        "updates_cart"
       ],
       "triggers_events": [
-        "state_update"
+        "api_call"
       ]
     },
     {
-      "component": "CarouselDotIndicator",
+      "component": "ContinueShoppingLink",
       "context_collection": {
         "search_parents": [
-          ".carousel"
-        ],
-        "extract_fields": [
-          "slide-index"
-        ],
-        "sibling_context": [],
-        "data_attributes": [
-          "data-slide-index"
-        ]
-      },
-      "state_changes": [
-        "navigates_carousel"
-      ],
-      "triggers_events": [
-        "state_update"
-      ]
-    },
-    {
-      "component": "ProductLink",
-      "context_collection": {
-        "search_parents": [
-          ".product-card"
-        ],
-        "extract_fields": [
-          "product-id"
-        ],
-        "sibling_context": [],
-        "data_attributes": [
-          "data-product-id"
-        ]
-      },
-      "state_changes": [
-        "navigates_to"
-      ],
-      "triggers_events": [
-        "navigation"
-      ]
-    },
-    {
-      "component": "LogoutButton",
-      "context_collection": {
-        "search_parents": [
-          ".user-menu"
+          "a[href='/products']",
+          "[data-action='continue-shopping']"
         ],
         "extract_fields": [],
         "sibling_context": [],
@@ -662,10 +634,39 @@
       "state_changes": [
         "navigates_to"
       ],
-      "triggers_events": [
-        "api_call",
-        "state_update"
-      ]
+      "triggers_events": []
+    },
+    {
+      "component": "RegisterLink",
+      "context_collection": {
+        "search_parents": [
+          "a[href='/auth/register']",
+          "[data-action='register']"
+        ],
+        "extract_fields": [],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": []
+    },
+    {
+      "component": "LoginLink",
+      "context_collection": {
+        "search_parents": [
+          "a[href='/auth/login']",
+          "[data-action='login']"
+        ],
+        "extract_fields": [],
+        "sibling_context": [],
+        "data_attributes": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": []
     }
   ]
 }

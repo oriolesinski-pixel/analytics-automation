@@ -1,0 +1,9 @@
+{
+  "generatedAt": "2025-09-24T16:32:40.647Z",
+  "appKey": "test-app-rich-demo-2025-09-24-vi5ii5ycy6e",
+  "eventCount": 5,
+  "frameworksDetected": [
+    "unknown"
+  ],
+  "entryPointFile": "app/page.tsx"
+}

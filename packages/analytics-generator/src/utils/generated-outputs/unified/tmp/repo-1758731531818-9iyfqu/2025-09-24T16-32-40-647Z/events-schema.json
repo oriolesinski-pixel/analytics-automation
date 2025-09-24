@@ -1,0 +1,136 @@
+{
+  "base_fields": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "source": "generated"
+    },
+    "ts": {
+      "type": "number",
+      "format": "unix_timestamp",
+      "source": "generated"
+    },
+    "app_key": {
+      "type": "string",
+      "source": "config"
+    },
+    "session_id": {
+      "type": "string",
+      "source": "sessionStorage"
+    },
+    "user_id": {
+      "type": "string",
+      "source": "persistent_storage",
+      "description": "8-10 digit string"
+    },
+    "event_type": {
+      "type": "string",
+      "source": "code"
+    }
+  },
+  "events": [
+    {
+      "event_type": "PAGE_VIEW",
+      "data_fields": [
+        "url",
+        "path",
+        "title",
+        "referrer",
+        "is_first_view",
+        "entry_type"
+      ],
+      "properties": {
+        "url": "string",
+        "path": "string",
+        "title": "string",
+        "referrer": "string | null",
+        "is_first_view": "boolean",
+        "entry_type": "\"navigation\" | \"reload\" | \"back_forward\" | \"spa_transition\""
+      }
+    },
+    {
+      "event_type": "BUTTON_CLICK",
+      "data_fields": [
+        "element_text",
+        "element_id",
+        "element_type",
+        "surface",
+        "page_path",
+        "is_primary_cta",
+        "cta_category"
+      ],
+      "properties": {
+        "element_text": "string",
+        "element_id": "string | null",
+        "element_type": "\"button\" | \"link\" | \"icon\" | \"tab\"",
+        "surface": "string",
+        "page_path": "string",
+        "is_primary_cta": "boolean",
+        "cta_category": "\"conversion\" | \"navigation\" | \"engagement\""
+      }
+    },
+    {
+      "event_type": "FORM_INTERACTION",
+      "data_fields": [
+        "action",
+        "form_name",
+        "form_id",
+        "form_type",
+        "surface",
+        "page_path",
+        "fields_total",
+        "fields_completed"
+      ],
+      "properties": {
+        "action": "\"started\" | \"submitted\" | \"abandoned\"",
+        "form_name": "string",
+        "form_id": "string | null",
+        "form_type": "\"contact\" | \"signup\" | \"login\" | \"checkout\" | \"newsletter\" | \"other\"",
+        "surface": "string",
+        "page_path": "string",
+        "fields_total": "number",
+        "fields_completed": "number"
+      }
+    },
+    {
+      "event_type": "ELEMENT_VISIBILITY",
+      "data_fields": [
+        "action",
+        "element_type",
+        "element_name",
+        "element_id",
+        "trigger_source",
+        "page_path",
+        "has_cta"
+      ],
+      "properties": {
+        "action": "\"shown\" | \"hidden\" | \"dismissed\"",
+        "element_type": "\"modal\" | \"popup\" | \"drawer\" | \"tooltip\" | \"dropdown\" | \"toast\" | \"unknown\"",
+        "element_name": "string",
+        "element_id": "string | null",
+        "trigger_source": "\"button_click\" | \"auto_trigger\" | \"scroll_trigger\" | \"unknown\"",
+        "page_path": "string",
+        "has_cta": "boolean"
+      }
+    },
+    {
+      "event_type": "SCROLL_INTERACTION",
+      "data_fields": [
+        "action",
+        "depth_percentage",
+        "milestone",
+        "page_path",
+        "direction"
+      ],
+      "properties": {
+        "action": "\"depth_reached\"",
+        "depth_percentage": "number",
+        "milestone": "\"25%\" | \"50%\" | \"75%\" | \"90%\" | \"100%\" | \"none\"",
+        "page_path": "string",
+        "direction": "\"up\" | \"down\""
+      }
+    }
+  ],
+  "ai_components": [],
+  "ai_patterns": []
+}

@@ -1,35 +1,20 @@
 // packages/analytics-generator/src/test-generator.ts
 import { config } from 'dotenv';
 import { analyticsGenerator } from './lib/analytics-intelligence-generator';
+import path from 'path';
+import fs from 'fs';
 
 // Load environment variables
 config();
 
 interface TestConfig {
-    appName: string;  // Display name
-    repoId: string;   // What the generator expects (can be same as appName for examples)
+    appName: string;
+    repoId: string;
     appKey: string;
     backendUrl?: string;
     domain?: string;
+    targetPath?: string;
 }
-
-// Test configurations for different apps
-const TEST_CONFIGS: TestConfig[] = [
-    {
-        appName: 'test-app-rich',
-        repoId: 'test-app-rich',  // For examples directory, use the folder name
-        appKey: 'test-app-rich-' + Date.now(),
-        backendUrl: 'http://localhost:8082/ingest/analytics',
-        domain: 'https://test-app-rich.example.com'
-    },
-    {
-        appName: 'demo-next',
-        repoId: 'demo-next',  // For examples directory, use the folder name
-        appKey: 'demo-next-' + Date.now(),
-        backendUrl: 'http://localhost:8082/ingest/analytics',
-        domain: 'https://demo-next.example.com'
-    }
-];
 
 async function testGenerator(config: TestConfig) {
     console.log('\n' + '='.repeat(50));
@@ -39,8 +24,13 @@ async function testGenerator(config: TestConfig) {
     try {
         const startTime = Date.now();
 
+        // The generator gets targetPath from environment variable
+        if (config.targetPath) {
+            process.env.TARGET_PATH = config.targetPath;
+        }
+
         const result = await analyticsGenerator.generate({
-            repoId: config.repoId,  // FIXED: Use repoId instead of appName
+            repoId: config.repoId,
             appKey: config.appKey,
             backendUrl: config.backendUrl,
             domain: config.domain
@@ -54,19 +44,17 @@ async function testGenerator(config: TestConfig) {
         console.log('  🔧 Frameworks Detected:', result.metadata.frameworksDetected.join(', ') || 'none');
         console.log('  🗓️  Generated At:', result.metadata.generatedAt);
 
-        // Display event summary - UPDATED FOR NEW SCHEMA
+        // Display event summary
         const schema = result['events-schema.json'];
         if (schema && schema.events) {
             console.log('\n📋 Event Types:');
             schema.events.forEach((event: any) => {
                 console.log(`  - ${event.event_type}:`);
 
-                // Display data fields for the new schema structure
                 if (event.data_fields && event.data_fields.length > 0) {
                     console.log(`    Data fields: ${event.data_fields.join(', ')}`);
                 }
 
-                // Show properties if available
                 if (event.properties && Object.keys(event.properties).length > 0) {
                     const propTypes = Object.entries(event.properties)
                         .slice(0, 3)
@@ -76,7 +64,6 @@ async function testGenerator(config: TestConfig) {
                 }
             });
 
-            // Display base fields information
             if (schema.base_fields) {
                 console.log('\n📌 Base Fields (present in all events):');
                 Object.entries(schema.base_fields).forEach(([field, info]: [string, any]) => {
@@ -92,12 +79,10 @@ async function testGenerator(config: TestConfig) {
             console.log('  Pages:', Object.keys(uiGraph.pages).join(', '));
             console.log('  Relationships:', uiGraph.relationships?.length || 0);
 
-            // Show framework detection
             if (uiGraph.framework) {
                 console.log('  Framework:', uiGraph.framework);
             }
 
-            // Show widget and modal counts
             if (uiGraph.widgets) {
                 console.log('  Global Widgets:', uiGraph.widgets.length);
             }
@@ -124,8 +109,8 @@ async function testGenerator(config: TestConfig) {
     }
 }
 
-async function runAllTests() {
-    console.log('🚀 Starting Analytics Generator Tests');
+async function runGenerator() {
+    console.log('🚀 Starting Analytics Generator');
     console.log('Environment:', process.env.NODE_ENV || 'development');
 
     // Check required environment variables
@@ -139,53 +124,81 @@ async function runAllTests() {
         process.exit(1);
     }
 
-    const results = [];
+    // Get app name from command line argument or environment variable
+    const appName = process.argv[2] || process.env.APP_KEY;
 
-    // Test specific app or all
-    const appToTest = process.argv[2];
-    const configsToTest = appToTest
-        ? TEST_CONFIGS.filter(c => c.appName === appToTest)
-        : TEST_CONFIGS;
-
-    if (configsToTest.length === 0) {
-        console.error(`❌ App '${appToTest}' not found. Available: ${TEST_CONFIGS.map(c => c.appName).join(', ')}`);
+    if (!appName) {
+        console.error('❌ No app name provided');
+        console.log('\nUsage:');
+        console.log('  npx ts-node src/test-generator.ts <app-name>');
+        console.log('  OR set APP_KEY environment variable');
+        console.log('\nExamples:');
+        console.log('  npx ts-node src/test-generator.ts test-app-rich');
+        console.log('  npx ts-node src/test-generator.ts my-custom-app');
+        console.log('  APP_KEY=my-app npx ts-node src/test-generator.ts');
         process.exit(1);
     }
 
-    for (const config of configsToTest) {
-        try {
-            const result = await testGenerator(config);
-            results.push({ config, success: true, result });
-        } catch (error) {
-            results.push({ config, success: false, error });
+    // Get target path from environment or try to determine it
+    let targetPath = process.env.TARGET_PATH;
+
+    if (!targetPath) {
+        // Check if it's in examples directory
+        const examplesPath = path.resolve(process.cwd(), '../../examples', appName);
+        if (fs.existsSync(examplesPath)) {
+            targetPath = examplesPath;
+            console.log(`📁 Found app in examples: ${targetPath}`);
+        } else {
+            // Check if a path was provided as second argument
+            if (process.argv[3]) {
+                targetPath = path.resolve(process.argv[3]);
+                if (!fs.existsSync(targetPath)) {
+                    console.error(`❌ Target path does not exist: ${targetPath}`);
+                    process.exit(1);
+                }
+            } else {
+                console.error('❌ No TARGET_PATH environment variable set and app not found in examples');
+                console.log('\nPlease either:');
+                console.log('  1. Set TARGET_PATH environment variable to the app directory');
+                console.log('  2. Provide path as second argument: npx ts-node src/test-generator.ts <app-name> <path>');
+                console.log('  3. Place your app in the examples directory');
+                process.exit(1);
+            }
         }
     }
 
-    // Summary
-    console.log('\n' + '='.repeat(50));
-    console.log('📈 Test Summary');
-    console.log('='.repeat(50));
+    console.log(`📂 Using target path: ${targetPath}`);
 
-    const successful = results.filter(r => r.success);
-    const failed = results.filter(r => !r.success);
+    // Create configuration
+    const config: TestConfig = {
+        appName: appName,
+        repoId: appName,  // Use same name for repoId
+        appKey: `${appName}-${Date.now()}`,  // Add timestamp for uniqueness
+        backendUrl: process.env.BACKEND_URL || 'http://localhost:8082/ingest/analytics',
+        domain: process.env.DOMAIN || `https://${appName}.vercel.app`,
+        targetPath: targetPath
+    };
 
-    console.log(`✅ Successful: ${successful.length}`);
-    console.log(`❌ Failed: ${failed.length}`);
+    console.log('\n📝 Configuration:');
+    console.log(`  App Name: ${config.appName}`);
+    console.log(`  App Key: ${config.appKey}`);
+    console.log(`  Backend URL: ${config.backendUrl}`);
+    console.log(`  Domain: ${config.domain}`);
+    console.log(`  Target Path: ${config.targetPath}`);
 
-    if (failed.length > 0) {
-        console.log('\nFailed tests:');
-        failed.forEach(f => {
-            console.log(`  - ${f.config.appName}: ${f.error}`);
-        });
+    try {
+        const result = await testGenerator(config);
+        console.log('\n🎉 Generation completed successfully!');
+        process.exit(0);
+    } catch (error) {
+        console.error('\n💥 Generation failed:', error);
         process.exit(1);
     }
-
-    console.log('\n🎉 All tests passed!');
 }
 
-// Run tests
+// Run generator
 if (require.main === module) {
-    runAllTests().catch(console.error);
+    runGenerator().catch(console.error);
 }
 
-export { testGenerator, TEST_CONFIGS };
+export { testGenerator };

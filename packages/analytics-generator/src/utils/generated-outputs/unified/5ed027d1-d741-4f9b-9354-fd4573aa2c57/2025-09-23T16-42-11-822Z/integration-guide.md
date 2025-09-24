@@ -1,4 +1,4 @@
-# AI-Enhanced Analytics Integration Guide for test-app-rich-1758550776847
+# AI-Enhanced Analytics Integration Guide for test-app-rich-demo-2025-09-23-p25ltbu8dc
 
 ## 🤖 New Event Schema
 
@@ -49,24 +49,12 @@ The tracker automatically generates and persists user IDs:
 ## 🤖 AI-Discovered Components
 
 The AI analyzed your application and found:
-- **Framework:** react
-- **Interactive Components:** 13
-- **Behavior Patterns:** 13
+- **Framework:** unknown
+- **Interactive Components:** 0
+- **Behavior Patterns:** 0
 
 ### Discovered Components:
-- **AddToCartButton** (button): Add product to cart
-- **WishlistButton** (button): Add/remove product from wishlist
-- **QuantitySelector** (selector): Update product quantity in cart
-- **LoginForm** (form): User authentication
-- **RegisterForm** (form): User registration
-- **CheckoutForm** (form): Checkout process
-- **PaymentForm** (form): Payment processing
-- **ClearCartButton** (button): Clear all items from the cart
-- **RemoveFromCartButton** (button): Remove a specific item from the cart
-- **CarouselNavigation** (button): Navigate between carousel slides
-- **CarouselDotIndicator** (button): Select a specific carousel slide
-- **ProductLink** (link): Navigate to a specific product page
-- **LogoutButton** (button): Log out the user
+
 
 ## 🧪 Testing Your Integration
 
@@ -89,9 +77,9 @@ The AI analyzed your application and found:
 - **AI-Powered** - Understands your specific components
 - **Zero Configuration** - Just add the script
 - **Smart User Tracking** - Persistent 8-10 digit user IDs
-- **Framework Aware** - Optimized for react
+- **Framework Aware** - Optimized for unknown
 
 ---
 
-**Generated:** 2025-09-22T14:20:01.478Z
+**Generated:** 2025-09-23T16:42:11.822Z
 **AI Model:** Claude 3 Haiku

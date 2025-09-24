@@ -7,282 +7,334 @@ import path from 'path';
 
 // Check for required environment variables
 if (!process.env.ANTHROPIC_API_KEY) {
-    console.error('❌ Missing ANTHROPIC_API_KEY in .env file');
+  console.error('❌ Missing ANTHROPIC_API_KEY in .env file');
 }
 if (!process.env.SUPABASE_URL) {
-    console.error('❌ Missing SUPABASE_URL in .env file');
+  console.error('❌ Missing SUPABASE_URL in .env file');
 }
 if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.error('❌ Missing SUPABASE_SERVICE_ROLE_KEY in .env file');
+  console.error('❌ Missing SUPABASE_SERVICE_ROLE_KEY in .env file');
 }
 
 const anthropic = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY || 'dummy-key-for-testing'
+  apiKey: process.env.ANTHROPIC_API_KEY || 'dummy-key-for-testing'
 });
 
 const supabase = createClient(
-    process.env.SUPABASE_URL || 'https://dummy.supabase.co',
-    process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-key',
-    { auth: { persistSession: false } }
+  process.env.SUPABASE_URL || 'https://dummy.supabase.co',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || 'dummy-key',
+  { auth: { persistSession: false } }
 );
 
 // Configuration
 const CONFIG = {
-    OUTPUTS_DIR: '/Users/oriolesinski/analytics-automation/packages/analytics-generator/src/utils/generated-outputs',
-    EXAMPLES_DIR: '/Users/oriolesinski/analytics-automation/examples',
-    MAX_FILES: 50,
-    MAX_FILE_CONTENT_LENGTH: 5000,
-    LLM_MAX_TOKENS: 4096
+  OUTPUTS_DIR: '/Users/oriolesinski/analytics-automation/packages/analytics-generator/src/utils/generated-outputs',
+  EXAMPLES_DIR: '/Users/oriolesinski/analytics-automation/examples',
+  MAX_FILES: 50,
+  MAX_FILE_CONTENT_LENGTH: 5000,
+  LLM_MAX_TOKENS: 4096
 };
 
 // Required base fields that MUST be in every event
 const REQUIRED_BASE_FIELDS = ['id', 'ts', 'app_key', 'session_id', 'user_id', 'event_type'] as const;
 
 interface EventSchema {
-    event_type: string;
-    data_fields: {
-        required: string[];
-    };
-    properties?: Record<string, any>;
+  event_type: string;
+  data_fields: {
+    required: string[];
+  };
+  properties?: Record<string, any>;
 }
 
 interface FileContent {
-    path: string;
-    content: string;
+  path: string;
+  content: string;
 }
 
 interface GeneratorInput {
-    repoId: string;
-    appKey: string;
-    domain?: string;
-    backendUrl?: string;
-    frameworks?: string[];
-    files?: FileContent[];
-    routes?: string[];
-    businessContext?: {
-        type?: string;
-        key_entities?: string[];
-        key_actions?: string[];
-    };
-    sample_routes?: string[];
+  repoId: string;
+  appKey: string;
+  domain?: string;
+  backendUrl?: string;
+  frameworks?: string[];
+  files?: FileContent[];
+  routes?: string[];
+  businessContext?: {
+    type?: string;
+    key_entities?: string[];
+    key_actions?: string[];
+  };
+  sample_routes?: string[];
 }
 
 interface GeneratorOutput {
-    'tracker.js': string;
-    'events-schema.json': any;
-    'ui-graph.json': any;
-    'analytics-provider.tsx': string;
-    'analytics.types.ts': string;
-    'integration-guide.md': string;
-    metadata: {
-        generatedAt: string;
-        appKey: string;
-        eventCount: number;
-        frameworksDetected: string[];
-    };
+  'tracker.js': string;
+  'events-schema.json': any;
+  'ui-graph.json': any;
+  'analytics-provider.tsx': string;
+  'analytics.types.ts': string;
+  'integration-guide.md': string;
+  'entry-point.js'?: string;
+  metadata: {
+    generatedAt: string;
+    appKey: string;
+    eventCount: number;
+    frameworksDetected: string[];
+    entryPointFile?: string;
+  };
 }
 
 interface ComponentDiscovery {
-    components: Array<{
-        name: string;
-        type: string;
-        selector_patterns: string[];
-        interaction_type: string;
-        likely_purpose: string;
-        context_needed: string[];
-    }>;
-    framework: string;
+  components: Array<{
+    name: string;
+    type: string;
+    selector_patterns: string[];
+    interaction_type: string;
+    likely_purpose: string;
+    context_needed: string[];
+  }>;
+  framework: string;
 }
 
 interface BehaviorAnalysis {
-    patterns: Array<{
-        component: string;
-        context_collection: {
-            search_parents: string[];
-            extract_fields: string[];
-            sibling_context: string[];
-        };
-        state_changes: string[];
-    }>;
+  patterns: Array<{
+    component: string;
+    context_collection: {
+      search_parents: string[];
+      extract_fields: string[];
+      sibling_context: string[];
+    };
+    state_changes: string[];
+  }>;
 }
 
 interface ProgressiveAnalysis {
-    discovery: ComponentDiscovery;
-    behaviors: BehaviorAnalysis;
-    events: EventSchema[];
-    uiGraph: any;
+  discovery: ComponentDiscovery;
+  behaviors: BehaviorAnalysis;
+  events: EventSchema[];
+  uiGraph: any;
 }
 
 /**
  * Storage Service for cloud and local file management
  */
 class StorageService {
-    private bucketName = 'generated-analytics';
-    private supabase: any;
+  private bucketName = 'generated-analytics';
+  private supabase: any;
 
-    constructor(supabaseClient: any) {
-        this.supabase = supabaseClient;
-        this.initializeBucket();
+  constructor(supabaseClient: any) {
+    this.supabase = supabaseClient;
+    this.initializeBucket();
+  }
+
+  private async initializeBucket() {
+    try {
+      const { data: buckets } = await this.supabase.storage.listBuckets();
+      if (!buckets?.find((b: any) => b.name === this.bucketName)) {
+        await this.supabase.storage.createBucket(this.bucketName, {
+          public: false,
+          allowedMimeTypes: ['application/json', 'application/javascript', 'text/javascript', 'text/markdown', 'text/plain']
+        });
+        console.log('✅ Created storage bucket:', this.bucketName);
+      }
+    } catch (error) {
+      console.error('⚠️ Storage bucket initialization error:', error);
     }
+  }
 
-    private async initializeBucket() {
-        try {
-            const { data: buckets } = await this.supabase.storage.listBuckets();
-            if (!buckets?.find((b: any) => b.name === this.bucketName)) {
-                await this.supabase.storage.createBucket(this.bucketName, {
-                    public: false,
-                    allowedMimeTypes: ['application/json', 'application/javascript', 'text/javascript', 'text/markdown', 'text/plain']
-                });
-                console.log('✅ Created storage bucket:', this.bucketName);
-            }
-        } catch (error) {
-            console.error('⚠️ Storage bucket initialization error:', error);
-        }
+  async saveToCloud(repoId: string, fileName: string, content: string, contentType = 'application/json'): Promise<{ path: string; url: string | null }> {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const cloudPath = `${repoId}/${timestamp}/${fileName}`;
+
+    try {
+      const { data, error } = await this.supabase.storage
+        .from(this.bucketName)
+        .upload(cloudPath, content, {
+          contentType,
+          upsert: false
+        });
+
+      if (error) throw error;
+
+      await this.supabase.from('generated_outputs').insert({
+        repo_id: repoId,
+        output_type: fileName.replace(/\.(js|json|tsx|ts|md)$/, ''),
+        file_path: cloudPath,
+        metadata: {
+          size: content.length,
+          contentType
+        },
+        created_at: new Date().toISOString()
+      });
+
+      const url = await this.getSignedUrl(cloudPath);
+      console.log(`☁️ Saved to cloud: ${fileName}`);
+      return { path: cloudPath, url };
+    } catch (error) {
+      console.error(`⚠️ Cloud save failed for ${fileName}:`, error);
+      return { path: cloudPath, url: null };
     }
+  }
 
-    async saveToCloud(repoId: string, fileName: string, content: string, contentType = 'application/json'): Promise<{ path: string; url: string | null }> {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const cloudPath = `${repoId}/${timestamp}/${fileName}`;
+  async saveToLocal(outputPath: string, fileName: string, content: string): Promise<void> {
+    const filePath = path.join(outputPath, fileName);
+    await fs.writeFile(filePath, content, { encoding: 'utf8' });
+    console.log(`💾 Saved locally: ${fileName}`);
+  }
 
-        try {
-            const { data, error } = await this.supabase.storage
-                .from(this.bucketName)
-                .upload(cloudPath, content, {
-                    contentType,
-                    upsert: false
-                });
-
-            if (error) throw error;
-
-            await this.supabase.from('generated_outputs').insert({
-                repo_id: repoId,
-                output_type: fileName.replace(/\.(js|json|tsx|ts|md)$/, ''),
-                file_path: cloudPath,
-                metadata: {
-                    size: content.length,
-                    contentType
-                },
-                created_at: new Date().toISOString()
-            });
-
-            const url = await this.getSignedUrl(cloudPath);
-            console.log(`☁️ Saved to cloud: ${fileName}`);
-            return { path: cloudPath, url };
-        } catch (error) {
-            console.error(`⚠️ Cloud save failed for ${fileName}:`, error);
-            return { path: cloudPath, url: null };
-        }
+  private async getSignedUrl(filePath: string, expiresIn = 3600): Promise<string | null> {
+    try {
+      const { data } = await this.supabase.storage
+        .from(this.bucketName)
+        .createSignedUrl(filePath, expiresIn);
+      return data?.signedUrl || null;
+    } catch (error) {
+      console.error('Failed to generate signed URL:', error);
+      return null;
     }
-
-    async saveToLocal(outputPath: string, fileName: string, content: string): Promise<void> {
-        const filePath = path.join(outputPath, fileName);
-        await fs.writeFile(filePath, content, { encoding: 'utf8' });
-        console.log(`💾 Saved locally: ${fileName}`);
-    }
-
-    private async getSignedUrl(filePath: string, expiresIn = 3600): Promise<string | null> {
-        try {
-            const { data } = await this.supabase.storage
-                .from(this.bucketName)
-                .createSignedUrl(filePath, expiresIn);
-            return data?.signedUrl || null;
-        } catch (error) {
-            console.error('Failed to generate signed URL:', error);
-            return null;
-        }
-    }
+  }
 }
 
 export class AnalyticsIntelligenceGenerator {
-    private anthropic: Anthropic;
-    private supabase: any;
-    private storageService: StorageService;
+  private anthropic: Anthropic;
+  private supabase: any;
+  private storageService: StorageService;
 
-    constructor() {
-        this.anthropic = anthropic;
-        this.supabase = supabase;
-        this.storageService = new StorageService(supabase);
+  constructor() {
+    this.anthropic = anthropic;
+    this.supabase = supabase;
+    this.storageService = new StorageService(supabase);
+  }
+
+  /**
+   * Generate the complete analytics implementation with AI-driven analysis
+   */
+  async generate(input: GeneratorInput): Promise<GeneratorOutput> {
+    console.log('🚀 Starting AI-powered generation for:', input.appKey);
+
+    // Step 1: Load files
+    const repoFiles = await this.loadRepositoryFiles(input.repoId);
+    if (repoFiles.length > 0) {
+      console.log(`📁 Loaded ${repoFiles.length} files`);
+      input.files = repoFiles;
     }
 
-    /**
-     * Generate the complete analytics implementation with AI-driven analysis
-     */
-    async generate(input: GeneratorInput): Promise<GeneratorOutput> {
-        console.log('🚀 Starting AI-powered generation for:', input.appKey);
-
-        // Step 1: Load files
-        const repoFiles = await this.loadRepositoryFiles(input.repoId);
-        if (repoFiles.length > 0) {
-            console.log(`📁 Loaded ${repoFiles.length} files`);
-            input.files = repoFiles;
-        }
-
-        // Step 2: Extract routes from file system
-        const extractedRoutes = this.extractRoutesFromFiles(repoFiles);
-        if (extractedRoutes.length > 0) {
-            console.log(`🛣️ Found routes:`, extractedRoutes);
-            input.routes = extractedRoutes;
-        }
-
-        // Step 3: Progressive AI Analysis
-        const analysis = await this.performProgressiveAnalysis(input);
-
-        // Step 4: Generate implementation with AI insights
-        const output = await this.generateImplementation(input, analysis.events, analysis);
-
-        // Step 5: Save to both cloud and local storage
-        await this.saveOutput(output, input.repoId, input.appKey);
-
-        return output;
+    // Step 2: Extract routes from file system
+    const extractedRoutes = this.extractRoutesFromFiles(repoFiles);
+    if (extractedRoutes.length > 0) {
+      console.log(`🛣️ Found routes:`, extractedRoutes);
+      input.routes = extractedRoutes;
     }
 
-    /**
-     * Perform progressive AI analysis of components and behaviors
-     */
-    private async performProgressiveAnalysis(input: GeneratorInput): Promise<ProgressiveAnalysis> {
-        console.log('🤖 Starting progressive AI analysis...');
+    // Step 3: Progressive AI Analysis
+    const analysis = await this.performProgressiveAnalysis(input);
 
-        // Phase 1: Discover components
-        const discovery = await this.discoverComponentsWithAI(input);
-        console.log(`📊 Discovered ${discovery.components.length} interactive components`);
+    // Step 4: Generate implementation with AI insights
+    const output = await this.generateImplementation(input, analysis.events, analysis);
 
-        // Phase 2: Analyze behaviors
-        const behaviors = await this.analyzeBehaviorsWithAI(input, discovery);
-        console.log(`🔍 Analyzed ${behaviors.patterns.length} behavior patterns`);
+    // Step 5: Save to both cloud and local storage
+    await this.saveOutput(output, input.repoId, input.appKey);
 
-        // Phase 3: Generate optimized events schema
-        const events = await this.generateEventsFromAnalysis(discovery, behaviors);
+    return output;
+  }
 
-        // Phase 4: Create UI graph
-        const uiGraph = await this.generateUIGraphWithAI(input, discovery, behaviors);
+  /**
+   * Perform progressive AI analysis of components and behaviors
+   */
+  private async performProgressiveAnalysis(input: GeneratorInput): Promise<ProgressiveAnalysis> {
+    console.log('🤖 Starting progressive AI analysis...');
 
+    // Phase 1: Discover components
+    const discovery = await this.discoverComponentsWithAI(input);
+    console.log(`📊 Discovered ${discovery.components.length} interactive components`);
+
+    // Phase 2: Analyze behaviors
+    const behaviors = await this.analyzeBehaviorsWithAI(input, discovery);
+    console.log(`🔍 Analyzed ${behaviors.patterns.length} behavior patterns`);
+
+    // Phase 3: Generate optimized events schema
+    const events = await this.generateEventsFromAnalysis(discovery, behaviors);
+
+    // Phase 4: Create UI graph
+    const uiGraph = await this.generateUIGraphWithAI(input, discovery, behaviors);
+
+    return {
+      discovery,
+      behaviors,
+      events,
+      uiGraph
+    };
+  }
+
+  /**
+   * Extract the main entry point file content
+   */
+  private async extractEntryPoint(input: GeneratorInput): Promise<{ filename: string; content: string } | null> {
+    if (!input.files || input.files.length === 0) {
+      return null;
+    }
+
+    // Priority order for finding entry point
+    const entryPatterns = [
+      /^app\.(tsx?|jsx?)$/,
+      /^index\.(tsx?|jsx?)$/,
+      /^main\.(tsx?|jsx?)$/,
+      /^pages\/index\.(tsx?|jsx?)$/,
+      /^src\/app\.(tsx?|jsx?)$/,
+      /^src\/index\.(tsx?|jsx?)$/,
+      /^app\/page\.(tsx?|jsx?)$/,
+      /^pages\/home\.(tsx?|jsx?)$/
+    ];
+
+    for (const pattern of entryPatterns) {
+      const entryFile = input.files.find(f => pattern.test(f.path));
+      if (entryFile) {
+        console.log(`📄 Found entry point: ${entryFile.path}`);
         return {
-            discovery,
-            behaviors,
-            events,
-            uiGraph
+          filename: entryFile.path,
+          content: entryFile.content
         };
+      }
     }
 
-    /**
-     * AI-driven component discovery with intelligent pattern recognition
-     */
-    private async discoverComponentsWithAI(input: GeneratorInput): Promise<ComponentDiscovery> {
-        if (!input.files || input.files.length === 0) {
-            return { components: [], framework: 'unknown' };
-        }
+    // Fallback: find first JSX/TSX file with React import
+    const reactFile = input.files.find(f =>
+      f.path.match(/\.(tsx?|jsx?)$/) &&
+      f.content.includes('React') &&
+      (f.content.includes('export default') || f.content.includes('ReactDOM'))
+    );
 
-        const codeContent = input.files.slice(0, 20).map((f: FileContent) =>
-            `=== File: ${f.path} ===\n${f.content.slice(0, 3000)}\n`
-        ).join('\n').slice(0, 40000);
+    if (reactFile) {
+      console.log(`📄 Found React entry point (fallback): ${reactFile.path}`);
+      return {
+        filename: reactFile.path,
+        content: reactFile.content
+      };
+    }
 
-        const systemPrompt = `You are an expert UI component analyzer. 
+    console.log('⚠️ No entry point file found');
+    return null;
+  }
+
+  /**
+   * AI-driven component discovery with intelligent pattern recognition
+   */
+  private async discoverComponentsWithAI(input: GeneratorInput): Promise<ComponentDiscovery> {
+    if (!input.files || input.files.length === 0) {
+      return { components: [], framework: 'unknown' };
+    }
+
+    const codeContent = input.files.slice(0, 20).map((f: FileContent) =>
+      `=== File: ${f.path} ===\n${f.content.slice(0, 3000)}\n`
+    ).join('\n').slice(0, 40000);
+
+    const systemPrompt = `You are an expert UI component analyzer. 
 Analyze code to identify ALL interactive components, not just standard HTML elements.
 Use context clues from the code to understand component purposes.
 Focus on understanding the actual implementation, not theoretical possibilities.
 Return ONLY valid JSON.`;
 
-        const userPrompt = `Analyze this code and identify ALL interactive UI components.
+    const userPrompt = `Analyze this code and identify ALL interactive UI components.
 
 INTELLIGENT DETECTION INSTRUCTIONS:
 Look at the actual values and context in the code to understand component purposes. These are EXAMPLES, not a complete list:
@@ -404,48 +456,48 @@ Return this EXACT JSON structure:
 Include ALL interactive elements found, both standard HTML and custom components.
 Make selectors SPECIFIC to avoid matching everything.`;
 
-        try {
-            const response = await this.anthropic.messages.create({
-                model: "claude-3-haiku-20240307",
-                max_tokens: CONFIG.LLM_MAX_TOKENS,
-                temperature: 0.1,
-                system: systemPrompt,
-                messages: [{
-                    role: "user",
-                    content: userPrompt
-                }]
-            });
+    try {
+      const response = await this.anthropic.messages.create({
+        model: "claude-3-haiku-20240307",
+        max_tokens: CONFIG.LLM_MAX_TOKENS,
+        temperature: 0.1,
+        system: systemPrompt,
+        messages: [{
+          role: "user",
+          content: userPrompt
+        }]
+      });
 
-            const content = response.content[0].type === 'text' ? response.content[0].text : '';
-            const parsed = this.extractJSON(content);
+      const content = response.content[0].type === 'text' ? response.content[0].text : '';
+      const parsed = this.extractJSON(content);
 
-            return parsed as ComponentDiscovery;
-        } catch (error) {
-            console.error('❌ Component discovery failed:', error);
-            return { components: [], framework: 'unknown' };
-        }
+      return parsed as ComponentDiscovery;
+    } catch (error) {
+      console.error('❌ Component discovery failed:', error);
+      return { components: [], framework: 'unknown' };
+    }
+  }
+
+  /**
+   * AI-driven behavior analysis
+   */
+  private async analyzeBehaviorsWithAI(
+    input: GeneratorInput,
+    discovery: ComponentDiscovery
+  ): Promise<BehaviorAnalysis> {
+    if (!input.files || discovery.components.length === 0) {
+      return { patterns: [] };
     }
 
-    /**
-     * AI-driven behavior analysis
-     */
-    private async analyzeBehaviorsWithAI(
-        input: GeneratorInput,
-        discovery: ComponentDiscovery
-    ): Promise<BehaviorAnalysis> {
-        if (!input.files || discovery.components.length === 0) {
-            return { patterns: [] };
-        }
+    const codeContent = input.files.slice(0, 15).map((f: FileContent) =>
+      `=== File: ${f.path} ===\n${f.content.slice(0, 2000)}\n`
+    ).join('\n').slice(0, 30000);
 
-        const codeContent = input.files.slice(0, 15).map((f: FileContent) =>
-            `=== File: ${f.path} ===\n${f.content.slice(0, 2000)}\n`
-        ).join('\n').slice(0, 30000);
-
-        const systemPrompt = `You are an expert in understanding UI component behaviors and data flow.
+    const systemPrompt = `You are an expert in understanding UI component behaviors and data flow.
 Analyze how components interact and what context they need.
 Return ONLY valid JSON.`;
 
-        const userPrompt = `Given these discovered components:
+    const userPrompt = `Given these discovered components:
 ${JSON.stringify(discovery.components, null, 2)}
 
 Analyze the code to understand:
@@ -474,307 +526,319 @@ Return behavior patterns as JSON:
   ]
 }`;
 
-        try {
-            const response = await this.anthropic.messages.create({
-                model: "claude-3-haiku-20240307",
-                max_tokens: CONFIG.LLM_MAX_TOKENS,
-                temperature: 0.1,
-                system: systemPrompt,
-                messages: [{
-                    role: "user",
-                    content: userPrompt
-                }]
-            });
+    try {
+      const response = await this.anthropic.messages.create({
+        model: "claude-3-haiku-20240307",
+        max_tokens: CONFIG.LLM_MAX_TOKENS,
+        temperature: 0.1,
+        system: systemPrompt,
+        messages: [{
+          role: "user",
+          content: userPrompt
+        }]
+      });
 
-            const content = response.content[0].type === 'text' ? response.content[0].text : '';
-            const parsed = this.extractJSON(content);
+      const content = response.content[0].type === 'text' ? response.content[0].text : '';
+      const parsed = this.extractJSON(content);
 
-            return parsed as BehaviorAnalysis;
-        } catch (error) {
-            console.error('❌ Behavior analysis failed:', error);
-            return { patterns: [] };
+      return parsed as BehaviorAnalysis;
+    } catch (error) {
+      console.error('❌ Behavior analysis failed:', error);
+      return { patterns: [] };
+    }
+  }
+
+  /**
+   * Generate events schema from AI analysis with new format
+   */
+  private async generateEventsFromAnalysis(
+    discovery: ComponentDiscovery,
+    behaviors: BehaviorAnalysis
+  ): Promise<EventSchema[]> {
+    const events: EventSchema[] = [
+      {
+        event_type: 'PAGE_VIEW',
+        data_fields: {
+          required: ['url', 'path', 'title', 'referrer', 'is_first_view', 'entry_type']
+        },
+        properties: {
+          url: 'string',
+          path: 'string',
+          title: 'string',
+          referrer: 'string | null',
+          is_first_view: 'boolean',
+          entry_type: '"navigation" | "reload" | "back_forward" | "spa_transition"'
         }
-    }
-
-    /**
-     * Generate events schema from AI analysis with new format
-     */
-    private async generateEventsFromAnalysis(
-        discovery: ComponentDiscovery,
-        behaviors: BehaviorAnalysis
-    ): Promise<EventSchema[]> {
-        const events: EventSchema[] = [
-            {
-                event_type: 'PAGE_VIEW',
-                data_fields: {
-                    required: ['url', 'path', 'title', 'referrer', 'is_first_view', 'entry_type']
-                },
-                properties: {
-                    url: 'string',
-                    path: 'string',
-                    title: 'string',
-                    referrer: 'string | null',
-                    is_first_view: 'boolean',
-                    entry_type: '"navigation" | "reload" | "back_forward" | "spa_transition"'
-                }
-            },
-            {
-                event_type: 'BUTTON_CLICK',
-                data_fields: {
-                    required: ['element_text', 'element_id', 'element_type', 'surface', 'page_path', 'is_primary_cta', 'cta_category']
-                },
-                properties: {
-                    element_text: 'string',
-                    element_id: 'string | null',
-                    element_type: '"button" | "link" | "icon" | "tab"',
-                    surface: 'string',
-                    page_path: 'string',
-                    is_primary_cta: 'boolean',
-                    cta_category: '"conversion" | "navigation" | "engagement"'
-                }
-            },
-            {
-                event_type: 'FORM_INTERACTION',
-                data_fields: {
-                    required: ['action', 'form_name', 'form_id', 'form_type', 'surface', 'page_path', 'fields_total', 'fields_completed']
-                },
-                properties: {
-                    action: '"started" | "submitted" | "abandoned"',
-                    form_name: 'string',
-                    form_id: 'string | null',
-                    form_type: '"contact" | "signup" | "login" | "checkout" | "newsletter" | "other"',
-                    surface: 'string',
-                    page_path: 'string',
-                    fields_total: 'number',
-                    fields_completed: 'number'
-                }
-            },
-            {
-                event_type: 'ELEMENT_VISIBILITY',
-                data_fields: {
-                    required: ['action', 'element_type', 'element_name', 'element_id', 'trigger_source', 'page_path', 'has_cta']
-                },
-                properties: {
-                    action: '"shown" | "hidden" | "dismissed"',
-                    element_type: '"modal" | "popup" | "drawer" | "tooltip" | "dropdown" | "toast" | "unknown"',
-                    element_name: 'string',
-                    element_id: 'string | null',
-                    trigger_source: '"button_click" | "auto_trigger" | "scroll_trigger" | "unknown"',
-                    page_path: 'string',
-                    has_cta: 'boolean'
-                }
-            },
-            {
-                event_type: 'SCROLL_INTERACTION',
-                data_fields: {
-                    required: ['action', 'depth_percentage', 'milestone', 'page_path', 'direction']
-                },
-                properties: {
-                    action: '"depth_reached"',
-                    depth_percentage: 'number',
-                    milestone: '"25%" | "50%" | "75%" | "90%" | "100%" | "none"',
-                    page_path: 'string',
-                    direction: '"up" | "down"'
-                }
-            }
-        ];
-
-        return events;
-    }
-
-    /**
-     * Generate UI graph with only pages, modals, routes, and widgets
-     */
-    private async generateUIGraphWithAI(
-        input: GeneratorInput,
-        discovery: ComponentDiscovery,
-        behaviors: BehaviorAnalysis
-    ): Promise<any> {
-        const routes = input.routes || ['/'];
-        const pages: any = {};
-
-        // Create simplified page entries without component lists
-        routes.forEach((route: string) => {
-            const pageName = this.routeToPageName(route);
-
-            // Determine which types of widgets/modals might be on this page based on route
-            const pageType = this.determinePageType(route);
-
-            pages[pageName] = {
-                route,
-                page_type: pageType,
-                widgets: this.getWidgetsForPageType(pageType),
-                modals: this.getModalsForPageType(pageType),
-                can_navigate_to: routes.filter((r: string) => r !== route).map((r: string) => this.routeToPageName(r)),
-                events: ['PAGE_VIEW', 'BUTTON_CLICK', 'FORM_INTERACTION', 'SCROLL_INTERACTION'],
-                ai_insights: {
-                    framework: discovery.framework,
-                    interaction_types: Array.from(new Set(discovery.components.map((c: any) => c.interaction_type))),
-                    has_forms: pageType.includes('auth') || pageType.includes('checkout'),
-                    has_product_interactions: pageType.includes('product') || route === '/'
-                }
-            };
-        });
-
-        return {
-            app_key: input.appKey,
-            framework: discovery.framework,
-            relationships: [],
-            pages,
-            widgets: this.identifyGlobalWidgets(discovery),
-            modals: this.identifyModals(discovery)
-        };
-    }
-
-    /**
-     * Determine page type based on route
-     */
-    private determinePageType(route: string): string {
-        if (route === '/') return 'home';
-        if (route.includes('product')) return 'product_detail';
-        if (route.includes('cart')) return 'cart';
-        if (route.includes('checkout')) return 'checkout';
-        if (route.includes('auth') || route.includes('login') || route.includes('register')) return 'auth';
-        if (route.includes('wishlist')) return 'wishlist';
-        if (route.includes('about') || route.includes('shipping') || route.includes('returns')) return 'info';
-        return 'general';
-    }
-
-    /**
-     * Get widgets that should appear on specific page types
-     */
-    private getWidgetsForPageType(pageType: string): string[] {
-        const widgets: string[] = ['header', 'footer'];
-
-        switch (pageType) {
-            case 'home':
-                widgets.push('product_carousel', 'featured_products', 'search_bar');
-                break;
-            case 'product_detail':
-                widgets.push('product_gallery', 'product_options', 'add_to_cart', 'reviews');
-                break;
-            case 'cart':
-                widgets.push('cart_items', 'cart_summary', 'checkout_button');
-                break;
-            case 'checkout':
-                widgets.push('checkout_form', 'order_summary');
-                break;
-            case 'auth':
-                widgets.push('auth_form');
-                break;
-            case 'wishlist':
-                widgets.push('wishlist_grid');
-                break;
+      },
+      {
+        event_type: 'BUTTON_CLICK',
+        data_fields: {
+          required: ['element_text', 'element_id', 'element_type', 'surface', 'page_path', 'is_primary_cta', 'cta_category']
+        },
+        properties: {
+          element_text: 'string',
+          element_id: 'string | null',
+          element_type: '"button" | "link" | "icon" | "tab"',
+          surface: 'string',
+          page_path: 'string',
+          is_primary_cta: 'boolean',
+          cta_category: '"conversion" | "navigation" | "engagement"'
         }
-
-        return widgets;
-    }
-
-    /**
-     * Get modals that might appear on specific page types
-     */
-    private getModalsForPageType(pageType: string): string[] {
-        const modals: string[] = [];
-
-        if (pageType === 'product_detail') {
-            modals.push('size_guide', 'quick_view');
+      },
+      {
+        event_type: 'FORM_INTERACTION',
+        data_fields: {
+          required: ['action', 'form_name', 'form_id', 'form_type', 'surface', 'page_path', 'fields_total', 'fields_completed']
+        },
+        properties: {
+          action: '"started" | "submitted" | "abandoned"',
+          form_name: 'string',
+          form_id: 'string | null',
+          form_type: '"contact" | "signup" | "login" | "checkout" | "newsletter" | "other"',
+          surface: 'string',
+          page_path: 'string',
+          fields_total: 'number',
+          fields_completed: 'number'
         }
-        if (pageType === 'cart' || pageType === 'checkout') {
-            modals.push('promo_code', 'shipping_info');
+      },
+      {
+        event_type: 'ELEMENT_VISIBILITY',
+        data_fields: {
+          required: ['action', 'element_type', 'element_name', 'element_id', 'trigger_source', 'page_path', 'has_cta']
+        },
+        properties: {
+          action: '"shown" | "hidden" | "dismissed"',
+          element_type: '"modal" | "popup" | "drawer" | "tooltip" | "dropdown" | "toast" | "unknown"',
+          element_name: 'string',
+          element_id: 'string | null',
+          trigger_source: '"button_click" | "auto_trigger" | "scroll_trigger" | "unknown"',
+          page_path: 'string',
+          has_cta: 'boolean'
         }
-        if (pageType === 'auth') {
-            modals.push('forgot_password');
+      },
+      {
+        event_type: 'SCROLL_INTERACTION',
+        data_fields: {
+          required: ['action', 'depth_percentage', 'milestone', 'page_path', 'direction']
+        },
+        properties: {
+          action: '"depth_reached"',
+          depth_percentage: 'number',
+          milestone: '"25%" | "50%" | "75%" | "90%" | "100%" | "none"',
+          page_path: 'string',
+          direction: '"up" | "down"'
         }
+      }
+    ];
 
-        return modals;
+    return events;
+  }
+
+  /**
+   * Generate UI graph with only pages, modals, routes, and widgets
+   */
+  private async generateUIGraphWithAI(
+    input: GeneratorInput,
+    discovery: ComponentDiscovery,
+    behaviors: BehaviorAnalysis
+  ): Promise<any> {
+    const routes = input.routes || ['/'];
+    const pages: any = {};
+
+    // Create simplified page entries without component lists
+    routes.forEach((route: string) => {
+      const pageName = this.routeToPageName(route);
+
+      // Determine which types of widgets/modals might be on this page based on route
+      const pageType = this.determinePageType(route);
+
+      pages[pageName] = {
+        route,
+        page_type: pageType,
+        widgets: this.getWidgetsForPageType(pageType),
+        modals: this.getModalsForPageType(pageType),
+        can_navigate_to: routes.filter((r: string) => r !== route).map((r: string) => this.routeToPageName(r)),
+        events: ['PAGE_VIEW', 'BUTTON_CLICK', 'FORM_INTERACTION', 'SCROLL_INTERACTION'],
+        ai_insights: {
+          framework: discovery.framework,
+          interaction_types: Array.from(new Set(discovery.components.map((c: any) => c.interaction_type))),
+          has_forms: pageType.includes('auth') || pageType.includes('checkout'),
+          has_product_interactions: pageType.includes('product') || route === '/'
+        }
+      };
+    });
+
+    return {
+      app_key: input.appKey,
+      framework: discovery.framework,
+      relationships: [],
+      pages,
+      widgets: this.identifyGlobalWidgets(discovery),
+      modals: this.identifyModals(discovery)
+    };
+  }
+
+  /**
+   * Determine page type based on route
+   */
+  private determinePageType(route: string): string {
+    if (route === '/') return 'home';
+    if (route.includes('product')) return 'product_detail';
+    if (route.includes('cart')) return 'cart';
+    if (route.includes('checkout')) return 'checkout';
+    if (route.includes('auth') || route.includes('login') || route.includes('register')) return 'auth';
+    if (route.includes('wishlist')) return 'wishlist';
+    if (route.includes('about') || route.includes('shipping') || route.includes('returns')) return 'info';
+    return 'general';
+  }
+
+  /**
+   * Get widgets that should appear on specific page types
+   */
+  private getWidgetsForPageType(pageType: string): string[] {
+    const widgets: string[] = ['header', 'footer'];
+
+    switch (pageType) {
+      case 'home':
+        widgets.push('product_carousel', 'featured_products', 'search_bar');
+        break;
+      case 'product_detail':
+        widgets.push('product_gallery', 'product_options', 'add_to_cart', 'reviews');
+        break;
+      case 'cart':
+        widgets.push('cart_items', 'cart_summary', 'checkout_button');
+        break;
+      case 'checkout':
+        widgets.push('checkout_form', 'order_summary');
+        break;
+      case 'auth':
+        widgets.push('auth_form');
+        break;
+      case 'wishlist':
+        widgets.push('wishlist_grid');
+        break;
     }
 
-    /**
-     * Identify global widgets from discovered components
-     */
-    private identifyGlobalWidgets(discovery: ComponentDiscovery): string[] {
-        const widgets = new Set<string>();
+    return widgets;
+  }
 
-        discovery.components.forEach((comp: any) => {
-            if (comp.name.toLowerCase().includes('header')) widgets.add('header');
-            if (comp.name.toLowerCase().includes('footer')) widgets.add('footer');
-            if (comp.name.toLowerCase().includes('nav')) widgets.add('navigation');
-            if (comp.name.toLowerCase().includes('search')) widgets.add('search_bar');
-            if (comp.name.toLowerCase().includes('cart') && comp.type === 'icon') widgets.add('cart_icon');
-        });
+  /**
+   * Get modals that might appear on specific page types
+   */
+  private getModalsForPageType(pageType: string): string[] {
+    const modals: string[] = [];
 
-        return Array.from(widgets);
+    if (pageType === 'product_detail') {
+      modals.push('size_guide', 'quick_view');
+    }
+    if (pageType === 'cart' || pageType === 'checkout') {
+      modals.push('promo_code', 'shipping_info');
+    }
+    if (pageType === 'auth') {
+      modals.push('forgot_password');
     }
 
-    /**
-     * Identify modals from discovered components
-     */
-    private identifyModals(discovery: ComponentDiscovery): string[] {
-        const modals = new Set<string>();
+    return modals;
+  }
 
-        discovery.components.forEach((comp: any) => {
-            if (comp.name.toLowerCase().includes('modal')) modals.add(comp.name);
-            if (comp.name.toLowerCase().includes('dialog')) modals.add(comp.name);
-            if (comp.name.toLowerCase().includes('popup')) modals.add(comp.name);
-        });
+  /**
+   * Identify global widgets from discovered components
+   */
+  private identifyGlobalWidgets(discovery: ComponentDiscovery): string[] {
+    const widgets = new Set<string>();
 
-        return Array.from(modals);
+    discovery.components.forEach((comp: any) => {
+      if (comp.name.toLowerCase().includes('header')) widgets.add('header');
+      if (comp.name.toLowerCase().includes('footer')) widgets.add('footer');
+      if (comp.name.toLowerCase().includes('nav')) widgets.add('navigation');
+      if (comp.name.toLowerCase().includes('search')) widgets.add('search_bar');
+      if (comp.name.toLowerCase().includes('cart') && comp.type === 'icon') widgets.add('cart_icon');
+    });
+
+    return Array.from(widgets);
+  }
+
+  /**
+   * Identify modals from discovered components
+   */
+  private identifyModals(discovery: ComponentDiscovery): string[] {
+    const modals = new Set<string>();
+
+    discovery.components.forEach((comp: any) => {
+      if (comp.name.toLowerCase().includes('modal')) modals.add(comp.name);
+      if (comp.name.toLowerCase().includes('dialog')) modals.add(comp.name);
+      if (comp.name.toLowerCase().includes('popup')) modals.add(comp.name);
+    });
+
+    return Array.from(modals);
+  }
+
+  /**
+   * Generate implementation with AI-driven insights
+   */
+  private async generateImplementation(
+    input: GeneratorInput,
+    events: EventSchema[],
+    analysis: ProgressiveAnalysis
+  ): Promise<GeneratorOutput> {
+    const backend = input.backendUrl || 'http://localhost:8082/ingest/analytics';
+
+    // Extract entry point file
+    const entryPoint = await this.extractEntryPoint(input);
+
+    const output: GeneratorOutput = {
+      'tracker.js': this.generateAIEnhancedTracker(input.appKey, backend, analysis),
+      'events-schema.json': {
+        base_fields: {
+          id: { type: 'string', format: 'uuid', source: 'generated' },
+          ts: { type: 'number', format: 'unix_timestamp', source: 'generated' },
+          app_key: { type: 'string', source: 'config' },
+          session_id: { type: 'string', source: 'sessionStorage' },
+          user_id: { type: 'string', source: 'persistent_storage', description: '8-10 digit string' },
+          event_type: { type: 'string', source: 'code' }
+        },
+        events: events.map(e => ({
+          event_type: e.event_type,
+          data_fields: e.data_fields.required,
+          properties: e.properties || {}
+        })),
+        ai_components: analysis.discovery.components,
+        ai_patterns: analysis.behaviors.patterns
+      },
+      'ui-graph.json': analysis.uiGraph,
+      'analytics-provider.tsx': this.generateProvider(input.appKey),
+      'analytics.types.ts': this.generateTypes(events),
+      'integration-guide.md': this.generateIntegrationGuide(input.appKey, events, analysis),
+      metadata: {
+        generatedAt: new Date().toISOString(),
+        appKey: input.appKey,
+        eventCount: events.length,
+        frameworksDetected: [analysis.discovery.framework]
+      }
+    };
+
+    // Add entry point if found
+    if (entryPoint) {
+      output['entry-point.js'] = entryPoint.content;
+      output.metadata.entryPointFile = entryPoint.filename;
+      console.log(`✅ Added entry point: ${entryPoint.filename}`);
     }
 
-    /**
-     * Generate implementation with AI-driven insights
-     */
-    private async generateImplementation(
-        input: GeneratorInput,
-        events: EventSchema[],
-        analysis: ProgressiveAnalysis
-    ): Promise<GeneratorOutput> {
-        const backend = input.backendUrl || 'http://localhost:8082/ingest/analytics';
+    return output;
+  }
 
-        return {
-            'tracker.js': this.generateAIEnhancedTracker(input.appKey, backend, analysis),
-            'events-schema.json': {
-                base_fields: {
-                    id: { type: 'string', format: 'uuid', source: 'generated' },
-                    ts: { type: 'number', format: 'unix_timestamp', source: 'generated' },
-                    app_key: { type: 'string', source: 'config' },
-                    session_id: { type: 'string', source: 'sessionStorage' },
-                    user_id: { type: 'string', source: 'persistent_storage', description: '8-10 digit string' },
-                    event_type: { type: 'string', source: 'code' }
-                },
-                events: events.map(e => ({
-                    event_type: e.event_type,
-                    data_fields: e.data_fields.required,
-                    properties: e.properties || {}
-                })),
-                ai_components: analysis.discovery.components,
-                ai_patterns: analysis.behaviors.patterns
-            },
-            'ui-graph.json': analysis.uiGraph,
-            'analytics-provider.tsx': this.generateProvider(input.appKey),
-            'analytics.types.ts': this.generateTypes(events),
-            'integration-guide.md': this.generateIntegrationGuide(input.appKey, events, analysis),
-            metadata: {
-                generatedAt: new Date().toISOString(),
-                appKey: input.appKey,
-                eventCount: events.length,
-                frameworksDetected: [analysis.discovery.framework]
-            }
-        };
-    }
-
-    /**
-     * Generate AI-enhanced tracker with user ID management and new event schema
-     */
-    private generateAIEnhancedTracker(
-        appKey: string,
-        endpoint: string,
-        analysis: ProgressiveAnalysis
-    ): string {
-        // Generate component detectors from AI analysis
-        const componentDetectors = analysis.discovery.components.map((comp: any) => {
-            const pattern = analysis.behaviors.patterns.find((p: any) => p.component === comp.name);
-            return `
+  /**
+   * Generate AI-enhanced tracker with user ID management and new event schema
+   */
+  private generateAIEnhancedTracker(
+    appKey: string,
+    endpoint: string,
+    analysis: ProgressiveAnalysis
+  ): string {
+    // Generate component detectors from AI analysis
+    const componentDetectors = analysis.discovery.components.map((comp: any) => {
+      const pattern = analysis.behaviors.patterns.find((p: any) => p.component === comp.name);
+      return `
         {
             name: '${comp.name}',
             type: '${comp.type}',
@@ -783,9 +847,9 @@ Return behavior patterns as JSON:
             contextNeeded: ${JSON.stringify(comp.context_needed)},
             contextCollection: ${pattern ? JSON.stringify(pattern.context_collection) : 'null'}
         }`;
-        }).join(',\n');
+    }).join(',\n');
 
-        return `(function(root, factory) {
+    return `(function(root, factory) {
   if (typeof define === 'function' && define.amd) {
     define([], factory);
   } else if (typeof module === 'object' && module.exports) {
@@ -1414,292 +1478,339 @@ Return behavior patterns as JSON:
 
   return AnalyticsTracker;
 }));`;
+  }
+
+  /**
+   * Helper to extract JSON from LLM response
+   */
+  private extractJSON(content: string): any {
+    // Try to find JSON in markdown code blocks
+    const jsonMatch = content.match(/```json\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[1]);
     }
 
-    /**
-     * Helper to extract JSON from LLM response
-     */
-    private extractJSON(content: string): any {
-        // Try to find JSON in markdown code blocks
-        const jsonMatch = content.match(/```json\n?([\s\S]*?)\n?```/);
-        if (jsonMatch) {
-            return JSON.parse(jsonMatch[1]);
-        }
-
-        // Try to find raw JSON
-        const jsonStart = content.indexOf('{');
-        const jsonEnd = content.lastIndexOf('}') + 1;
-        if (jsonStart >= 0 && jsonEnd > jsonStart) {
-            return JSON.parse(content.slice(jsonStart, jsonEnd));
-        }
-
-        throw new Error('No valid JSON found in response');
+    // Try to find raw JSON
+    const jsonStart = content.indexOf('{');
+    const jsonEnd = content.lastIndexOf('}') + 1;
+    if (jsonStart >= 0 && jsonEnd > jsonStart) {
+      return JSON.parse(content.slice(jsonStart, jsonEnd));
     }
 
-    /**
-     * Load actual files from the repository or examples directory
-     */
-    public async loadRepositoryFiles(repoId: string): Promise<FileContent[]> {
-        const files: FileContent[] = [];
+    throw new Error('No valid JSON found in response');
+  }
 
-        // First, check if it's an app from examples directory
-        const examplesPath = path.join(CONFIG.EXAMPLES_DIR, repoId);
-        try {
-            const stat = await fs.stat(examplesPath);
-            if (stat.isDirectory()) {
-                console.log(`✅ Found app in examples: ${repoId}`);
-                const relevantFiles = await this.findRelevantFiles(examplesPath);
+  /**
+   * Load actual files from the repository or examples directory
+   */
+  /**
+  * Load actual files from the repository or examples directory
+  */
+  public async loadRepositoryFiles(repoId: string): Promise<FileContent[]> {
+    const files: FileContent[] = [];
 
-                for (const filePath of relevantFiles.slice(0, CONFIG.MAX_FILES)) {
-                    try {
-                        const content = await fs.readFile(filePath, 'utf-8');
-                        const relativePath = path.relative(examplesPath, filePath);
-                        const truncatedContent = content.length > CONFIG.MAX_FILE_CONTENT_LENGTH
-                            ? content.slice(0, CONFIG.MAX_FILE_CONTENT_LENGTH) + '\n// ... truncated for analysis ...'
-                            : content;
-                        files.push({ path: relativePath, content: truncatedContent });
-                    } catch (error) {
-                        console.error(`Failed to read file ${filePath}:`, error);
-                    }
-                }
-                return files;
-            }
-        } catch {
-            // Not in examples, try database
-        }
+    // First check if repoId is a file path from cloned repo
+    if (repoId.startsWith('/')) {
+      try {
+        const stat = await fs.stat(repoId);
+        if (stat.isDirectory()) {
+          console.log(`📁 Loading files from cloned repository: ${repoId}`);
+          const relevantFiles = await this.findRelevantFiles(repoId);
 
-        // If not in examples, try to get from database
-        try {
-            const { data: repo } = await this.supabase
-                .from('repos')
-                .select('owner, name')
-                .eq('id', repoId)
-                .single();
+          console.log(`📂 Found ${relevantFiles.length} relevant files to analyze`);
 
-            if (!repo) {
-                console.log('❌ Repository not found in database');
-                return files;
-            }
-
-            const repoPath = await this.getRepositoryPath(repo.owner, repo.name);
-            if (repoPath) {
-                const relevantFiles = await this.findRelevantFiles(repoPath);
-
-                for (const filePath of relevantFiles.slice(0, CONFIG.MAX_FILES)) {
-                    try {
-                        const content = await fs.readFile(filePath, 'utf-8');
-                        const relativePath = path.relative(repoPath, filePath);
-                        const truncatedContent = content.length > CONFIG.MAX_FILE_CONTENT_LENGTH
-                            ? content.slice(0, CONFIG.MAX_FILE_CONTENT_LENGTH) + '\n// ... truncated for analysis ...'
-                            : content;
-                        files.push({ path: relativePath, content: truncatedContent });
-                    } catch (error) {
-                        console.error(`Failed to read file ${filePath}:`, error);
-                    }
-                }
-            }
-
-            // If no files found locally, try to get from analyzer_runs
-            if (files.length === 0) {
-                const { data: run } = await this.supabase
-                    .from('analyzer_runs')
-                    .select('summary')
-                    .eq('repo_id', repoId)
-                    .eq('status', 'completed')
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-
-                if (run?.summary?.files) {
-                    files.push(...run.summary.files.slice(0, CONFIG.MAX_FILES));
-                }
-            }
-        } catch (error) {
-            console.error('Error loading repository files:', error);
-        }
-
-        return files;
-    }
-
-    /**
-     * Get repository path (local clone or workspace)
-     */
-    private async getRepositoryPath(owner: string, name: string): Promise<string | null> {
-        const possiblePaths = [
-            path.join(CONFIG.EXAMPLES_DIR, name),
-            path.join(CONFIG.EXAMPLES_DIR, `${owner}-${name}`),
-            `/tmp/${name}`,
-            `/tmp/${owner}-${name}`,
-            `/Users/oriolesinski/repos/${name}`,
-            `/workspace/${name}`
-        ];
-
-        for (const repoPath of possiblePaths) {
+          for (const filePath of relevantFiles.slice(0, CONFIG.MAX_FILES)) {
             try {
-                const stat = await fs.stat(repoPath);
-                if (stat.isDirectory()) {
-                    console.log(`✅ Found repository at: ${repoPath}`);
-                    return repoPath;
-                }
-            } catch {
-                // Path doesn't exist, try next
+              const content = await fs.readFile(filePath, 'utf-8');
+              const relativePath = path.relative(repoId, filePath);
+              const truncatedContent = content.length > CONFIG.MAX_FILE_CONTENT_LENGTH
+                ? content.slice(0, CONFIG.MAX_FILE_CONTENT_LENGTH) + '\n// ... truncated for analysis ...'
+                : content;
+              files.push({
+                path: relativePath,
+                content: truncatedContent
+              });
+            } catch (error) {
+              console.error(`Failed to read file ${filePath}:`, error);
             }
-        }
+          }
 
-        console.log(`❌ Repository not found in any of these paths:`, possiblePaths);
-        return null;
+          console.log(`✅ Successfully loaded ${files.length} files from cloned repository`);
+
+          // Log some sample files for debugging
+          if (files.length > 0) {
+            console.log(`📋 Sample files:`, files.slice(0, 5).map(f => f.path));
+          }
+
+          return files;
+        }
+      } catch (error) {
+        console.log(`⚠️ ${repoId} is not a valid directory:`, error);
+      }
     }
 
-    /**
-     * Find all relevant files for analysis
-     */
-    private async findRelevantFiles(repoPath: string): Promise<string[]> {
-        const files: string[] = [];
-        const extensions = ['.tsx', '.jsx', '.ts', '.js', '.vue', '.svelte'];
-        const ignoreDirs = ['node_modules', '.git', 'dist', 'build', '.next', 'out', 'backend'];
+    // Then check if it's in examples directory
+    const examplesPath = path.join(CONFIG.EXAMPLES_DIR, repoId);
+    try {
+      const stat = await fs.stat(examplesPath);
+      if (stat.isDirectory()) {
+        console.log(`✅ Found app in examples: ${repoId}`);
+        const relevantFiles = await this.findRelevantFiles(examplesPath);
 
-        async function scanDir(dir: string) {
-            const entries = await fs.readdir(dir, { withFileTypes: true });
-
-            for (const entry of entries) {
-                const fullPath = path.join(dir, entry.name);
-
-                if (entry.isDirectory()) {
-                    if (!ignoreDirs.includes(entry.name)) {
-                        await scanDir(fullPath);
-                    }
-                } else if (entry.isFile()) {
-                    if (extensions.some(ext => entry.name.endsWith(ext))) {
-                        files.push(fullPath);
-                    }
-                }
-            }
+        for (const filePath of relevantFiles.slice(0, CONFIG.MAX_FILES)) {
+          try {
+            const content = await fs.readFile(filePath, 'utf-8');
+            const relativePath = path.relative(examplesPath, filePath);
+            const truncatedContent = content.length > CONFIG.MAX_FILE_CONTENT_LENGTH
+              ? content.slice(0, CONFIG.MAX_FILE_CONTENT_LENGTH) + '\n// ... truncated for analysis ...'
+              : content;
+            files.push({ path: relativePath, content: truncatedContent });
+          } catch (error) {
+            console.error(`Failed to read file ${filePath}:`, error);
+          }
         }
-
-        await scanDir(repoPath);
         return files;
+      }
+    } catch {
+      // Not in examples, try database
     }
 
-    /**
-     * Extract routes from file system structure
-     */
-    private extractRoutesFromFiles(files: FileContent[]): string[] {
-        const routes = new Set<string>();
-        routes.add('/');
+    // If not in examples, try to get from database
+    try {
+      const { data: repo } = await this.supabase
+        .from('repos')
+        .select('owner, name')
+        .eq('id', repoId)
+        .single();
 
-        for (const file of files) {
-            if (file.path === 'page.tsx' ||
-                file.path === './page.tsx' ||
-                file.path === 'src/page.tsx' ||
-                file.path === 'app/page.tsx') {
-                continue;
-            }
+      if (!repo) {
+        console.log('❌ Repository not found in database');
+        return files;
+      }
 
-            // Next.js App Router
-            if (file.path.includes('app/') && file.path.endsWith('page.tsx')) {
-                const route = '/' + file.path
-                    .replace(/^.*?app\//, '')
-                    .replace(/\/page\.(tsx|jsx|js)$/, '')
-                    .replace(/\[.*?\]/g, ':param');
+      const repoPath = await this.getRepositoryPath(repo.owner, repo.name);
+      if (repoPath) {
+        const relevantFiles = await this.findRelevantFiles(repoPath);
 
-                if (route !== '/' || file.path === 'app/page.tsx') {
-                    routes.add(route === '/' ? '/' : route);
-                }
-            }
-
-            // Next.js Pages Router
-            if (file.path.includes('pages/') && !file.path.includes('_')) {
-                const route = '/' + file.path
-                    .replace(/^.*?pages\//, '')
-                    .replace(/\.(tsx|jsx|js)$/, '')
-                    .replace(/index$/, '')
-                    .replace(/\[.*?\]/g, ':param');
-                routes.add(route || '/');
-            }
+        for (const filePath of relevantFiles.slice(0, CONFIG.MAX_FILES)) {
+          try {
+            const content = await fs.readFile(filePath, 'utf-8');
+            const relativePath = path.relative(repoPath, filePath);
+            const truncatedContent = content.length > CONFIG.MAX_FILE_CONTENT_LENGTH
+              ? content.slice(0, CONFIG.MAX_FILE_CONTENT_LENGTH) + '\n// ... truncated for analysis ...'
+              : content;
+            files.push({ path: relativePath, content: truncatedContent });
+          } catch (error) {
+            console.error(`Failed to read file ${filePath}:`, error);
+          }
         }
+      }
 
-        return Array.from(routes);
+      // If no files found locally, try to get from analyzer_runs
+      if (files.length === 0) {
+        const { data: run } = await this.supabase
+          .from('analyzer_runs')
+          .select('summary')
+          .eq('repo_id', repoId)
+          .eq('status', 'completed')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (run?.summary?.files) {
+          files.push(...run.summary.files.slice(0, CONFIG.MAX_FILES));
+        }
+      }
+    } catch (error) {
+      console.error('Error loading repository files:', error);
     }
 
-    /**
-     * Convert route to valid page name
-     */
-    private routeToPageName(route: string): string {
-        if (route === '/') return 'home';
+    return files;
+  }
+  /**
+   * Get repository path (local clone or workspace)
+   */
+  private async getRepositoryPath(owner: string, name: string): Promise<string | null> {
+    const possiblePaths = [
+      path.join(CONFIG.EXAMPLES_DIR, name),
+      path.join(CONFIG.EXAMPLES_DIR, `${owner}-${name}`),
+      `/tmp/${name}`,
+      `/tmp/${owner}-${name}`,
+      `/Users/oriolesinski/repos/${name}`,
+      `/workspace/${name}`
+    ];
 
-        return route
-            .replace(/^\//, '')
-            .replace(/\//g, '_')
-            .replace(/[^\w_]/g, '')
-            .replace(/:param/g, 'dynamic')
-            .toLowerCase() || 'home';
+    for (const repoPath of possiblePaths) {
+      try {
+        const stat = await fs.stat(repoPath);
+        if (stat.isDirectory()) {
+          console.log(`✅ Found repository at: ${repoPath}`);
+          return repoPath;
+        }
+      } catch {
+        // Path doesn't exist, try next
+      }
     }
 
-    /**
-     * Save output with proper UTF-8 encoding
-     */
-    private async saveOutput(output: GeneratorOutput, repoId: string, appKey: string): Promise<string> {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const localOutputPath = path.join(CONFIG.OUTPUTS_DIR, 'unified', repoId, timestamp);
+    console.log(`❌ Repository not found in any of these paths:`, possiblePaths);
+    return null;
+  }
 
-        const keepLocal = process.env.KEEP_LOCAL_COPY !== 'false';
-        if (keepLocal) {
-            await fs.mkdir(localOutputPath, { recursive: true });
+  /**
+   * Find all relevant files for analysis
+   */
+  private async findRelevantFiles(repoPath: string): Promise<string[]> {
+    const files: string[] = [];
+    const extensions = ['.tsx', '.jsx', '.ts', '.js', '.vue', '.svelte'];
+    const ignoreDirs = ['node_modules', '.git', 'dist', 'build', '.next', 'out', 'backend'];
+
+    async function scanDir(dir: string) {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          if (!ignoreDirs.includes(entry.name)) {
+            await scanDir(fullPath);
+          }
+        } else if (entry.isFile()) {
+          if (extensions.some(ext => entry.name.endsWith(ext))) {
+            files.push(fullPath);
+          }
         }
-
-        const fileMap = [
-            { name: 'tracker.js', content: output['tracker.js'], type: 'application/javascript' },
-            { name: 'events-schema.json', content: JSON.stringify(output['events-schema.json'], null, 2), type: 'application/json' },
-            { name: 'ui-graph.json', content: JSON.stringify(output['ui-graph.json'], null, 2), type: 'application/json' },
-            { name: 'analytics-provider.tsx', content: output['analytics-provider.tsx'], type: 'text/plain' },
-            { name: 'analytics.types.ts', content: output['analytics.types.ts'], type: 'text/plain' },
-            { name: 'integration-guide.md', content: output['integration-guide.md'], type: 'text/markdown' },
-            { name: 'metadata.json', content: JSON.stringify(output.metadata, null, 2), type: 'application/json' }
-        ];
-
-        const cloudUrls: Record<string, string> = {};
-
-        for (const file of fileMap) {
-            const { url } = await this.storageService.saveToCloud(repoId, file.name, file.content, file.type);
-            if (url) {
-                cloudUrls[file.name] = url;
-            }
-
-            if (keepLocal) {
-                await this.storageService.saveToLocal(localOutputPath, file.name, file.content);
-            }
-        }
-
-        await this.supabase.from('events').insert({
-            source: 'ai',
-            repo_id: repoId,
-            commit_sha: null,
-            actor: 'analytics_intelligence_generator',
-            ts: new Date().toISOString(),
-            verb: 'analytics_implementation',
-            metadata: {
-                app_key: appKey,
-                output_path: localOutputPath,
-                cloud_urls: cloudUrls,
-                storage_mode: keepLocal ? 'hybrid' : 'cloud_only',
-                ...output.metadata,
-                files: Object.keys(output).filter(k => k !== 'metadata')
-            }
-        });
-
-        console.log('✅ Analytics implementation generated successfully');
-        console.log(`📊 Events: ${output.metadata.eventCount}`);
-        console.log(`🗺️ Pages: ${Object.keys(output['ui-graph.json'].pages || {}).length}`);
-        console.log(`☁️ Cloud: ${Object.keys(cloudUrls).length} files uploaded`);
-        if (keepLocal) {
-            console.log(`💾 Local: ${localOutputPath}`);
-        }
-
-        return localOutputPath;
+      }
     }
 
-    private generateProvider(appKey: string): string {
-        return `import React, { createContext, useState, useEffect } from 'react';
+    await scanDir(repoPath);
+    return files;
+  }
+
+  /**
+   * Extract routes from file system structure
+   */
+  private extractRoutesFromFiles(files: FileContent[]): string[] {
+    const routes = new Set<string>();
+    routes.add('/');
+
+    for (const file of files) {
+      if (file.path === 'page.tsx' ||
+        file.path === './page.tsx' ||
+        file.path === 'src/page.tsx' ||
+        file.path === 'app/page.tsx') {
+        continue;
+      }
+
+      // Next.js App Router
+      if (file.path.includes('app/') && file.path.endsWith('page.tsx')) {
+        const route = '/' + file.path
+          .replace(/^.*?app\//, '')
+          .replace(/\/page\.(tsx|jsx|js)$/, '')
+          .replace(/\[.*?\]/g, ':param');
+
+        if (route !== '/' || file.path === 'app/page.tsx') {
+          routes.add(route === '/' ? '/' : route);
+        }
+      }
+
+      // Next.js Pages Router
+      if (file.path.includes('pages/') && !file.path.includes('_')) {
+        const route = '/' + file.path
+          .replace(/^.*?pages\//, '')
+          .replace(/\.(tsx|jsx|js)$/, '')
+          .replace(/index$/, '')
+          .replace(/\[.*?\]/g, ':param');
+        routes.add(route || '/');
+      }
+    }
+
+    return Array.from(routes);
+  }
+
+  /**
+   * Convert route to valid page name
+   */
+  private routeToPageName(route: string): string {
+    if (route === '/') return 'home';
+
+    return route
+      .replace(/^\//, '')
+      .replace(/\//g, '_')
+      .replace(/[^\w_]/g, '')
+      .replace(/:param/g, 'dynamic')
+      .toLowerCase() || 'home';
+  }
+
+  /**
+   * Save output with proper UTF-8 encoding
+   */
+  private async saveOutput(output: GeneratorOutput, repoId: string, appKey: string): Promise<string> {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const localOutputPath = path.join(CONFIG.OUTPUTS_DIR, 'unified', repoId, timestamp);
+
+    const keepLocal = process.env.KEEP_LOCAL_COPY !== 'false';
+    if (keepLocal) {
+      await fs.mkdir(localOutputPath, { recursive: true });
+    }
+
+    const fileMap = [
+      { name: 'tracker.js', content: output['tracker.js'], type: 'application/javascript' },
+      { name: 'events-schema.json', content: JSON.stringify(output['events-schema.json'], null, 2), type: 'application/json' },
+      { name: 'ui-graph.json', content: JSON.stringify(output['ui-graph.json'], null, 2), type: 'application/json' },
+      { name: 'analytics-provider.tsx', content: output['analytics-provider.tsx'], type: 'text/plain' },
+      { name: 'analytics.types.ts', content: output['analytics.types.ts'], type: 'text/plain' },
+      { name: 'integration-guide.md', content: output['integration-guide.md'], type: 'text/markdown' },
+      { name: 'metadata.json', content: JSON.stringify(output.metadata, null, 2), type: 'application/json' }
+    ];
+
+    // Add entry-point.js if it exists
+    if (output['entry-point.js']) {
+      fileMap.push({ name: 'entry-point.js', content: output['entry-point.js'], type: 'application/javascript' });
+    }
+
+    const cloudUrls: Record<string, string> = {};
+
+    for (const file of fileMap) {
+      const { url } = await this.storageService.saveToCloud(repoId, file.name, file.content, file.type);
+      if (url) {
+        cloudUrls[file.name] = url;
+      }
+
+      if (keepLocal) {
+        await this.storageService.saveToLocal(localOutputPath, file.name, file.content);
+      }
+    }
+
+    await this.supabase.from('events').insert({
+      source: 'ai',
+      repo_id: repoId,
+      commit_sha: null,
+      actor: 'analytics_intelligence_generator',
+      ts: new Date().toISOString(),
+      verb: 'analytics_implementation',
+      metadata: {
+        app_key: appKey,
+        output_path: localOutputPath,
+        cloud_urls: cloudUrls,
+        storage_mode: keepLocal ? 'hybrid' : 'cloud_only',
+        ...output.metadata,
+        files: Object.keys(output).filter(k => k !== 'metadata')
+      }
+    });
+
+    console.log('✅ Analytics implementation generated successfully');
+    console.log(`📊 Events: ${output.metadata.eventCount}`);
+    console.log(`🗺️ Pages: ${Object.keys(output['ui-graph.json'].pages || {}).length}`);
+    console.log(`☁️ Cloud: ${Object.keys(cloudUrls).length} files uploaded`);
+    if (keepLocal) {
+      console.log(`💾 Local: ${localOutputPath}`);
+    }
+
+    return localOutputPath;
+  }
+
+  private generateProvider(appKey: string): string {
+    return `import React, { createContext, useState, useEffect } from 'react';
 
 export const AnalyticsContext = createContext({
   appKey: '',
@@ -1739,10 +1850,10 @@ export function AnalyticsProvider({
     </AnalyticsContext.Provider>
   );
 }`;
-    }
+  }
 
-    private generateTypes(events: EventSchema[]): string {
-        return `// Auto-generated analytics types with new event schema
+  private generateTypes(events: EventSchema[]): string {
+    return `// Auto-generated analytics types with new event schema
 export interface BaseEvent {
   id: string;
   ts: number;
@@ -1833,14 +1944,14 @@ declare global {
     analytics?: AnalyticsTracker;
   }
 }`;
-    }
+  }
 
-    private generateIntegrationGuide(
-        appKey: string,
-        events: EventSchema[],
-        analysis: ProgressiveAnalysis
-    ): string {
-        return `# AI-Enhanced Analytics Integration Guide for ${appKey}
+  private generateIntegrationGuide(
+    appKey: string,
+    events: EventSchema[],
+    analysis: ProgressiveAnalysis
+  ): string {
+    return `# AI-Enhanced Analytics Integration Guide for ${appKey}
 
 ## 🤖 New Event Schema
 
@@ -1925,7 +2036,7 @@ ${analysis.discovery.components.map((c: any) => `- **${c.name}** (${c.type}): ${
 
 **Generated:** ${new Date().toISOString()}
 **AI Model:** Claude 3 Haiku`;
-    }
+  }
 }
 
 // Export singleton instance
