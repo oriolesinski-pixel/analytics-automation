@@ -109,7 +109,7 @@
   class AnalyticsTracker {
     constructor() {
       this.config = {
-        appKey: 'test-app-rich-demo-2025-09-24-vi5ii5ycy6e',
+        appKey: 'test-app-rich-demo-2025-09-25-xjjs0z6yph7',
         endpoint: 'http://localhost:8082/ingest/analytics',
         batchSize: 10,
         flushInterval: 30000
@@ -169,7 +169,7 @@
 
     // ============ AI-ENHANCED AUTO-TRACKING ============
     initAutoTracking() {
-      console.log('🤖 AI-Enhanced Analytics initialized for test-app-rich-demo-2025-09-24-vi5ii5ycy6e');
+      console.log('🤖 AI-Enhanced Analytics initialized for test-app-rich-demo-2025-09-25-xjjs0z6yph7');
       console.log('📊 Tracking 0 discovered components');
       console.log('🔑 User ID:', this.userId);
       

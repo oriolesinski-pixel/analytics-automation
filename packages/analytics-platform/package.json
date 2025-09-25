@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@codesandbox/sandpack-react": "^2.20.0",
     "@octokit/auth-oauth-app": "^9.0.1",
     "@octokit/rest": "^22.0.0",
     "@supabase/supabase-js": "^2.38.0",
@@ -19,12 +20,14 @@
     "react": "^18",
     "react-dom": "^18",
     "recharts": "^2.15.4",
+    "uuid": "^13.0.0",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.21",
     "eslint": "^8",
     "eslint-config-next": "14.2.16",

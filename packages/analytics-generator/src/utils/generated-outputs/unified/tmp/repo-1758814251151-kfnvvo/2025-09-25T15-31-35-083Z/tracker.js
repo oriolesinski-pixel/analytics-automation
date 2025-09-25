@@ -109,7 +109,7 @@
   class AnalyticsTracker {
     constructor() {
       this.config = {
-        appKey: 'test-app-rich-demo-2025-09-24-wp6bn2zybmn',
+        appKey: 'test-app-rich-demo-2025-09-25-vqhv8wcqifg',
         endpoint: 'http://localhost:8082/ingest/analytics',
         batchSize: 10,
         flushInterval: 30000
@@ -132,6 +132,212 @@
       
       // AI-discovered component patterns
       this.componentDetectors = [
+        {
+            name: 'LoginButton',
+            type: 'button',
+            selectors: [".bg-blue-600",".hover:bg-blue-700"],
+            purpose: 'Login functionality',
+            contextNeeded: ["email","password"],
+            contextCollection: {"search_parents":["form"],"extract_fields":["email","password"]}
+        },
+
+        {
+            name: 'RegisterLink',
+            type: 'link',
+            selectors: [".font-medium",".text-blue-600",".hover:text-blue-500"],
+            purpose: 'Navigate to registration page',
+            contextNeeded: [],
+            contextCollection: {"search_parents":[""]}
+        },
+
+        {
+            name: 'EmailInput',
+            type: 'form_input',
+            selectors: ["#email",".appearance-none",".rounded-none",".relative",".block",".w-full",".px-3",".py-2",".border",".border-gray-300",".placeholder-gray-500",".text-gray-900",".rounded-t-md",".focus:outline-none",".focus:ring-blue-500",".focus:border-blue-500",".focus:z-10",".sm:text-sm"],
+            purpose: 'Email input for login',
+            contextNeeded: ["email"],
+            contextCollection: {"search_parents":["form"],"extract_fields":["email"]}
+        },
+
+        {
+            name: 'PasswordInput',
+            type: 'form_input',
+            selectors: ["#password",".appearance-none",".rounded-none",".relative",".block",".w-full",".px-3",".py-2",".border",".border-gray-300",".placeholder-gray-500",".text-gray-900",".rounded-b-md",".focus:outline-none",".focus:ring-blue-500",".focus:border-blue-500",".focus:z-10",".sm:text-sm"],
+            purpose: 'Password input for login',
+            contextNeeded: ["password"],
+            contextCollection: {"search_parents":["form"],"extract_fields":["password"]}
+        },
+
+        {
+            name: 'NameInput',
+            type: 'form_input',
+            selectors: ["#name",".mt-1",".appearance-none",".relative",".block",".w-full",".px-3",".py-2",".border",".border-gray-300",".placeholder-gray-500",".text-gray-900",".rounded-md",".focus:outline-none",".focus:ring-blue-500",".focus:border-blue-500",".focus:z-10",".sm:text-sm"],
+            purpose: 'Name input for registration',
+            contextNeeded: ["name"],
+            contextCollection: {"search_parents":["form"],"extract_fields":["name"]}
+        },
+
+        {
+            name: 'ConfirmPasswordInput',
+            type: 'form_input',
+            selectors: ["#confirmPassword",".mt-1",".appearance-none",".relative",".block",".w-full",".px-3",".py-2",".border",".border-gray-300",".placeholder-gray-500",".text-gray-900",".rounded-md",".focus:outline-none",".focus:ring-blue-500",".focus:border-blue-500",".focus:z-10",".sm:text-sm"],
+            purpose: 'Confirm password input for registration',
+            contextNeeded: ["confirmPassword"],
+            contextCollection: {"search_parents":["form"],"extract_fields":["confirmPassword"]}
+        },
+
+        {
+            name: 'RegisterButton',
+            type: 'button',
+            selectors: [".bg-blue-600",".text-white",".px-6",".py-3",".rounded-lg",".hover:bg-blue-700"],
+            purpose: 'Register functionality',
+            contextNeeded: ["name","email","password","confirmPassword"],
+            contextCollection: {"search_parents":["form"],"extract_fields":["name","email","password","confirmPassword"]}
+        },
+
+        {
+            name: 'AddToCartButton',
+            type: 'button',
+            selectors: [".bg-blue-600",".text-white",".px-6",".py-3",".rounded-lg",".hover:bg-blue-700"],
+            purpose: 'Add product to cart',
+            contextNeeded: ["product_id","quantity"],
+            contextCollection: {"search_parents":[".product-card","[data-product]"],"extract_fields":["product-id","quantity"]}
+        },
+
+        {
+            name: 'RemoveFromCartButton',
+            type: 'button',
+            selectors: [".text-red-500",".hover:text-red-700"],
+            purpose: 'Remove product from cart',
+            contextNeeded: ["product_id"],
+            contextCollection: {"search_parents":[".cart-item"],"extract_fields":["product-id"]}
+        },
+
+        {
+            name: 'QuantityDecreaseButton',
+            type: 'button',
+            selectors: [".p-1",".hover:bg-gray-100",".rounded"],
+            purpose: 'Decrease product quantity in cart',
+            contextNeeded: ["product_id","quantity"],
+            contextCollection: {"search_parents":[".cart-item"],"extract_fields":["product-id","quantity"]}
+        },
+
+        {
+            name: 'QuantityIncreaseButton',
+            type: 'button',
+            selectors: [".p-1",".hover:bg-gray-100",".rounded"],
+            purpose: 'Increase product quantity in cart',
+            contextNeeded: ["product_id","quantity"],
+            contextCollection: {"search_parents":[".cart-item"],"extract_fields":["product-id","quantity"]}
+        },
+
+        {
+            name: 'ClearCartButton',
+            type: 'button',
+            selectors: [".text-red-500",".hover:text-red-700"],
+            purpose: 'Clear the entire cart',
+            contextNeeded: [],
+            contextCollection: {"search_parents":[""]}
+        },
+
+        {
+            name: 'ProceedToCheckoutButton',
+            type: 'button',
+            selectors: [".bg-blue-600",".text-white",".px-6",".py-3",".rounded-lg",".hover:bg-blue-700"],
+            purpose: 'Proceed to checkout page',
+            contextNeeded: [],
+            contextCollection: {"search_parents":[""]}
+        },
+
+        {
+            name: 'ShippingInfoForm',
+            type: 'form',
+            selectors: ["form[onSubmit]"],
+            purpose: 'Collect shipping information for checkout',
+            contextNeeded: ["firstName","lastName","email","phone","address","city","state","zipCode","country"],
+            contextCollection: {"search_parents":["form"],"extract_fields":["firstName","lastName","email","phone","address","city","state","zipCode","country"]}
+        },
+
+        {
+            name: 'PaymentForm',
+            type: 'form',
+            selectors: ["form[onSubmit]"],
+            purpose: 'Collect payment information for checkout',
+            contextNeeded: ["cardNumber","cardName","expiryDate","cvv","saveCard"],
+            contextCollection: {"search_parents":["form"],"extract_fields":["cardNumber","cardName","expiryDate","cvv","saveCard"]}
+        },
+
+        {
+            name: 'PreviousSlideButton',
+            type: 'button',
+            selectors: [".absolute",".left-4",".top-1/2",".-translate-y-1/2",".bg-white/30",".hover:bg-white/50",".text-white",".p-2",".rounded-full",".backdrop-blur-sm",".transition-colors"],
+            purpose: 'Navigate to previous carousel slide',
+            contextNeeded: [],
+            contextCollection: {"search_parents":[".carousel"]}
+        },
+
+        {
+            name: 'NextSlideButton',
+            type: 'button',
+            selectors: [".absolute",".right-4",".top-1/2",".-translate-y-1/2",".bg-white/30",".hover:bg-white/50",".text-white",".p-2",".rounded-full",".backdrop-blur-sm",".transition-colors"],
+            purpose: 'Navigate to next carousel slide',
+            contextNeeded: [],
+            contextCollection: {"search_parents":[".carousel"]}
+        },
+
+        {
+            name: 'CarouselDotButton',
+            type: 'button',
+            selectors: [".absolute",".bottom-4",".left-1/2",".-translate-x-1/2",".flex",".gap-2",".w-2",".h-2",".rounded-full",".transition-all"],
+            purpose: 'Navigate to a specific carousel slide',
+            contextNeeded: ["slide_index"],
+            contextCollection: {"search_parents":[".carousel"],"extract_fields":["slide-index"]}
+        },
+
+        {
+            name: 'ProductLink',
+            type: 'link',
+            selectors: ["a[href^=\"/products\"]"],
+            purpose: 'Navigate to a product page',
+            contextNeeded: ["product_id"],
+            contextCollection: {"search_parents":[".product-card","[data-product]"],"extract_fields":["product-id"]}
+        },
+
+        {
+            name: 'WishlistButton',
+            type: 'button',
+            selectors: [".relative",".text-gray-700",".hover:text-blue-600",".transition-colors"],
+            purpose: 'Add/remove product from wishlist',
+            contextNeeded: ["product_id"],
+            contextCollection: {"search_parents":[".product-card","[data-product]"],"extract_fields":["product-id"]}
+        },
+
+        {
+            name: 'CartButton',
+            type: 'button',
+            selectors: [".relative",".text-gray-700",".hover:text-blue-600",".transition-colors"],
+            purpose: 'Navigate to cart page',
+            contextNeeded: [],
+            contextCollection: {"search_parents":[""]}
+        },
+
+        {
+            name: 'UserMenu',
+            type: 'toggle',
+            selectors: [".flex",".items-center",".space-x-3"],
+            purpose: 'Toggle user menu',
+            contextNeeded: ["user_name"],
+            contextCollection: {"search_parents":[".user-menu"],"extract_fields":["user-name"]}
+        },
+
+        {
+            name: 'MobileMenuToggle',
+            type: 'button',
+            selectors: [".md:hidden",".text-gray-700"],
+            purpose: 'Toggle mobile menu',
+            contextNeeded: [],
+            contextCollection: {"search_parents":[""]}
+        }
       ];
       
       if (typeof window !== 'undefined') {
@@ -169,8 +375,8 @@
 
     // ============ AI-ENHANCED AUTO-TRACKING ============
     initAutoTracking() {
-      console.log('🤖 AI-Enhanced Analytics initialized for test-app-rich-demo-2025-09-24-wp6bn2zybmn');
-      console.log('📊 Tracking 0 discovered components');
+      console.log('🤖 AI-Enhanced Analytics initialized for test-app-rich-demo-2025-09-25-vqhv8wcqifg');
+      console.log('📊 Tracking 23 discovered components');
       console.log('🔑 User ID:', this.userId);
       
       this.trackPageView();

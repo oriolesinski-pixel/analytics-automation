@@ -1,4 +1,4 @@
-# AI-Enhanced Analytics Integration Guide for test-app-rich-demo-2025-09-24-vi5ii5ycy6e
+# AI-Enhanced Analytics Integration Guide for test-app-rich-demo-2025-09-25-vqhv8wcqifg
 
 ## 🤖 New Event Schema
 
@@ -49,12 +49,34 @@ The tracker automatically generates and persists user IDs:
 ## 🤖 AI-Discovered Components
 
 The AI analyzed your application and found:
-- **Framework:** unknown
-- **Interactive Components:** 0
-- **Behavior Patterns:** 0
+- **Framework:** react
+- **Interactive Components:** 23
+- **Behavior Patterns:** 23
 
 ### Discovered Components:
-
+- **LoginButton** (button): Login functionality
+- **RegisterLink** (link): Navigate to registration page
+- **EmailInput** (form_input): Email input for login
+- **PasswordInput** (form_input): Password input for login
+- **NameInput** (form_input): Name input for registration
+- **ConfirmPasswordInput** (form_input): Confirm password input for registration
+- **RegisterButton** (button): Register functionality
+- **AddToCartButton** (button): Add product to cart
+- **RemoveFromCartButton** (button): Remove product from cart
+- **QuantityDecreaseButton** (button): Decrease product quantity in cart
+- **QuantityIncreaseButton** (button): Increase product quantity in cart
+- **ClearCartButton** (button): Clear the entire cart
+- **ProceedToCheckoutButton** (button): Proceed to checkout page
+- **ShippingInfoForm** (form): Collect shipping information for checkout
+- **PaymentForm** (form): Collect payment information for checkout
+- **PreviousSlideButton** (button): Navigate to previous carousel slide
+- **NextSlideButton** (button): Navigate to next carousel slide
+- **CarouselDotButton** (button): Navigate to a specific carousel slide
+- **ProductLink** (link): Navigate to a product page
+- **WishlistButton** (button): Add/remove product from wishlist
+- **CartButton** (button): Navigate to cart page
+- **UserMenu** (toggle): Toggle user menu
+- **MobileMenuToggle** (button): Toggle mobile menu
 
 ## 🧪 Testing Your Integration
 
@@ -77,9 +99,9 @@ The AI analyzed your application and found:
 - **AI-Powered** - Understands your specific components
 - **Zero Configuration** - Just add the script
 - **Smart User Tracking** - Persistent 8-10 digit user IDs
-- **Framework Aware** - Optimized for unknown
+- **Framework Aware** - Optimized for react
 
 ---
 
-**Generated:** 2025-09-24T16:32:40.647Z
+**Generated:** 2025-09-25T15:31:35.083Z
 **AI Model:** Claude 3 Haiku

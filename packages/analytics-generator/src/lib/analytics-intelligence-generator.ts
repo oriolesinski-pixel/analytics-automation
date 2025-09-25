@@ -468,6 +468,7 @@ Make selectors SPECIFIC to avoid matching everything.`;
         }]
       });
 
+
       const content = response.content[0].type === 'text' ? response.content[0].text : '';
       const parsed = this.extractJSON(content);
 
@@ -475,8 +476,11 @@ Make selectors SPECIFIC to avoid matching everything.`;
     } catch (error) {
       console.error('❌ Component discovery failed:', error);
       return { components: [], framework: 'unknown' };
+
     }
+
   }
+
 
   /**
    * AI-driven behavior analysis
@@ -489,9 +493,9 @@ Make selectors SPECIFIC to avoid matching everything.`;
       return { patterns: [] };
     }
 
-    const codeContent = input.files.slice(0, 15).map((f: FileContent) =>
-      `=== File: ${f.path} ===\n${f.content.slice(0, 2000)}\n`
-    ).join('\n').slice(0, 30000);
+    const codeContent = input.files.slice(0, 20).map((f: FileContent) =>
+      `=== File: ${f.path} ===\n${f.content.slice(0, 3000)}\n`
+    ).join('\n').slice(0, 40000);
 
     const systemPrompt = `You are an expert in understanding UI component behaviors and data flow.
 Analyze how components interact and what context they need.
@@ -505,10 +509,6 @@ Analyze the code to understand:
 2. Where to find that context (parent elements, siblings, data attributes)
 3. What state changes occur on interaction
 4. Component relationships and dependencies
-
-CODE:
-${codeContent}
-
 Return behavior patterns as JSON:
 {
   "patterns": [
@@ -524,7 +524,9 @@ Return behavior patterns as JSON:
       "triggers_events": ["form_submit", "api_call", "state_update"]
     }
   ]
-}`;
+}
+CODE:
+${codeContent}`;
 
     try {
       const response = await this.anthropic.messages.create({
@@ -1483,21 +1485,262 @@ Return behavior patterns as JSON:
   /**
    * Helper to extract JSON from LLM response
    */
+  /**
+   * Helper to extract JSON from LLM response with repair attempts
+   */
   private extractJSON(content: string): any {
-    // Try to find JSON in markdown code blocks
-    const jsonMatch = content.match(/```json\n?([\s\S]*?)\n?```/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[1]);
+    // SAVE TO FILE IMMEDIATELY FOR INSPECTION
+    const debugPath = `/tmp/llm-response-${Date.now()}.json`;
+    try {
+      require('fs').writeFileSync(debugPath, content, 'utf8');
+      console.log(`\n🔍 DEBUG: Raw LLM response saved to: ${debugPath}\n`);
+    } catch (e) {
+      console.log('Could not save debug file');
     }
 
-    // Try to find raw JSON
-    const jsonStart = content.indexOf('{');
-    const jsonEnd = content.lastIndexOf('}') + 1;
-    if (jsonStart >= 0 && jsonEnd > jsonStart) {
-      return JSON.parse(content.slice(jsonStart, jsonEnd));
+    // LOG THE RAW CONTENT
+    console.log('\n========== RAW LLM RESPONSE ==========');
+    console.log(content);
+    console.log('========== END RAW RESPONSE ==========\n');
+
+    // Also log what we're looking for
+    console.log('Looking for JSON with this structure:');
+    console.log(JSON.stringify({
+      framework: "react|vue|angular|vanilla|unknown",
+      components: [
+        {
+          name: "component_name",
+          type: "button|link|etc",
+          selector_patterns: ["array of selectors"],
+          interaction_type: "click|change|etc",
+          likely_purpose: "description",
+          context_needed: ["array"]
+        }
+      ]
+    }, null, 2));
+
+    // Strategy 1: Look for markdown code blocks
+    const codeBlockMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (codeBlockMatch) {
+      console.log('Found code block, attempting parse...');
+      try {
+        const parsed = JSON.parse(codeBlockMatch[1]);
+        console.log('✅ Successfully parsed from code block');
+        return parsed;
+      } catch (e: any) {
+        console.log('❌ Code block parse failed:', e.message);
+        console.log('Code block content:', codeBlockMatch[1].substring(0, 200));
+      }
     }
 
-    throw new Error('No valid JSON found in response');
+    // Strategy 2: Find JSON by structure
+    try {
+      const jsonObj = this.extractJSONObject(content);
+      if (jsonObj) {
+        console.log('Found JSON object, attempting parse...');
+        const parsed = JSON.parse(jsonObj);
+        console.log('✅ Successfully parsed JSON object');
+        return parsed;
+      }
+    } catch (e: any) {
+      console.log('❌ JSON object extraction failed:', e.message);
+    }
+
+    // Strategy 3: Try to fix and parse
+    try {
+      const fixed = this.fixMalformedJSON(content);
+      console.log('Attempting to parse fixed JSON...');
+      const parsed = JSON.parse(fixed);
+      console.log('✅ Successfully parsed after fixing');
+      return parsed;
+    } catch (e: any) {
+      console.log('❌ Fixed JSON parse failed:', e.message);
+    }
+
+    // Final fallback
+    console.warn('⚠️ All parsing methods failed, using fallback structure');
+    return { framework: 'unknown', components: [] };
+  }
+  private extractJSONObject(content: string): string | null {
+    let depth = 0;
+    let inString = false;
+    let escapeNext = false;
+    let startIdx = -1;
+    let endIdx = -1;
+
+    for (let i = 0; i < content.length; i++) {
+      const char = content[i];
+
+      // Handle string context
+      if (!escapeNext && char === '"' && (i === 0 || content[i - 1] !== '\\')) {
+        inString = !inString;
+      }
+
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        escapeNext = true;
+        continue;
+      }
+
+      // Only count braces outside of strings
+      if (!inString) {
+        if (char === '{') {
+          if (depth === 0) startIdx = i;
+          depth++;
+        } else if (char === '}') {
+          depth--;
+          if (depth === 0 && startIdx !== -1) {
+            endIdx = i;
+            break;
+          }
+        }
+      }
+    }
+
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      return content.substring(startIdx, endIdx + 1);
+    }
+
+    return null;
+  }
+
+  private fixMalformedJSON(content: string): string {
+    // Extract potential JSON
+    let json = content;
+
+    // If there's extra text before/after JSON, try to isolate it
+    const startIdx = content.indexOf('{');
+    const endIdx = content.lastIndexOf('}');
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      json = content.substring(startIdx, endIdx + 1);
+    }
+
+    // Fix common issues
+    json = json
+      // Remove comments
+      .replace(/\/\/.*$/gm, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      // Fix trailing commas
+      .replace(/,(\s*[}\]])/g, '$1')
+      // Fix line breaks in strings (replace with spaces)
+      .replace(/"([^"]*)\n([^"]*?)"/g, '"$1 $2"')
+      // Fix unescaped quotes in strings (basic)
+      .replace(/"([^"]*)":\s*"([^"]*)"([^,}\]]*[,}\]])/g, (match, key, value, after) => {
+        // Check if value has unescaped quotes
+        if (value.includes('"') && !value.includes('\\"')) {
+          value = value.replace(/"/g, '\\"');
+        }
+        return `"${key}": "${value}"${after}`;
+      })
+      // Fix array issues - missing commas between elements
+      .replace(/\](\s*)\[/g, '],$1[')
+      .replace(/\}(\s*)\{/g, '},$1{')
+      .replace(/"(\s*)"/g, '",$1"')
+      // Clean up multiple commas
+      .replace(/,+/g, ',')
+      // Remove empty array elements
+      .replace(/\[,/g, '[')
+      .replace(/,\]/g, ']')
+      // Fix unquoted keys
+      .replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":')
+      // Remove control characters
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+    // Special fix for array syntax errors
+    // Find arrays and ensure they're properly formatted
+    json = json.replace(/\[[^\]]*\]/g, (match) => {
+      // Check if array elements are properly separated
+      let fixed = match
+        .replace(/"\s+"/g, '","')  // Add commas between string elements
+        .replace(/\}\s+\{/g, '},{') // Add commas between object elements
+        .replace(/\]\s+\[/g, '],[') // Add commas between array elements
+        .replace(/([^,\[])\s*"/g, '$1,"') // Add comma before quoted strings if missing
+        .replace(/"\s*([^,\]])/g, '",$1'); // Add comma after quoted strings if missing
+
+      // Clean up any double commas we might have created
+      fixed = fixed.replace(/,+/g, ',').replace(/\[,/g, '[').replace(/,\]/g, ']');
+
+      return fixed;
+    });
+
+    return json;
+  }
+
+  private cleanJSONString(jsonString: string): string {
+    return jsonString
+      // Remove trailing commas before } or ]
+      .replace(/,(\s*[}\]])/g, '$1')
+      // Remove line comments
+      .replace(/\/\/.*$/gm, '')
+      // Remove block comments
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      // Fix escaped quotes that shouldn't be escaped
+      .replace(/\\"/g, '"')
+      // Remove any BOM or zero-width characters
+      .replace(/^\uFEFF/, '')
+      .replace(/[\u200B-\u200D\uFEFF]/g, '');
+  }
+
+  private aggressiveJSONClean(jsonString: string): string {
+    // More aggressive cleaning for badly formatted JSON
+    return jsonString
+      // First apply standard cleaning
+      .replace(/,(\s*[}\]])/g, '$1')
+      .replace(/\/\/.*$/gm, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      // Fix unquoted keys (more comprehensive)
+      .replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":')
+      // Fix single quotes to double quotes (but not in values)
+      .replace(/([{,:\[])\s*'([^']*)'\s*([,}\]:])/g, '$1"$2"$3')
+      // Remove control characters except newlines and tabs
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+      // Fix multiple consecutive commas
+      .replace(/,+/g, ',')
+      // Remove commas before closing braces/brackets
+      .replace(/,(\s*[}\]])/g, '$1')
+      // Escape unescaped quotes inside string values (basic attempt)
+      .replace(/"([^"]*)":\s*"([^"]*(?:[^\\]")[^"]*)"/g, (match, key, value) => {
+        const fixedValue = value.replace(/(?<!\\)"/g, '\\"');
+        return `"${key}": "${fixedValue}"`;
+      })
+      // Remove any trailing content after the last }
+      .replace(/}[\s\S]*$/, '}');
+  }
+  /**
+   * Attempt to repair common JSON issues
+   */
+  private attemptJSONRepair(jsonString: string): any {
+    try {
+      // Remove trailing commas
+      let repaired = jsonString.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+
+      // Fix unescaped quotes in string values
+      repaired = repaired.replace(/"([^"]*)":\s*"([^"]*)"/g, (match, key, value) => {
+        const fixedValue = value.replace(/(?<!\\)"/g, '\\"');
+        return `"${key}": "${fixedValue}"`;
+      });
+
+      // Remove comments
+      repaired = repaired.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+
+      // Fix missing quotes around keys
+      repaired = repaired.replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":');
+
+      // Remove any text after the last closing brace
+      const lastBrace = repaired.lastIndexOf('}');
+      if (lastBrace !== -1) {
+        repaired = repaired.substring(0, lastBrace + 1);
+      }
+
+      return JSON.parse(repaired);
+    } catch (e) {
+      console.log('JSON repair failed:', e);
+      return null;
+    }
   }
 
   /**

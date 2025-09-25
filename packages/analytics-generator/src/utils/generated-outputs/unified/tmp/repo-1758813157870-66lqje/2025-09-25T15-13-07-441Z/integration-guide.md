@@ -1,4 +1,4 @@
-# AI-Enhanced Analytics Integration Guide for test-app-rich-demo-2025-09-24-wp6bn2zybmn
+# AI-Enhanced Analytics Integration Guide for test-app-rich-demo-2025-09-25-xjjs0z6yph7
 
 ## 🤖 New Event Schema
 
@@ -81,5 +81,5 @@ The AI analyzed your application and found:
 
 ---
 
-**Generated:** 2025-09-24T16:06:24.896Z
+**Generated:** 2025-09-25T15:13:07.441Z
 **AI Model:** Claude 3 Haiku
