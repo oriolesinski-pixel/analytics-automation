@@ -433,10 +433,7 @@ For each component found:
 4. Use parent element context to create more specific selectors
 5. Only include components that actually appear in the code
 
-CODE:
-${codeContent}
-
-Return this EXACT JSON structure:
+Also, return this EXACT JSON structure:
 {
   "framework": "react|vue|angular|vanilla|unknown",
   "components": [
@@ -454,7 +451,10 @@ Return this EXACT JSON structure:
 }
 
 Include ALL interactive elements found, both standard HTML and custom components.
-Make selectors SPECIFIC to avoid matching everything.`;
+Make selectors SPECIFIC to avoid matching everything.
+
+CODE:
+${codeContent}`;
 
     try {
       const response = await this.anthropic.messages.create({
@@ -820,11 +820,6 @@ ${codeContent}`;
     };
 
     // Add entry point if found
-    if (entryPoint) {
-      output['entry-point.js'] = entryPoint.content;
-      output.metadata.entryPointFile = entryPoint.filename;
-      console.log(`✅ Added entry point: ${entryPoint.filename}`);
-    }
 
     return output;
   }
@@ -1489,46 +1484,18 @@ ${codeContent}`;
    * Helper to extract JSON from LLM response with repair attempts
    */
   private extractJSON(content: string): any {
-    // SAVE TO FILE IMMEDIATELY FOR INSPECTION
-    const debugPath = `/tmp/llm-response-${Date.now()}.json`;
-    try {
-      require('fs').writeFileSync(debugPath, content, 'utf8');
-      console.log(`\n🔍 DEBUG: Raw LLM response saved to: ${debugPath}\n`);
-    } catch (e) {
-      console.log('Could not save debug file');
-    }
 
-    // LOG THE RAW CONTENT
-    console.log('\n========== RAW LLM RESPONSE ==========');
-    console.log(content);
-    console.log('========== END RAW RESPONSE ==========\n');
-
-    // Also log what we're looking for
-    console.log('Looking for JSON with this structure:');
-    console.log(JSON.stringify({
-      framework: "react|vue|angular|vanilla|unknown",
-      components: [
-        {
-          name: "component_name",
-          type: "button|link|etc",
-          selector_patterns: ["array of selectors"],
-          interaction_type: "click|change|etc",
-          likely_purpose: "description",
-          context_needed: ["array"]
-        }
-      ]
-    }, null, 2));
 
     // Strategy 1: Look for markdown code blocks
     const codeBlockMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
     if (codeBlockMatch) {
-      console.log('Found code block, attempting parse...');
+      console.log('Found JSON object, attempting parse...');
       try {
         const parsed = JSON.parse(codeBlockMatch[1]);
-        console.log('✅ Successfully parsed from code block');
+        console.log('✅ Successfully parsed JSON object');
         return parsed;
       } catch (e: any) {
-        console.log('❌ Code block parse failed:', e.message);
+        console.log('❌ JSON object extraction failed:', e.message);
         console.log('Code block content:', codeBlockMatch[1].substring(0, 200));
       }
     }

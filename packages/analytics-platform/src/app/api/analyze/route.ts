@@ -138,22 +138,6 @@ export async function POST(request: NextRequest) {
     }
     console.log(`Found ${routes.length} routes`);
 
-    // Check if we got entry point code for the preview sandbox
-    let entryPointCode = null;
-    let entryPointFile = null;
-
-    if (result['entry-point.js']) {
-      entryPointCode = result['entry-point.js'];
-      entryPointFile = result.metadata?.entryPointFile || 'page.tsx';
-      console.log(`✅ Entry point extracted for preview: ${entryPointFile} (${entryPointCode.length} chars)`);
-    } else if (result.entryPointCode) {
-      entryPointCode = result.entryPointCode;
-      entryPointFile = result.entryPointFile || 'page.tsx';
-      console.log(`✅ Entry point extracted for preview: ${entryPointFile} (${entryPointCode.length} chars)`);
-    } else {
-      console.log('⚠️ No entry point code extracted for preview sandbox');
-    }
-
     console.log('=================================');
 
     // Build the analysis result with entry point for preview
@@ -168,8 +152,6 @@ export async function POST(request: NextRequest) {
       totalComponents,
       estimatedEvents: result.estimatedEvents || '10K/day',
       appKey: result.appKey || appKey,
-      entryPointCode,  // For preview sandbox
-      entryPointFile   // For preview sandbox
     };
 
     // Register the app with analytics service

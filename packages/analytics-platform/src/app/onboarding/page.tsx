@@ -1,3 +1,4 @@
+///Users/oriolesinski/analytics-automation/packages/analytics-platform/src/app/onboarding/page.tsx
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';

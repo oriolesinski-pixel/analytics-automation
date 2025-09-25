@@ -293,7 +293,6 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
                 uiGraph: output['ui-graph.json'],
                 trackerCode: output['tracker.js'],
                 providerCode: output['analytics-provider.tsx'],
-                'entry-point.js': output['entry-point.js'],
                 source: targetPath ? 'github_clone' : 'local_repo'
             });
 
