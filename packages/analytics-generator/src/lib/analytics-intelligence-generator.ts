@@ -654,17 +654,46 @@ ${codeContent}`;
       // Determine which types of widgets/modals might be on this page based on route
       const pageType = this.determinePageType(route);
 
+      // Determine if page has forms based on page type and widgets
+      const hasFormOnPage = pageType.includes('auth') || pageType.includes('checkout');
+      const widgets = this.getWidgetsForPageType(pageType);
+      const hasFormWidget = widgets.includes('auth_form') || widgets.includes('checkout_form');
+
+      // Build event array based on actual page content
+      const pageEvents: string[] = ['PAGE_VIEW']; // All pages have page views
+
+      // Only add BUTTON_CLICK if page likely has buttons
+      if (!hasFormOnPage || pageType === 'home' || pageType === 'product_detail' || pageType === 'cart') {
+        pageEvents.push('BUTTON_CLICK');
+      }
+
+      // Only add FORM_INTERACTION if page has forms
+      if (hasFormOnPage || hasFormWidget) {
+        pageEvents.push('FORM_INTERACTION');
+      }
+
+      // Only add SCROLL_INTERACTION for content-heavy pages
+      if (pageType === 'home' || pageType === 'product_detail' || pageType === 'info') {
+        pageEvents.push('SCROLL_INTERACTION');
+      }
+
+      // Element visibility only for pages with modals
+      const modals = this.getModalsForPageType(pageType);
+      if (modals.length > 0) {
+        pageEvents.push('ELEMENT_VISIBILITY');
+      }
+
       pages[pageName] = {
         route,
         page_type: pageType,
-        widgets: this.getWidgetsForPageType(pageType),
-        modals: this.getModalsForPageType(pageType),
+        widgets: widgets,
+        modals: modals,
         can_navigate_to: routes.filter((r: string) => r !== route).map((r: string) => this.routeToPageName(r)),
-        events: ['PAGE_VIEW', 'BUTTON_CLICK', 'FORM_INTERACTION', 'SCROLL_INTERACTION'],
+        events: pageEvents, // Use the dynamically determined events
         ai_insights: {
           framework: discovery.framework,
           interaction_types: Array.from(new Set(discovery.components.map((c: any) => c.interaction_type))),
-          has_forms: pageType.includes('auth') || pageType.includes('checkout'),
+          has_forms: hasFormOnPage || hasFormWidget,
           has_product_interactions: pageType.includes('product') || route === '/'
         }
       };
