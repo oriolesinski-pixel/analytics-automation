@@ -1,0 +1,848 @@
+{
+  "base_fields": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "source": "generated"
+    },
+    "ts": {
+      "type": "number",
+      "format": "unix_timestamp",
+      "source": "generated"
+    },
+    "app_key": {
+      "type": "string",
+      "source": "config"
+    },
+    "session_id": {
+      "type": "string",
+      "source": "sessionStorage"
+    },
+    "user_id": {
+      "type": "string",
+      "source": "persistent_storage",
+      "description": "8-10 digit string"
+    },
+    "event_type": {
+      "type": "string",
+      "source": "code"
+    }
+  },
+  "events": [
+    {
+      "event_type": "PAGE_VIEW",
+      "data_fields": [
+        "url",
+        "path",
+        "title",
+        "referrer",
+        "is_first_view",
+        "entry_type"
+      ],
+      "properties": {
+        "url": "string",
+        "path": "string",
+        "title": "string",
+        "referrer": "string | null",
+        "is_first_view": "boolean",
+        "entry_type": "\"navigation\" | \"reload\" | \"back_forward\" | \"spa_transition\""
+      }
+    },
+    {
+      "event_type": "BUTTON_CLICK",
+      "data_fields": [
+        "element_text",
+        "element_id",
+        "element_type",
+        "surface",
+        "page_path",
+        "is_primary_cta",
+        "cta_category"
+      ],
+      "properties": {
+        "element_text": "string",
+        "element_id": "string | null",
+        "element_type": "\"button\" | \"link\" | \"icon\" | \"tab\"",
+        "surface": "string",
+        "page_path": "string",
+        "is_primary_cta": "boolean",
+        "cta_category": "\"conversion\" | \"navigation\" | \"engagement\""
+      }
+    },
+    {
+      "event_type": "FORM_INTERACTION",
+      "data_fields": [
+        "action",
+        "form_name",
+        "form_id",
+        "form_type",
+        "surface",
+        "page_path",
+        "fields_total",
+        "fields_completed"
+      ],
+      "properties": {
+        "action": "\"started\" | \"submitted\" | \"abandoned\"",
+        "form_name": "string",
+        "form_id": "string | null",
+        "form_type": "\"contact\" | \"signup\" | \"login\" | \"checkout\" | \"newsletter\" | \"other\"",
+        "surface": "string",
+        "page_path": "string",
+        "fields_total": "number",
+        "fields_completed": "number"
+      }
+    },
+    {
+      "event_type": "ELEMENT_VISIBILITY",
+      "data_fields": [
+        "action",
+        "element_type",
+        "element_name",
+        "element_id",
+        "trigger_source",
+        "page_path",
+        "has_cta"
+      ],
+      "properties": {
+        "action": "\"shown\" | \"hidden\" | \"dismissed\"",
+        "element_type": "\"modal\" | \"popup\" | \"drawer\" | \"tooltip\" | \"dropdown\" | \"toast\" | \"unknown\"",
+        "element_name": "string",
+        "element_id": "string | null",
+        "trigger_source": "\"button_click\" | \"auto_trigger\" | \"scroll_trigger\" | \"unknown\"",
+        "page_path": "string",
+        "has_cta": "boolean"
+      }
+    },
+    {
+      "event_type": "SCROLL_INTERACTION",
+      "data_fields": [
+        "action",
+        "depth_percentage",
+        "milestone",
+        "page_path",
+        "direction"
+      ],
+      "properties": {
+        "action": "\"depth_reached\"",
+        "depth_percentage": "number",
+        "milestone": "\"25%\" | \"50%\" | \"75%\" | \"90%\" | \"100%\" | \"none\"",
+        "page_path": "string",
+        "direction": "\"up\" | \"down\""
+      }
+    }
+  ],
+  "ai_components": [
+    {
+      "name": "Button",
+      "type": "button",
+      "selector_patterns": [
+        ".bg-blue-600",
+        ".hover:bg-blue-700",
+        ".inline-block"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Navigational links, calls to action",
+      "context_needed": [],
+      "code_patterns": [
+        "<Link href=\"/products\" className=\"inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors\">",
+        "<button onClick={handleSubmit} className=\"block w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors\">",
+        "<Link href=\"/\" className=\"block w-full border border-gray-300 py-3 rounded-lg hover:bg-gray-50 transition-colors\">"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "IconButton",
+      "type": "icon",
+      "selector_patterns": [
+        ".p-1",
+        ".hover:bg-gray-100",
+        ".rounded"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Quantity control, remove from cart",
+      "context_needed": [
+        "product_id",
+        "selected_state"
+      ],
+      "code_patterns": [
+        "<button onClick={() => updateQuantity(item.id, item.quantity - 1)} className=\"p-1 hover:bg-gray-100 rounded\" disabled={item.quantity <= 1}>",
+        "<button onClick={() => updateQuantity(item.id, item.quantity + 1)} className=\"p-1 hover:bg-gray-100 rounded\">"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "Link",
+      "type": "link",
+      "selector_patterns": [
+        ".text-blue-600",
+        ".hover:text-blue-500",
+        ".font-medium"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Navigation, authentication",
+      "context_needed": [],
+      "code_patterns": [
+        "<Link href=\"/auth/register\" className=\"font-medium text-blue-600 hover:text-blue-500\">",
+        "<Link href=\"/auth/login\" className=\"font-medium text-blue-600 hover:text-blue-500\">"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "Form",
+      "type": "form",
+      "selector_patterns": [
+        "form.mt-8",
+        "form.space-y-6",
+        "form.onSubmit"
+      ],
+      "interaction_type": "submit",
+      "likely_purpose": "Authentication, checkout",
+      "context_needed": [
+        "form_data"
+      ],
+      "code_patterns": [
+        "<form className=\"mt-8 space-y-6\" onSubmit={handleSubmit}>",
+        "<form onSubmit={handleSubmit} className=\"space-y-4\">"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "Input",
+      "type": "form_input",
+      "selector_patterns": [
+        "input.appearance-none",
+        "input.rounded-none",
+        "input.relative",
+        "input.block",
+        "input.w-full",
+        "input.px-3",
+        "input.py-2",
+        "input.border",
+        "input.border-gray-300",
+        "input.placeholder-gray-500",
+        "input.text-gray-900",
+        "input.rounded-t-md",
+        "input.focus:outline-none",
+        "input.focus:ring-blue-500",
+        "input.focus:border-blue-500",
+        "input.focus:z-10",
+        "input.sm:text-sm"
+      ],
+      "interaction_type": "change",
+      "likely_purpose": "Form field input",
+      "context_needed": [
+        "form_data"
+      ],
+      "code_patterns": [
+        "<input id=\"email\" name=\"email\" type=\"email\" autoComplete=\"email\" required className=\"appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm\" placeholder=\"Email address\" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})}>"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "Checkbox",
+      "type": "form_input",
+      "selector_patterns": [
+        "input[type=\"checkbox\"]"
+      ],
+      "interaction_type": "change",
+      "likely_purpose": "Form option selection",
+      "context_needed": [
+        "form_data"
+      ],
+      "code_patterns": [],
+      "actual_values": []
+    },
+    {
+      "name": "RadioButton",
+      "type": "form_input",
+      "selector_patterns": [
+        "input[type=\"radio\"]"
+      ],
+      "interaction_type": "change",
+      "likely_purpose": "Form option selection",
+      "context_needed": [
+        "form_data"
+      ],
+      "code_patterns": [],
+      "actual_values": []
+    },
+    {
+      "name": "Select",
+      "type": "form_input",
+      "selector_patterns": [
+        "select"
+      ],
+      "interaction_type": "change",
+      "likely_purpose": "Form option selection",
+      "context_needed": [
+        "form_data"
+      ],
+      "code_patterns": [],
+      "actual_values": []
+    },
+    {
+      "name": "Textarea",
+      "type": "form_input",
+      "selector_patterns": [
+        "textarea"
+      ],
+      "interaction_type": "change",
+      "likely_purpose": "Form text input",
+      "context_needed": [
+        "form_data"
+      ],
+      "code_patterns": [],
+      "actual_values": []
+    },
+    {
+      "name": "Modal",
+      "type": "custom",
+      "selector_patterns": [
+        "[role=\"dialog\"]",
+        ".fixed",
+        ".inset-0",
+        ".z-50",
+        ".overflow-y-auto"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Display additional information or options",
+      "context_needed": [],
+      "code_patterns": [],
+      "actual_values": []
+    },
+    {
+      "name": "Accordion",
+      "type": "custom",
+      "selector_patterns": [
+        ".accordion",
+        ".accordion-item",
+        ".accordion-header",
+        ".accordion-body"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Expand/collapse content sections",
+      "context_needed": [],
+      "code_patterns": [],
+      "actual_values": []
+    },
+    {
+      "name": "Tabs",
+      "type": "custom",
+      "selector_patterns": [
+        ".tabs",
+        ".tab-list",
+        ".tab-item",
+        ".tab-panel"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Switch between content sections",
+      "context_needed": [],
+      "code_patterns": [],
+      "actual_values": []
+    },
+    {
+      "name": "Dropdown",
+      "type": "custom",
+      "selector_patterns": [
+        ".dropdown",
+        ".dropdown-toggle",
+        ".dropdown-menu"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Select from a list of options",
+      "context_needed": [],
+      "code_patterns": [],
+      "actual_values": []
+    },
+    {
+      "name": "SearchInput",
+      "type": "custom",
+      "selector_patterns": [
+        ".search-input",
+        ".search-button"
+      ],
+      "interaction_type": "change",
+      "likely_purpose": "Search for products or content",
+      "context_needed": [
+        "search_query"
+      ],
+      "code_patterns": [],
+      "actual_values": []
+    },
+    {
+      "name": "FilterPanel",
+      "type": "custom",
+      "selector_patterns": [
+        ".filter-panel",
+        ".filter-button",
+        ".filter-options"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Filter products by various criteria",
+      "context_needed": [
+        "filter_state"
+      ],
+      "code_patterns": [],
+      "actual_values": []
+    },
+    {
+      "name": "Pagination",
+      "type": "custom",
+      "selector_patterns": [
+        ".pagination",
+        ".page-item",
+        ".page-link"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Navigate through paginated content",
+      "context_needed": [
+        "page_number"
+      ],
+      "code_patterns": [],
+      "actual_values": []
+    },
+    {
+      "name": "RouterLink",
+      "type": "link",
+      "selector_patterns": [
+        "[href^=\"/\"]",
+        ".text-gray-700",
+        ".hover:text-blue-600",
+        ".transition-colors"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Navigation within the application",
+      "context_needed": [],
+      "code_patterns": [
+        "<Link href=\"/products\" className=\"text-gray-700 hover:text-blue-600 transition-colors\">",
+        "<Link href=\"/about\" className=\"text-gray-700 hover:text-blue-600 transition-colors\">"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "CartIcon",
+      "type": "icon",
+      "selector_patterns": [
+        ".relative",
+        ".text-gray-700",
+        ".hover:text-blue-600",
+        ".transition-colors"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Access the shopping cart",
+      "context_needed": [
+        "cart_state"
+      ],
+      "code_patterns": [
+        "<Link href=\"/cart\" className=\"relative text-gray-700 hover:text-blue-600 transition-colors\">"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "WishlistIcon",
+      "type": "icon",
+      "selector_patterns": [
+        ".relative",
+        ".text-gray-700",
+        ".hover:text-blue-600",
+        ".transition-colors"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Access the wishlist",
+      "context_needed": [
+        "wishlist_state"
+      ],
+      "code_patterns": [
+        "<Link href=\"/wishlist\" className=\"relative text-gray-700 hover:text-blue-600 transition-colors\">"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "UserIcon",
+      "type": "icon",
+      "selector_patterns": [
+        ".text-gray-700",
+        ".hover:text-blue-600",
+        ".transition-colors"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Access user-related functionality (login, profile, etc.)",
+      "context_needed": [
+        "auth_state"
+      ],
+      "code_patterns": [
+        "<Link href=\"/auth/login\" className=\"text-gray-700 hover:text-blue-600 transition-colors\">"
+      ],
+      "actual_values": []
+    },
+    {
+      "name": "LogoutButton",
+      "type": "button",
+      "selector_patterns": [
+        ".text-gray-700",
+        ".hover:text-blue-600",
+        ".transition-colors"
+      ],
+      "interaction_type": "click",
+      "likely_purpose": "Log out the user",
+      "context_needed": [
+        "auth_state"
+      ],
+      "code_patterns": [
+        "<button onClick={logout} className=\"text-sm text-gray-700 hover:text-blue-600 transition-colors\">"
+      ],
+      "actual_values": []
+    }
+  ],
+  "ai_patterns": [
+    {
+      "component": "Button",
+      "context_collection": {
+        "search_parents": [
+          ".product-card",
+          "[data-product]",
+          "form"
+        ],
+        "extract_fields": [
+          "product-id",
+          "price",
+          "selected-color"
+        ],
+        "sibling_context": [
+          "input[name='size']",
+          ".color-selector.active"
+        ],
+        "data_attributes": [
+          "data-product-id",
+          "data-sku"
+        ]
+      },
+      "state_changes": [
+        "toggles_class",
+        "updates_cart",
+        "navigates_to"
+      ],
+      "triggers_events": [
+        "form_submit",
+        "api_call",
+        "state_update"
+      ]
+    },
+    {
+      "component": "IconButton",
+      "context_collection": {
+        "search_parents": [
+          ".product-card",
+          "[data-product]"
+        ],
+        "extract_fields": [
+          "product-id",
+          "selected-state"
+        ]
+      },
+      "state_changes": [
+        "toggles_class",
+        "updates_cart"
+      ],
+      "triggers_events": [
+        "api_call",
+        "state_update"
+      ]
+    },
+    {
+      "component": "Link",
+      "context_collection": {
+        "search_parents": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": []
+    },
+    {
+      "component": "Form",
+      "context_collection": {
+        "search_parents": [
+          "form"
+        ],
+        "extract_fields": [
+          "form_data"
+        ]
+      },
+      "state_changes": [
+        "updates_form_data"
+      ],
+      "triggers_events": [
+        "form_submit",
+        "api_call"
+      ]
+    },
+    {
+      "component": "Input",
+      "context_collection": {
+        "search_parents": [
+          "form"
+        ],
+        "extract_fields": [
+          "form_data"
+        ]
+      },
+      "state_changes": [
+        "updates_form_data"
+      ],
+      "triggers_events": [
+        "form_input_change"
+      ]
+    },
+    {
+      "component": "Checkbox",
+      "context_collection": {
+        "search_parents": [
+          "form"
+        ],
+        "extract_fields": [
+          "form_data"
+        ]
+      },
+      "state_changes": [
+        "updates_form_data"
+      ],
+      "triggers_events": [
+        "form_input_change"
+      ]
+    },
+    {
+      "component": "RadioButton",
+      "context_collection": {
+        "search_parents": [
+          "form"
+        ],
+        "extract_fields": [
+          "form_data"
+        ]
+      },
+      "state_changes": [
+        "updates_form_data"
+      ],
+      "triggers_events": [
+        "form_input_change"
+      ]
+    },
+    {
+      "component": "Select",
+      "context_collection": {
+        "search_parents": [
+          "form"
+        ],
+        "extract_fields": [
+          "form_data"
+        ]
+      },
+      "state_changes": [
+        "updates_form_data"
+      ],
+      "triggers_events": [
+        "form_input_change"
+      ]
+    },
+    {
+      "component": "Textarea",
+      "context_collection": {
+        "search_parents": [
+          "form"
+        ],
+        "extract_fields": [
+          "form_data"
+        ]
+      },
+      "state_changes": [
+        "updates_form_data"
+      ],
+      "triggers_events": [
+        "form_input_change"
+      ]
+    },
+    {
+      "component": "Modal",
+      "context_collection": {
+        "search_parents": []
+      },
+      "state_changes": [
+        "toggles_visibility"
+      ],
+      "triggers_events": [
+        "click"
+      ]
+    },
+    {
+      "component": "Accordion",
+      "context_collection": {
+        "search_parents": []
+      },
+      "state_changes": [
+        "toggles_visibility"
+      ],
+      "triggers_events": [
+        "click"
+      ]
+    },
+    {
+      "component": "Tabs",
+      "context_collection": {
+        "search_parents": []
+      },
+      "state_changes": [
+        "updates_active_tab"
+      ],
+      "triggers_events": [
+        "click"
+      ]
+    },
+    {
+      "component": "Dropdown",
+      "context_collection": {
+        "search_parents": []
+      },
+      "state_changes": [
+        "toggles_visibility"
+      ],
+      "triggers_events": [
+        "click"
+      ]
+    },
+    {
+      "component": "SearchInput",
+      "context_collection": {
+        "search_parents": [
+          "form"
+        ],
+        "extract_fields": [
+          "search_query"
+        ]
+      },
+      "state_changes": [
+        "updates_search_query"
+      ],
+      "triggers_events": [
+        "form_input_change",
+        "api_call"
+      ]
+    },
+    {
+      "component": "FilterPanel",
+      "context_collection": {
+        "search_parents": [
+          "form"
+        ],
+        "extract_fields": [
+          "filter_state"
+        ]
+      },
+      "state_changes": [
+        "updates_filter_state"
+      ],
+      "triggers_events": [
+        "click",
+        "api_call"
+      ]
+    },
+    {
+      "component": "Pagination",
+      "context_collection": {
+        "search_parents": [
+          "form"
+        ],
+        "extract_fields": [
+          "page_number"
+        ]
+      },
+      "state_changes": [
+        "updates_page_number"
+      ],
+      "triggers_events": [
+        "click",
+        "api_call"
+      ]
+    },
+    {
+      "component": "RouterLink",
+      "context_collection": {
+        "search_parents": []
+      },
+      "state_changes": [
+        "navigates_to"
+      ],
+      "triggers_events": [
+        "click"
+      ]
+    },
+    {
+      "component": "CartIcon",
+      "context_collection": {
+        "search_parents": [
+          "[data-product]"
+        ],
+        "extract_fields": [
+          "cart_state"
+        ]
+      },
+      "state_changes": [
+        "updates_cart_state"
+      ],
+      "triggers_events": [
+        "click",
+        "api_call"
+      ]
+    },
+    {
+      "component": "WishlistIcon",
+      "context_collection": {
+        "search_parents": [
+          "[data-product]"
+        ],
+        "extract_fields": [
+          "wishlist_state"
+        ]
+      },
+      "state_changes": [
+        "updates_wishlist_state"
+      ],
+      "triggers_events": [
+        "click",
+        "api_call"
+      ]
+    },
+    {
+      "component": "UserIcon",
+      "context_collection": {
+        "search_parents": [],
+        "extract_fields": [
+          "auth_state"
+        ]
+      },
+      "state_changes": [
+        "updates_auth_state"
+      ],
+      "triggers_events": [
+        "click",
+        "api_call"
+      ]
+    },
+    {
+      "component": "LogoutButton",
+      "context_collection": {
+        "search_parents": [],
+        "extract_fields": [
+          "auth_state"
+        ]
+      },
+      "state_changes": [
+        "updates_auth_state"
+      ],
+      "triggers_events": [
+        "click",
+        "api_call"
+      ]
+    }
+  ]
+}

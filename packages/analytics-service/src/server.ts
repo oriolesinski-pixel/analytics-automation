@@ -6,6 +6,7 @@ import ingestRoutes from './routes/ingest';
 import analyticsRoutes from './routes/analytics';
 import selfcheck from "./selfcheck";
 import deployRoutes from './routes/deploy';
+import mergeRoutes from './routes/merge';
 import crypto from 'crypto';
 
 const app = Fastify({ logger: true });
@@ -413,6 +414,8 @@ async function start() {
     await app.register(selfcheck);
     await app.register(analyticsRoutes);
     await app.register(deployRoutes);
+    await app.register(mergeRoutes);
+
 
     await app.listen({ port: PORT, host: '0.0.0.0' });
 

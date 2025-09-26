@@ -1,8 +1,7 @@
-///Users/oriolesinski/analytics-automation/packages/analytics-platform/src/app/onboarding/page.tsx
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { ChevronRight, Github, Check, Loader2, Code2, GitBranch, BarChart3, ArrowRight, Shield, Zap, Eye, Copy, CheckCircle2, XCircle, AlertCircle, ExternalLink, Terminal, FileCode2, GitPullRequest, Activity, Plus, Key, Settings, ChevronDown, ChevronUp, Lock, Globe, Smartphone, Tablet, Monitor, BookOpen, RefreshCw, ToggleLeft, ToggleRight, Circle, Square, Layers, Home, ShoppingCart, User, Package, CreditCard, Heart, ClipboardCopy, FileSearch, Link } from 'lucide-react';
+import { ChevronRight, Github, Check, Loader2, Code2, GitBranch, BarChart3, ArrowRight, Shield, Zap, Eye, Copy, CheckCircle2, XCircle, AlertCircle, ExternalLink, Terminal, FileCode2, GitPullRequest, Activity, Plus, Key, Settings, ChevronDown, ChevronUp, Lock, Globe, Smartphone, Tablet, Monitor, BookOpen, RefreshCw, ToggleLeft, ToggleRight, Circle, Square, Layers, Home, ShoppingCart, User, Package, CreditCard, Heart, ClipboardCopy, FileSearch, Link, GitMerge } from 'lucide-react';
 import { EventDetailsCollapsible, UIGraphVisualization, SitePreviewSandbox } from '@/components/onboarding/ReviewSchema';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082';
@@ -62,7 +61,7 @@ interface Schema {
   totalComponents: number;
   estimatedEvents: string;
   appKey?: string;
-  siteUrl?: string; // Add siteUrl to schema
+  siteUrl?: string;
 }
 
 // Session storage keys
@@ -74,10 +73,11 @@ const STORAGE_KEYS = {
   SCHEMA: 'onboarding_schema',
   APP_KEY: 'onboarding_app_key',
   PR_URL: 'onboarding_pr_url',
+  PR_NUMBER: 'onboarding_pr_number',
   REPOSITORIES: 'onboarding_repositories',
   AUTO_MERGE: 'onboarding_auto_merge',
   ENABLED_EVENTS: 'onboarding_enabled_events',
-  SITE_URL: 'onboarding_site_url' // Add site URL storage key
+  SITE_URL: 'onboarding_site_url'
 };
 
 function OnboardingFlow() {
@@ -89,10 +89,11 @@ function OnboardingFlow() {
   const [schema, setSchema] = useState<Schema | null>(null);
   const [appKey, setAppKey] = useState('');
   const [prUrl, setPrUrl] = useState('');
+  const [prNumber, setPrNumber] = useState<number | null>(null);
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [autoMerge, setAutoMerge] = useState(false);
   const [enabledEvents, setEnabledEvents] = useState<Record<string, boolean>>({});
-  const [siteUrl, setSiteUrl] = useState(''); // Add siteUrl state
+  const [siteUrl, setSiteUrl] = useState('');
 
   // Add a flag to track if we've hydrated from storage
   const [isHydrated, setIsHydrated] = useState(false);
@@ -100,6 +101,7 @@ function OnboardingFlow() {
   // Non-persisted state
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [deploymentStatus, setDeploymentStatus] = useState('idle');
+  const [mergeStatus, setMergeStatus] = useState('idle');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -121,7 +123,6 @@ function OnboardingFlow() {
 
   // Load from sessionStorage AFTER initial render (client-side only)
   useEffect(() => {
-    // Helper function to safely load from sessionStorage
     const loadFromSession = (key: string, defaultValue: any) => {
       try {
         const item = sessionStorage.getItem(key);
@@ -131,7 +132,6 @@ function OnboardingFlow() {
       }
     };
 
-    // Load all persisted values
     setCurrentStep(loadFromSession(STORAGE_KEYS.CURRENT_STEP, 0));
     setSelectedRepo(loadFromSession(STORAGE_KEYS.SELECTED_REPO, null));
     setGithubToken(loadFromSession(STORAGE_KEYS.GITHUB_TOKEN, ''));
@@ -139,14 +139,14 @@ function OnboardingFlow() {
     setSchema(loadFromSession(STORAGE_KEYS.SCHEMA, null));
     setAppKey(loadFromSession(STORAGE_KEYS.APP_KEY, ''));
     setPrUrl(loadFromSession(STORAGE_KEYS.PR_URL, ''));
+    setPrNumber(loadFromSession(STORAGE_KEYS.PR_NUMBER, null));
     setRepositories(loadFromSession(STORAGE_KEYS.REPOSITORIES, []));
     setAutoMerge(loadFromSession(STORAGE_KEYS.AUTO_MERGE, false));
     setEnabledEvents(loadFromSession(STORAGE_KEYS.ENABLED_EVENTS, {}));
     setSiteUrl(loadFromSession(STORAGE_KEYS.SITE_URL, ''));
 
-    // Mark as hydrated
     setIsHydrated(true);
-  }, []); // Run only once on mount
+  }, []);
 
   // Persist state to sessionStorage (only after hydration)
   useEffect(() => {
@@ -186,6 +186,11 @@ function OnboardingFlow() {
 
   useEffect(() => {
     if (!isHydrated) return;
+    sessionStorage.setItem(STORAGE_KEYS.PR_NUMBER, JSON.stringify(prNumber));
+  }, [prNumber, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
     sessionStorage.setItem(STORAGE_KEYS.REPOSITORIES, JSON.stringify(repositories));
   }, [repositories, isHydrated]);
 
@@ -210,6 +215,7 @@ function OnboardingFlow() {
     { id: 'analyze', label: 'Analyze Code', icon: Terminal },
     { id: 'review', label: 'Review Schema', icon: Eye },
     { id: 'deploy', label: 'Create PR', icon: GitPullRequest },
+    { id: 'merge', label: 'Merge PR', icon: GitMerge },
     { id: 'complete', label: 'Start Tracking', icon: Activity }
   ];
 
@@ -248,7 +254,6 @@ function OnboardingFlow() {
       return;
     }
 
-    // Validate site URL if provided
     if (siteUrl && !isValidUrl(siteUrl)) {
       setError('Please enter a valid URL (e.g., https://example.com)');
       return;
@@ -258,7 +263,6 @@ function OnboardingFlow() {
     setError(null);
 
     try {
-      // Call our backend API to validate token
       const response = await fetch('/api/auth/github', {
         method: 'POST',
         headers: {
@@ -273,10 +277,7 @@ function OnboardingFlow() {
         throw new Error(data.error || 'Authentication failed');
       }
 
-      // Store user info and proceed
       setGithubUser(data.user);
-
-      // Immediately fetch repositories after successful auth
       await fetchRepositories();
       setCurrentStep(1);
 
@@ -295,7 +296,7 @@ function OnboardingFlow() {
     try {
       const response = await fetch('/api/repos', {
         method: 'GET',
-        credentials: 'same-origin' // Include cookies
+        credentials: 'same-origin'
       });
 
       const data = await response.json();
@@ -322,7 +323,6 @@ function OnboardingFlow() {
     setAnalysisProgress([]);
     setCurrentProgressStep(0);
 
-    // Progress messages with timing
     const progressSteps = [
       { message: 'Cloning repository', icon: '📦', delay: 500 },
       { message: 'Scanning file structure', icon: '🔍', delay: 2000 },
@@ -333,7 +333,6 @@ function OnboardingFlow() {
       { message: 'Creating integration files', icon: '📝', delay: 9500 }
     ];
 
-    // Start showing progress messages
     const progressTimers: NodeJS.Timeout[] = [];
     let isStillAnalyzing = true;
 
@@ -348,7 +347,6 @@ function OnboardingFlow() {
     });
 
     try {
-      // Add a minimum delay to ensure progress is visible
       const [response] = await Promise.all([
         fetch('/api/analyze', {
           method: 'POST',
@@ -361,14 +359,12 @@ function OnboardingFlow() {
             repoName: selectedRepo.name,
             repoOwner: selectedRepo.owner.login,
             defaultBranch: selectedRepo.default_branch,
-            siteUrl: siteUrl // Include site URL in analysis request
+            siteUrl: siteUrl
           })
         }),
-        // Minimum 10 second delay to show all progress steps
         new Promise(resolve => setTimeout(resolve, 10000))
       ]);
 
-      // Clear all timers
       isStillAnalyzing = false;
       progressTimers.forEach(timer => clearTimeout(timer));
       setAnalysisProgress([]);
@@ -381,7 +377,6 @@ function OnboardingFlow() {
 
       const data = await response.json();
 
-      // Store the real analysis results with site URL
       setSchema({
         events: data.events || [],
         routes: data.routes || [],
@@ -393,7 +388,7 @@ function OnboardingFlow() {
         totalComponents: data.totalComponents || 0,
         estimatedEvents: data.estimatedEvents || '10K/day',
         appKey: data.appKey || '',
-        siteUrl: siteUrl || data.siteUrl // Store site URL in schema
+        siteUrl: siteUrl || data.siteUrl
       });
 
       setAppKey(data.appKey || '');
@@ -418,12 +413,12 @@ function OnboardingFlow() {
     setError(null);
 
     try {
-      const response = await fetch('/api/deploy', {
+      const response = await fetch('/api/onboarding/deploy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-GitHub-Token': githubToken
         },
-        credentials: 'same-origin',
         body: JSON.stringify({
           repoOwner: selectedRepo.owner.login,
           repoName: selectedRepo.name,
@@ -441,14 +436,58 @@ function OnboardingFlow() {
 
       const data = await response.json();
       setPrUrl(data.prUrl);
-      setDeploymentStatus('success');
 
-      // Move to completion after a short delay
+      // Extract PR number from URL
+      if (data.prUrl) {
+        const prMatch = data.prUrl.match(/\/pull\/(\d+)$/);
+        if (prMatch) {
+          setPrNumber(parseInt(prMatch[1]));
+        }
+      }
+
+      setDeploymentStatus('success');
       setTimeout(() => setCurrentStep(5), 2000);
 
     } catch (err) {
       setError((err as Error).message || 'Deployment failed');
       setDeploymentStatus('failed');
+    }
+  };
+
+  // Merge Pull Request - NEW FUNCTION
+  const mergePR = async () => {
+    if (!prNumber || !selectedRepo) return;
+
+    setMergeStatus('merging');
+    setError(null);
+
+    try {
+      const response = await fetch('/api/onboarding/merge', {  // <-- Changed from '/api/onboarding/merge'
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-GitHub-Token': githubToken
+        },
+        body: JSON.stringify({
+          repoOwner: selectedRepo.owner.login,
+          repoName: selectedRepo.name,
+          prNumber: prNumber
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Merge failed');
+      }
+
+      const data = await response.json();
+      setMergeStatus('success');
+
+      setTimeout(() => setCurrentStep(6), 2000);
+
+    } catch (err) {
+      setError((err as Error).message || 'Merge failed');
+      setMergeStatus('failed');
     }
   };
 
@@ -462,12 +501,10 @@ function OnboardingFlow() {
 
   // Reset the flow and clear session storage
   const resetFlow = () => {
-    // Clear all session storage
     Object.values(STORAGE_KEYS).forEach(key => {
       sessionStorage.removeItem(key);
     });
 
-    // Reset state
     setCurrentStep(0);
     setSelectedRepo(null);
     setGithubToken('');
@@ -475,6 +512,7 @@ function OnboardingFlow() {
     setSchema(null);
     setAppKey('');
     setPrUrl('');
+    setPrNumber(null);
     setRepositories([]);
     setError(null);
     setActiveTab('overview');
@@ -482,6 +520,8 @@ function OnboardingFlow() {
     setAutoMerge(false);
     setCurrentProgressStep(0);
     setSiteUrl('');
+    setDeploymentStatus('idle');
+    setMergeStatus('idle');
   };
 
   // Show a loading state while hydrating from sessionStorage
@@ -628,7 +668,15 @@ function OnboardingFlow() {
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
-                    Required scopes: repo, read:org
+                    Required scopes: repo (full access), read:org
+                  </p>
+                </div>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-6 text-left">
+                  <p className="text-sm text-yellow-800 font-medium mb-1">⚠️ Important: Full repo access required</p>
+                  <p className="text-xs text-yellow-700">
+                    The <code className="bg-yellow-100 px-1">repo</code> scope grants read AND write access.
+                    This is necessary to create pull requests with your analytics integration.
+                    Make sure the entire "repo" checkbox is selected, not just some sub-permissions.
                   </p>
                 </div>
 
@@ -697,9 +745,18 @@ function OnboardingFlow() {
                       </div>
                       <div className="flex-1 pt-1">
                         <p className="text-sm font-medium text-gray-900">Select Required Scopes</p>
-                        <div className="flex gap-2 mt-2">
-                          <code className="bg-white px-2 py-1 rounded border border-gray-300 text-xs">✓ repo</code>
-                          <code className="bg-white px-2 py-1 rounded border border-gray-300 text-xs">✓ read:org</code>
+                        <div className="mt-2 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <code className="bg-white px-2 py-1 rounded border border-gray-300 text-xs">✓ repo</code>
+                            <span className="text-xs text-gray-600">(Full control - required for PR creation)</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <code className="bg-white px-2 py-1 rounded border border-gray-300 text-xs">✓ read:org</code>
+                            <span className="text-xs text-gray-600">(Read organization data)</span>
+                          </div>
+                          <p className="text-xs text-red-600 mt-1">
+                            ⚠️ Ensure ALL sub-permissions under "repo" are checked
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -722,7 +779,6 @@ function OnboardingFlow() {
           </div>
         )}
 
-        {/* Rest of the steps remain the same */}
         {/* Step 1: Select Repository */}
         {currentStep === 1 && (
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
@@ -883,7 +939,7 @@ function OnboardingFlow() {
           </div>
         )}
 
-        {/* Step 3: Review Schema - Updated with Site Preview */}
+        {/* Step 3: Review Schema */}
         {currentStep === 3 && schema && (
           <div className="space-y-6">
             <div className="bg-white rounded-t-2xl shadow-xl overflow-hidden">
@@ -1092,7 +1148,7 @@ function OnboardingFlow() {
                   </div>
                 )}
 
-                {/* Events Tab and Structure Tab remain the same */}
+                {/* Events Tab */}
                 {activeTab === 'events' && (
                   <div className="space-y-6">
                     {/* Base Event Schema Display with Working Copy */}
@@ -1202,8 +1258,7 @@ function OnboardingFlow() {
           </div>
         )}
 
-        {/* Steps 4-5 remain the same */}
-        {/* Step 4: Creating PR */}
+        {/* Step 4: Creating PR - FIXED */}
         {currentStep === 4 && (
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="px-8 py-16">
@@ -1216,9 +1271,18 @@ function OnboardingFlow() {
                     <h2 className="text-3xl font-bold text-gray-900 mb-4">
                       Creating Pull Request
                     </h2>
-                    <p className="text-lg text-gray-600">
+                    <p className="text-lg text-gray-600 mb-8">
                       Setting up your analytics integration...
                     </p>
+                    <button
+                      onClick={() => {
+                        setCurrentStep(3);
+                        setDeploymentStatus('idle');
+                      }}
+                      className="px-6 py-3 text-gray-700 font-medium hover:text-gray-900 transition-colors"
+                    >
+                      Cancel
+                    </button>
                   </>
                 ) : deploymentStatus === 'success' ? (
                   <>
@@ -1229,20 +1293,49 @@ function OnboardingFlow() {
                       Pull Request Created!
                     </h2>
                     <p className="text-lg text-gray-600 mb-8">
-                      Your analytics integration is ready
+                      Your analytics integration PR is ready for review
                     </p>
-                    {prUrl && (
-                      <a
-                        href={prUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center px-6 py-3 bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 transition-colors"
+
+                    <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                      <div className="flex items-center justify-between">
+                        <div className="text-left">
+                          <p className="text-sm text-gray-600">Pull Request</p>
+                          <p className="font-semibold text-gray-900">
+                            #{prNumber || 'New'} - Add Analytics Integration
+                          </p>
+                        </div>
+                        {prUrl && (
+                          <a
+                            href={prUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center px-3 py-1.5 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                          >
+                            <ExternalLink className="w-4 h-4 mr-1" />
+                            View on GitHub
+                          </a>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex justify-center space-x-4">
+                      <button
+                        onClick={() => {
+                          setCurrentStep(3);
+                          setDeploymentStatus('idle');
+                        }}
+                        className="px-6 py-3 text-gray-700 font-medium hover:text-gray-900 transition-colors"
                       >
-                        <Github className="w-5 h-5 mr-2" />
-                        View on GitHub
-                        <ExternalLink className="w-4 h-4 ml-2" />
-                      </a>
-                    )}
+                        Back to Review
+                      </button>
+                      <button
+                        onClick={() => setCurrentStep(5)}
+                        className="px-8 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                      >
+                        Continue to Merge
+                        <ArrowRight className="inline w-5 h-5 ml-2" />
+                      </button>
+                    </div>
                   </>
                 ) : (
                   <>
@@ -1255,12 +1348,24 @@ function OnboardingFlow() {
                     <p className="text-lg text-gray-600 mb-8">
                       {error || 'Something went wrong during deployment'}
                     </p>
-                    <button
-                      onClick={() => setCurrentStep(3)}
-                      className="px-6 py-3 text-gray-700 font-medium hover:text-gray-900 transition-colors"
-                    >
-                      Try Again
-                    </button>
+                    <div className="flex justify-center space-x-4">
+                      <button
+                        onClick={() => {
+                          setCurrentStep(3);
+                          setDeploymentStatus('idle');
+                          setError(null);
+                        }}
+                        className="px-6 py-3 text-gray-700 font-medium hover:text-gray-900 transition-colors"
+                      >
+                        Back to Review
+                      </button>
+                      <button
+                        onClick={createPR}
+                        className="px-6 py-3 bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 transition-colors"
+                      >
+                        Try Again
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
@@ -1268,8 +1373,166 @@ function OnboardingFlow() {
           </div>
         )}
 
-        {/* Step 5: Complete */}
+        {/* Step 5: Merge PR - NEW */}
         {currentStep === 5 && (
+          <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+            <div className="px-8 py-16">
+              <div className="text-center max-w-2xl mx-auto">
+                {mergeStatus === 'idle' && (
+                  <>
+                    <div className="inline-flex items-center justify-center w-20 h-20 bg-amber-100 rounded-full mb-6">
+                      <GitMerge className="w-10 h-10 text-amber-600" />
+                    </div>
+                    <h2 className="text-3xl font-bold text-gray-900 mb-4">
+                      Ready to Merge
+                    </h2>
+                    <p className="text-lg text-gray-600 mb-6">
+                      Merge your pull request to activate analytics tracking
+                    </p>
+
+                    {/* PR Status Card */}
+                    <div className="bg-gray-50 rounded-lg p-6 mb-8 text-left max-w-md mx-auto">
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0">
+                          <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                            <Check className="w-5 h-5 text-green-600" />
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-gray-900">Pull Request #{prNumber || 'New'}</h4>
+                          <p className="text-sm text-gray-600 mt-1">Add Analytics Integration</p>
+                          <div className="mt-3 space-y-2">
+                            <div className="flex items-center text-sm">
+                              <CheckCircle2 className="w-4 h-4 text-green-600 mr-2" />
+                              <span className="text-gray-700">Files created</span>
+                            </div>
+                            <div className="flex items-center text-sm">
+                              <CheckCircle2 className="w-4 h-4 text-green-600 mr-2" />
+                              <span className="text-gray-700">Ready to merge</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Warning about auto-merge */}
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-8 text-left max-w-md mx-auto">
+                      <div className="flex">
+                        <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0" />
+                        <div className="ml-3">
+                          <p className="text-sm text-yellow-800">
+                            <strong>Note:</strong> Merging will immediately activate tracking on your main branch.
+                            Make sure you're ready to start collecting analytics data.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-center space-x-4">
+                      <button
+                        onClick={() => setCurrentStep(4)}
+                        className="px-6 py-3 text-gray-700 font-medium hover:text-gray-900 transition-colors"
+                      >
+                        Back
+                      </button>
+                      {prUrl && (
+                        <a
+                          href={prUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center px-6 py-3 bg-white border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                        >
+                          <ExternalLink className="w-5 h-5 mr-2" />
+                          Review on GitHub
+                        </a>
+                      )}
+                      <button
+                        onClick={mergePR}
+                        className="px-8 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        <GitMerge className="w-5 h-5 mr-2 inline" />
+                        Merge Pull Request
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {mergeStatus === 'merging' && (
+                  <>
+                    <div className="inline-flex items-center justify-center w-20 h-20 bg-indigo-100 rounded-full mb-6">
+                      <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
+                    </div>
+                    <h2 className="text-3xl font-bold text-gray-900 mb-4">
+                      Merging Pull Request
+                    </h2>
+                    <p className="text-lg text-gray-600">
+                      Activating your analytics integration...
+                    </p>
+                  </>
+                )}
+
+                {mergeStatus === 'success' && (
+                  <>
+                    <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-6">
+                      <CheckCircle2 className="w-10 h-10 text-green-600" />
+                    </div>
+                    <h2 className="text-3xl font-bold text-gray-900 mb-4">
+                      Successfully Merged!
+                    </h2>
+                    <p className="text-lg text-gray-600">
+                      Analytics are now active on your main branch
+                    </p>
+                  </>
+                )}
+
+                {mergeStatus === 'failed' && (
+                  <>
+                    <div className="inline-flex items-center justify-center w-20 h-20 bg-red-100 rounded-full mb-6">
+                      <XCircle className="w-10 h-10 text-red-600" />
+                    </div>
+                    <h2 className="text-3xl font-bold text-gray-900 mb-4">
+                      Merge Failed
+                    </h2>
+                    <p className="text-lg text-gray-600 mb-4">
+                      {error || 'Could not merge the pull request'}
+                    </p>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left max-w-md mx-auto">
+                      <p className="text-sm text-blue-800">
+                        You can manually merge the PR on GitHub, or check if there are any merge conflicts that need to be resolved.
+                      </p>
+                    </div>
+                    <div className="flex justify-center space-x-4">
+                      <button
+                        onClick={() => {
+                          setMergeStatus('idle');
+                          setError(null);
+                        }}
+                        className="px-6 py-3 text-gray-700 font-medium hover:text-gray-900 transition-colors"
+                      >
+                        Try Again
+                      </button>
+                      {prUrl && (
+                        <a
+                          href={prUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center px-6 py-3 bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 transition-colors"
+                        >
+                          <Github className="w-5 h-5 mr-2" />
+                          Merge on GitHub
+                          <ExternalLink className="w-4 h-4 ml-2" />
+                        </a>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 6: Complete - UPDATED */}
+        {currentStep === 6 && (
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="px-8 py-16">
               <div className="text-center max-w-2xl mx-auto">
@@ -1277,31 +1540,85 @@ function OnboardingFlow() {
                   <CheckCircle2 className="w-10 h-10 text-white" />
                 </div>
                 <h2 className="text-3xl font-bold text-gray-900 mb-4">
-                  Setup Complete!
+                  Analytics Now Active! 🎉
                 </h2>
                 <p className="text-lg text-gray-600 mb-8">
-                  {autoMerge ? 'Analytics are now active on your repository!' : 'Once you merge the PR, analytics will start flowing automatically'}
+                  Your analytics integration is live and collecting data from your main branch
                 </p>
 
+                {/* Success Summary */}
+                <div className="bg-green-50 rounded-lg p-6 mb-8 text-left max-w-md mx-auto">
+                  <h3 className="font-semibold text-green-900 mb-3">Integration Complete</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center text-sm">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mr-2 flex-shrink-0" />
+                      <span className="text-gray-700">Analytics files added to main branch</span>
+                    </div>
+                    <div className="flex items-center text-sm">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mr-2 flex-shrink-0" />
+                      <span className="text-gray-700">Tracking script active at /tracker.js</span>
+                    </div>
+                    <div className="flex items-center text-sm">
+                      <CheckCircle2 className="w-4 h-4 text-green-600 mr-2 flex-shrink-0" />
+                      <span className="text-gray-700">Events flowing to dashboard</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* App Key Display */}
+                {(schema?.appKey || appKey) && (
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-8 max-w-md mx-auto">
+                    <div className="flex items-center justify-between">
+                      <div className="text-left">
+                        <p className="text-sm font-medium text-indigo-900">Your App Key</p>
+                        <p className="font-mono text-lg text-indigo-700 mt-1">{schema?.appKey || appKey}</p>
+                      </div>
+                      <button
+                        onClick={() => copyToClipboard(schema?.appKey || appKey, 'finalAppKey')}
+                        className="p-2 hover:bg-indigo-100 rounded-lg transition-colors"
+                        title="Copy to clipboard"
+                      >
+                        {copiedField === 'finalAppKey' ? (
+                          <CheckCircle2 className="w-5 h-5 text-green-600" />
+                        ) : (
+                          <ClipboardCopy className="w-5 h-5 text-indigo-600" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex justify-center space-x-4">
-                  {prUrl && (
-                    <a
-                      href={prUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-8 py-3 bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 transition-colors"
-                    >
-                      <Github className="w-5 h-5 mr-2 inline" />
-                      View Pull Request
-                    </a>
-                  )}
                   <button
-                    onClick={() => window.location.href = `/dashboard?app=${appKey}`}
+                    onClick={() => window.location.href = `/dashboard?app=${schema?.appKey || appKey}`}
                     className="px-8 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
                   >
-                    Go to Dashboard
+                    <BarChart3 className="w-5 h-5 mr-2 inline" />
+                    View Analytics Dashboard
                     <ArrowRight className="inline w-5 h-5 ml-2" />
                   </button>
+                </div>
+
+                {/* Next Steps */}
+                <div className="mt-12 pt-8 border-t border-gray-200">
+                  <h3 className="text-sm font-semibold text-gray-900 mb-4">What's Next?</h3>
+                  <div className="grid grid-cols-3 gap-4 text-left">
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <Activity className="w-5 h-5 text-indigo-600 mb-2" />
+                      <p className="text-sm font-medium text-gray-900">Monitor Events</p>
+                      <p className="text-xs text-gray-600 mt-1">Watch real-time data flow in your dashboard</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <Settings className="w-5 h-5 text-indigo-600 mb-2" />
+                      <p className="text-sm font-medium text-gray-900">Configure Alerts</p>
+                      <p className="text-xs text-gray-600 mt-1">Set up notifications for key metrics</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <BookOpen className="w-5 h-5 text-indigo-600 mb-2" />
+                      <p className="text-sm font-medium text-gray-900">View Docs</p>
+                      <p className="text-xs text-gray-600 mt-1">Learn about advanced tracking features</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

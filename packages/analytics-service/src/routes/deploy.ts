@@ -1,35 +1,180 @@
 import { FastifyInstance } from 'fastify';
-import { execSync } from 'child_process';
-import path from 'path';
-import { createClient } from '@supabase/supabase-js';
+import { Octokit } from '@octokit/rest';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+interface DeployBody {
+  repoOwner: string;
+  repoName: string;
+  trackerCode: string;
+  providerCode: string;
+  appKey: string;
+  autoMerge?: boolean;
+}
 
 export default async function deployRoutes(fastify: FastifyInstance) {
-  fastify.post('/api/analyze', async (request, reply) => {
+  // This matches what your frontend is calling
+  fastify.post('/onboarding/deploy', async (request, reply) => {
     try {
-      const { owner, repo } = request.body as any;
+      const { repoOwner, repoName, trackerCode, providerCode, appKey, autoMerge } = request.body as DeployBody;
 
-      // For now, return mock data
-      const mockSchema = {
-        app_key: `${repo}-${Date.now()}`,
-        events: [
-          { name: 'page_view', type: 'navigation' },
-          { name: 'button_click', type: 'interaction' },
-          { name: 'form_submit', type: 'conversion' }
-        ],
-        framework: 'Next.js',
-        version: '14.0.0'
+      // Get GitHub token from header
+      const githubToken = request.headers['x-github-token'] as string;
+
+      if (!githubToken) {
+        return reply.status(401).send({ error: 'GitHub authentication required' });
+      }
+
+      const octokit = new Octokit({ auth: githubToken });
+
+      // Get the default branch
+      const { data: repo } = await octokit.repos.get({
+        owner: repoOwner,
+        repo: repoName
+      });
+      const baseBranch = repo.default_branch;
+
+      // Get latest commit SHA
+      const { data: ref } = await octokit.git.getRef({
+        owner: repoOwner,
+        repo: repoName,
+        ref: `heads/${baseBranch}`
+      });
+      const baseSha = ref.object.sha;
+
+      // Create new branch
+      const branchName = `analytics-integration-${Date.now()}`;
+      await octokit.git.createRef({
+        owner: repoOwner,
+        repo: repoName,
+        ref: `refs/heads/${branchName}`,
+        sha: baseSha
+      });
+
+      // Create tracker.js file
+      try {
+        // Check if file exists first
+        let trackerSha: string | undefined;
+        try {
+          const { data: existingFile } = await octokit.repos.getContent({
+            owner: repoOwner,
+            repo: repoName,
+            path: 'public/tracker.js',
+            ref: baseBranch
+          });
+          if (!Array.isArray(existingFile) && 'sha' in existingFile) {
+            trackerSha = existingFile.sha;
+          }
+        } catch (e) {
+          // File doesn't exist, that's OK
+        }
+
+        await octokit.repos.createOrUpdateFileContents({
+          owner: repoOwner,
+          repo: repoName,
+          path: 'public/tracker.js',
+          message: 'Add analytics tracker',
+          content: Buffer.from(trackerCode).toString('base64'),
+          branch: branchName,
+          ...(trackerSha && { sha: trackerSha }) // Include sha only if file exists
+        });
+      } catch (error: any) {
+        console.error('Error creating tracker.js:', error);
+        throw new Error(`Failed to create tracker.js: ${error.message}`);
+      }
+
+      // Create analytics provider
+      try {
+        let providerSha: string | undefined;
+        try {
+          const { data: existingFile } = await octokit.repos.getContent({
+            owner: repoOwner,
+            repo: repoName,
+            path: 'src/components/AnalyticsProvider.tsx',
+            ref: baseBranch
+          });
+          if (!Array.isArray(existingFile) && 'sha' in existingFile) {
+            providerSha = existingFile.sha;
+          }
+        } catch (e) {
+          // File doesn't exist, that's OK
+        }
+
+        await octokit.repos.createOrUpdateFileContents({
+          owner: repoOwner,
+          repo: repoName,
+          path: 'src/components/AnalyticsProvider.tsx',
+          message: 'Add analytics provider component',
+          content: Buffer.from(providerCode).toString('base64'),
+          branch: branchName,
+          ...(providerSha && { sha: providerSha }) // Include sha only if file exists
+        });
+      } catch (error: any) {
+        console.error('Error creating AnalyticsProvider.tsx:', error);
+        throw new Error(`Failed to create AnalyticsProvider.tsx: ${error.message}`);
+      }
+
+      // Create PR
+      const { data: pr } = await octokit.pulls.create({
+        owner: repoOwner,
+        repo: repoName,
+        title: '🎯 Add Analytics Tracking',
+        head: branchName,
+        base: baseBranch,
+        body: `## Analytics Integration
+
+This PR adds analytics tracking to your application.
+
+### What's included:
+- ✅ Analytics tracker script (\`/tracker.js\`)
+- ✅ React Analytics Provider component
+- ✅ Auto-configured with app key: \`${appKey}\`
+
+### Installation:
+1. Add \`<script src="/tracker.js"></script>\` to your HTML
+2. Wrap your app with \`<AnalyticsProvider>\`
+
+### Features:
+- 🤖 AI-powered event detection
+- 🔑 Persistent user tracking (8-10 digit IDs)
+- 📊 5 event types (PAGE_VIEW, BUTTON_CLICK, etc.)
+- 🚀 Zero configuration required
+
+---
+*Generated by Analytics Platform*`
+      });
+
+      // Auto-merge if requested
+      if (autoMerge) {
+        try {
+          await octokit.pulls.merge({
+            owner: repoOwner,
+            repo: repoName,
+            pull_number: pr.number,
+            merge_method: 'squash'
+          });
+
+          // Delete branch after merge
+          await octokit.git.deleteRef({
+            owner: repoOwner,
+            repo: repoName,
+            ref: `heads/${branchName}`
+          });
+        } catch (mergeError) {
+          console.log('Auto-merge failed (may need admin rights):', mergeError);
+        }
+      }
+
+      return {
+        success: true,
+        prUrl: pr.html_url,
+        prNumber: pr.number,
+        branch: branchName
       };
 
-      return { success: true, schema: mockSchema };
-    } catch (error) {
-      console.error('Analysis error:', error);
-      reply.status(500);
-      return { error: 'Analysis failed' };
+    } catch (error: any) {
+      console.error('Deploy error:', error);
+      return reply.status(500).send({
+        error: error.message || 'Deployment failed'
+      });
     }
   });
 }
