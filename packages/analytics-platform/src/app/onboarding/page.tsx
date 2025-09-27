@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { ChevronRight, Github, Check, Loader2, Code2, GitBranch, BarChart3, ArrowRight, Shield, Zap, Eye, Copy, CheckCircle2, XCircle, AlertCircle, ExternalLink, Terminal, FileCode2, GitPullRequest, Activity, Plus, Key, Settings, ChevronDown, ChevronUp, Lock, Globe, Smartphone, Tablet, Monitor, BookOpen, RefreshCw, ToggleLeft, ToggleRight, Circle, Square, Layers, Home, ShoppingCart, User, Package, CreditCard, Heart, ClipboardCopy, FileSearch, Link, GitMerge } from 'lucide-react';
+import { ChevronRight, Github, Check, Loader2, Code2, GitBranch, BarChart3, ArrowRight, Shield, Zap, Eye, Copy, CheckCircle2, XCircle, AlertCircle, ExternalLink, Terminal, FileCode2, GitPullRequest, Activity, Plus, Key, Settings, ChevronDown, ChevronUp, Lock, Globe, Smartphone, Tablet, Monitor, BookOpen, RefreshCw, ToggleLeft, ToggleRight, Circle, Square, Layers, Home, ShoppingCart, User, Package, CreditCard, Heart, ClipboardCopy, FileSearch, Link, GitMerge, FolderOpen } from 'lucide-react';
 import { EventDetailsCollapsible, UIGraphVisualization, SitePreviewSandbox } from '@/components/onboarding/ReviewSchema';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082';
@@ -35,6 +35,17 @@ interface Repository {
   updated_at: string;
   default_branch: string;
   permissions?: any;
+  isMonorepo?: boolean;
+}
+
+interface SubDirectory {
+  name: string;
+  path: string;
+  type: 'dir';
+  hasPackageJson: boolean;
+  framework?: string;
+  description?: string;
+  scripts?: Record<string, string>;
 }
 
 interface GitHubUser {
@@ -77,7 +88,10 @@ const STORAGE_KEYS = {
   REPOSITORIES: 'onboarding_repositories',
   AUTO_MERGE: 'onboarding_auto_merge',
   ENABLED_EVENTS: 'onboarding_enabled_events',
-  SITE_URL: 'onboarding_site_url'
+  SITE_URL: 'onboarding_site_url',
+  SUBDIRECTORIES: 'onboarding_subdirectories',
+  SELECTED_SUBDIR: 'onboarding_selected_subdir',
+  SHOW_SUBDIR_SELECTION: 'onboarding_show_subdir_selection'
 };
 
 function OnboardingFlow() {
@@ -94,6 +108,12 @@ function OnboardingFlow() {
   const [autoMerge, setAutoMerge] = useState(false);
   const [enabledEvents, setEnabledEvents] = useState<Record<string, boolean>>({});
   const [siteUrl, setSiteUrl] = useState('');
+
+  // Subdirectory selection state
+  const [subdirectories, setSubdirectories] = useState<SubDirectory[]>([]);
+  const [selectedSubdir, setSelectedSubdir] = useState<SubDirectory | null>(null);
+  const [loadingSubdirs, setLoadingSubdirs] = useState(false);
+  const [showSubdirSelection, setShowSubdirSelection] = useState(false);
 
   // Add a flag to track if we've hydrated from storage
   const [isHydrated, setIsHydrated] = useState(false);
@@ -144,6 +164,9 @@ function OnboardingFlow() {
     setAutoMerge(loadFromSession(STORAGE_KEYS.AUTO_MERGE, false));
     setEnabledEvents(loadFromSession(STORAGE_KEYS.ENABLED_EVENTS, {}));
     setSiteUrl(loadFromSession(STORAGE_KEYS.SITE_URL, ''));
+    setSubdirectories(loadFromSession(STORAGE_KEYS.SUBDIRECTORIES, []));
+    setSelectedSubdir(loadFromSession(STORAGE_KEYS.SELECTED_SUBDIR, null));
+    setShowSubdirSelection(loadFromSession(STORAGE_KEYS.SHOW_SUBDIR_SELECTION, false));
 
     setIsHydrated(true);
   }, []);
@@ -209,6 +232,21 @@ function OnboardingFlow() {
     sessionStorage.setItem(STORAGE_KEYS.SITE_URL, JSON.stringify(siteUrl));
   }, [siteUrl, isHydrated]);
 
+  useEffect(() => {
+    if (!isHydrated) return;
+    sessionStorage.setItem(STORAGE_KEYS.SUBDIRECTORIES, JSON.stringify(subdirectories));
+  }, [subdirectories, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    sessionStorage.setItem(STORAGE_KEYS.SELECTED_SUBDIR, JSON.stringify(selectedSubdir));
+  }, [selectedSubdir, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    sessionStorage.setItem(STORAGE_KEYS.SHOW_SUBDIR_SELECTION, JSON.stringify(showSubdirSelection));
+  }, [showSubdirSelection, isHydrated]);
+
   const steps = [
     { id: 'connect', label: 'Connect GitHub', icon: Github },
     { id: 'select', label: 'Select Repository', icon: Code2 },
@@ -244,6 +282,44 @@ function OnboardingFlow() {
       return true;
     } catch {
       return false;
+    }
+  };
+
+  // Fetch subdirectories for a repository
+  const fetchSubdirectories = async (repo: Repository) => {
+    setLoadingSubdirs(true);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `/api/repos?owner=${repo.owner.login}&repo=${repo.name}`,
+        {
+          method: 'GET',
+          credentials: 'same-origin'
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch subdirectories');
+      }
+
+      setSubdirectories(data.subdirs || []);
+
+      // If this is a monorepo with subdirectories, show selection
+      if (data.subdirs && data.subdirs.length > 0) {
+        setShowSubdirSelection(true);
+      } else {
+        // No subdirectories, proceed normally
+        setShowSubdirSelection(false);
+        setSelectedSubdir(null);
+      }
+    } catch (err) {
+      setError((err as Error).message || 'Failed to fetch subdirectories');
+      setShowSubdirSelection(false);
+    } finally {
+      setLoadingSubdirs(false);
     }
   };
 
@@ -317,6 +393,18 @@ function OnboardingFlow() {
   const analyzeRepository = async () => {
     if (!selectedRepo) return;
 
+    // Check if we need subdirectory selection for monorepos
+    if ((selectedRepo.name === 'demo-test-apps' || selectedRepo.isMonorepo) && !selectedSubdir && !showSubdirSelection) {
+      await fetchSubdirectories(selectedRepo);
+      return; // Don't proceed until subdirectory is selected
+    }
+
+    // If subdirectory selection is required but not selected
+    if (showSubdirSelection && !selectedSubdir) {
+      setError('Please select a subdirectory to analyze');
+      return;
+    }
+
     setIsAnalyzing(true);
     setError(null);
     setCurrentStep(2);
@@ -359,7 +447,10 @@ function OnboardingFlow() {
             repoName: selectedRepo.name,
             repoOwner: selectedRepo.owner.login,
             defaultBranch: selectedRepo.default_branch,
-            siteUrl: siteUrl
+            siteUrl: siteUrl,
+            // Add subdirectory information if selected
+            subdir: selectedSubdir ? selectedSubdir.path : null,
+            subdirName: selectedSubdir ? selectedSubdir.name : null
           })
         }),
         new Promise(resolve => setTimeout(resolve, 10000))
@@ -425,7 +516,8 @@ function OnboardingFlow() {
           trackerCode: schema.trackerCode,
           providerCode: schema.providerCode,
           appKey: schema.appKey || appKey,
-          autoMerge: autoMerge
+          autoMerge: autoMerge,
+          subdir: selectedSubdir ? selectedSubdir.path : null
         })
       });
 
@@ -454,7 +546,7 @@ function OnboardingFlow() {
     }
   };
 
-  // Merge Pull Request - NEW FUNCTION
+  // Merge Pull Request
   const mergePR = async () => {
     if (!prNumber || !selectedRepo) return;
 
@@ -462,7 +554,7 @@ function OnboardingFlow() {
     setError(null);
 
     try {
-      const response = await fetch('/api/onboarding/merge', {  // <-- Changed from '/api/onboarding/merge'
+      const response = await fetch('/api/onboarding/merge', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -522,6 +614,10 @@ function OnboardingFlow() {
     setSiteUrl('');
     setDeploymentStatus('idle');
     setMergeStatus('idle');
+    setSubdirectories([]);
+    setSelectedSubdir(null);
+    setShowSubdirSelection(false);
+    setLoadingSubdirs(false);
   };
 
   // Show a loading state while hydrating from sessionStorage
@@ -779,7 +875,7 @@ function OnboardingFlow() {
           </div>
         )}
 
-        {/* Step 1: Select Repository */}
+        {/* Step 1: Select Repository with Subdirectory Selection */}
         {currentStep === 1 && (
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="px-8 py-6 border-b border-gray-200">
@@ -807,61 +903,169 @@ function OnboardingFlow() {
                   <p className="text-gray-600 mt-2">Loading repositories...</p>
                 </div>
               ) : (
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {filteredRepos.map((repo) => (
-                    <div
-                      key={repo.id}
-                      onClick={() => setSelectedRepo(repo)}
-                      className={`border rounded-lg p-4 cursor-pointer transition-all ${selectedRepo?.id === repo.id
-                        ? 'border-gray-900 bg-gray-50 ring-2 ring-gray-900'
-                        : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2">
-                            <h3 className="font-semibold text-gray-900">{repo.name}</h3>
-                            {repo.private && (
-                              <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">
-                                Private
-                              </span>
-                            )}
-                            {repo.language && (
-                              <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
-                                {repo.language}
-                              </span>
+                <>
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {filteredRepos.map((repo) => (
+                      <div key={repo.id}>
+                        <div
+                          onClick={() => {
+                            setSelectedRepo(repo);
+                            setSelectedSubdir(null);
+                            setShowSubdirSelection(false);
+                            // Check if this is a monorepo that needs subdirectory selection
+                            if (repo.name === 'demo-test-apps' || repo.isMonorepo) {
+                              fetchSubdirectories(repo);
+                            }
+                          }}
+                          className={`border rounded-lg p-4 cursor-pointer transition-all ${selectedRepo?.id === repo.id
+                              ? 'border-gray-900 bg-gray-50 ring-2 ring-gray-900'
+                              : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2">
+                                <h3 className="font-semibold text-gray-900">{repo.name}</h3>
+                                {repo.private && (
+                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">
+                                    Private
+                                  </span>
+                                )}
+                                {repo.language && (
+                                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+                                    {repo.language}
+                                  </span>
+                                )}
+                                {(repo.isMonorepo || repo.name === 'demo-test-apps') && (
+                                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">
+                                    Monorepo
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-gray-600 mt-1">{repo.description}</p>
+                              <p className="text-xs text-gray-500 mt-2">
+                                {repo.owner.login} · Updated {new Date(repo.updated_at).toLocaleDateString()} · ⭐ {repo.stargazers_count} stars
+                              </p>
+                            </div>
+                            {selectedRepo?.id === repo.id && !showSubdirSelection && (
+                              <CheckCircle2 className="w-5 h-5 text-gray-900 flex-shrink-0" />
                             )}
                           </div>
-                          <p className="text-sm text-gray-600 mt-1">{repo.description}</p>
-                          <p className="text-xs text-gray-500 mt-2">
-                            {repo.owner.login} · Updated {new Date(repo.updated_at).toLocaleDateString()} · ⭐ {repo.stargazers_count} stars
-                          </p>
                         </div>
-                        {selectedRepo?.id === repo.id && (
-                          <CheckCircle2 className="w-5 h-5 text-gray-900 flex-shrink-0" />
+
+                        {/* Subdirectory Selection */}
+                        {selectedRepo?.id === repo.id && showSubdirSelection && (
+                          <div className="mt-3 ml-8 mr-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded-lg">
+                            <div className="mb-3">
+                              <h4 className="font-semibold text-gray-900 flex items-center">
+                                <FolderOpen className="w-4 h-4 mr-2 text-blue-600" />
+                                Select Subdirectory
+                              </h4>
+                              <p className="text-sm text-gray-600 mt-1">
+                                This repository contains multiple applications. Please select the one you want to analyze:
+                              </p>
+                            </div>
+
+                            {loadingSubdirs ? (
+                              <div className="text-center py-4">
+                                <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-600" />
+                                <p className="text-sm text-gray-600 mt-2">Loading subdirectories...</p>
+                              </div>
+                            ) : (
+                              <div className="space-y-2 max-h-64 overflow-y-auto">
+                                {subdirectories.length > 0 ? (
+                                  subdirectories.map((subdir) => (
+                                    <div
+                                      key={subdir.path}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedSubdir(subdir);
+                                      }}
+                                      className={`p-3 rounded-lg border cursor-pointer transition-all ${selectedSubdir?.path === subdir.path
+                                          ? 'border-blue-500 bg-white shadow-sm'
+                                          : 'border-gray-200 bg-white hover:border-blue-300'
+                                        }`}
+                                    >
+                                      <div className="flex items-start justify-between">
+                                        <div className="flex-1">
+                                          <div className="flex items-center space-x-2">
+                                            <FileCode2 className="w-4 h-4 text-gray-500" />
+                                            <span className="font-medium text-gray-900">{subdir.name}</span>
+                                            {subdir.framework && (
+                                              <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
+                                                {subdir.framework}
+                                              </span>
+                                            )}
+                                          </div>
+                                          {subdir.description && (
+                                            <p className="text-xs text-gray-600 mt-1 ml-6">{subdir.description}</p>
+                                          )}
+                                          <p className="text-xs text-gray-500 mt-1 ml-6">Path: /{subdir.path}</p>
+                                        </div>
+                                        <div className="flex items-center">
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedSubdir?.path === subdir.path}
+                                            onChange={() => { }}
+                                            className="h-4 w-4 text-blue-600 rounded border-gray-300"
+                                            onClick={(e) => e.stopPropagation()}
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="text-center py-4 text-sm text-gray-600">
+                                    No subdirectories with package.json found
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
+                    ))}
+                  </div>
+
+                  {/* Show selected status */}
+                  {selectedRepo && selectedSubdir && (
+                    <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <div className="flex items-center">
+                        <CheckCircle2 className="w-5 h-5 text-green-600 mr-2" />
+                        <div>
+                          <p className="text-sm font-medium text-green-900">
+                            Selected: {selectedRepo.name}/{selectedSubdir.name}
+                          </p>
+                          <p className="text-xs text-green-700 mt-1">
+                            Framework: {selectedSubdir.framework || 'Unknown'}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
 
               <div className="mt-8 flex justify-between">
                 <button
-                  onClick={() => setCurrentStep(0)}
+                  onClick={() => {
+                    setCurrentStep(0);
+                    setSelectedSubdir(null);
+                    setShowSubdirSelection(false);
+                  }}
                   className="px-6 py-3 text-gray-700 font-medium hover:text-gray-900 transition-colors"
                 >
                   Back
                 </button>
                 <button
                   onClick={analyzeRepository}
-                  disabled={!selectedRepo}
-                  className={`px-8 py-3 font-medium rounded-lg transition-all ${selectedRepo
-                    ? 'bg-gray-900 text-white hover:bg-gray-800'
-                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  disabled={!selectedRepo || (showSubdirSelection && !selectedSubdir)}
+                  className={`px-8 py-3 font-medium rounded-lg transition-all ${selectedRepo && (!showSubdirSelection || selectedSubdir)
+                      ? 'bg-gray-900 text-white hover:bg-gray-800'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                     }`}
                 >
-                  Analyze {selectedRepo?.name || 'Repository'}
+                  Analyze {selectedSubdir ? `${selectedRepo?.name}/${selectedSubdir.name}` : selectedRepo?.name || 'Repository'}
                   <ChevronRight className="inline w-5 h-5 ml-2" />
                 </button>
               </div>
@@ -881,7 +1085,7 @@ function OnboardingFlow() {
                   Analyzing Your Codebase
                 </h2>
                 <p className="text-lg text-gray-600 mb-8">
-                  We're scanning {selectedRepo?.name} to understand its structure and generate optimal tracking configuration.
+                  We're scanning {selectedSubdir ? `${selectedRepo?.name}/${selectedSubdir.name}` : selectedRepo?.name} to understand its structure and generate optimal tracking configuration.
                 </p>
 
                 {/* Progress Messages */}
@@ -948,7 +1152,7 @@ function OnboardingFlow() {
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900">Review Analytics Schema</h2>
                     <p className="text-gray-600 mt-1">
-                      Customize your tracking configuration for {selectedRepo?.name}
+                      Customize your tracking configuration for {selectedSubdir ? `${selectedRepo?.name}/${selectedSubdir.name}` : selectedRepo?.name}
                     </p>
                   </div>
                   <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-medium rounded-full">
@@ -1258,7 +1462,7 @@ function OnboardingFlow() {
           </div>
         )}
 
-        {/* Step 4: Creating PR - FIXED */}
+        {/* Step 4: Creating PR */}
         {currentStep === 4 && (
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="px-8 py-16">
@@ -1373,7 +1577,7 @@ function OnboardingFlow() {
           </div>
         )}
 
-        {/* Step 5: Merge PR - NEW */}
+        {/* Step 5: Merge PR */}
         {currentStep === 5 && (
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="px-8 py-16">
@@ -1531,7 +1735,7 @@ function OnboardingFlow() {
           </div>
         )}
 
-        {/* Step 6: Complete - UPDATED */}
+        {/* Step 6: Complete */}
         {currentStep === 6 && (
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="px-8 py-16">
