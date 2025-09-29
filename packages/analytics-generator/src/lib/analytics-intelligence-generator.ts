@@ -65,6 +65,7 @@ interface GeneratorInput {
     key_actions?: string[];
   };
   sample_routes?: string[];
+  progressCallback?: string;
 }
 
 interface GeneratorOutput {
@@ -205,57 +206,101 @@ export class AnalyticsIntelligenceGenerator {
     this.supabase = supabase;
     this.storageService = new StorageService(supabase);
   }
+  private async sendProgress(callbackUrl: string | undefined, message: string) {
+    console.log(message);
+    if (callbackUrl) {
+      try {
+        console.log(`📤 Posting progress to: ${callbackUrl}`);
+        const response = await fetch(callbackUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'progress',
+            message,
+            timestamp: Date.now()
+          })
+        });
+        console.log(`✅ Progress POST response: ${response.status}`);
+      } catch (error) {
+        console.error('❌ Failed to send progress update:', error);
+      }
+    } else {
+      console.log('⚠️ No callback URL provided for progress');
+    }
+  }
 
   /**
    * Generate the complete analytics implementation with AI-driven analysis
    */
-  async generate(input: GeneratorInput): Promise<GeneratorOutput> {
-    console.log('🚀 Starting AI-powered generation for:', input.appKey);
-
-    // Step 1: Load files
-    const repoFiles = await this.loadRepositoryFiles(input.repoId);
-    if (repoFiles.length > 0) {
-      console.log(`📁 Loaded ${repoFiles.length} files`);
-      input.files = repoFiles;
-    }
-
-    // Step 2: Extract routes from file system
-    const extractedRoutes = this.extractRoutesFromFiles(repoFiles);
-    if (extractedRoutes.length > 0) {
-      console.log(`🛣️ Found routes:`, extractedRoutes);
-      input.routes = extractedRoutes;
-    }
-
-    // Step 3: Progressive AI Analysis
-    const analysis = await this.performProgressiveAnalysis(input);
-
-    // Step 4: Generate implementation with AI insights
-    const output = await this.generateImplementation(input, analysis.events, analysis);
-
-    // Step 5: Save to both cloud and local storage
-    await this.saveOutput(output, input.repoId, input.appKey);
-
-    return output;
+ async generate(input: GeneratorInput): Promise<GeneratorOutput> {
+  await this.sendProgress(input.progressCallback, '🚀 Starting unified analytics generation');
+  await new Promise(resolve => setTimeout(resolve, 800));
+  
+  // Step 2: Cloning from GitHub
+  await this.sendProgress(input.progressCallback, '📦 Cloning from GitHub');
+  await new Promise(resolve => setTimeout(resolve, 800));
+  
+  const repoFiles = await this.loadRepositoryFiles(input.repoId);
+  
+  if (repoFiles.length > 0) {
+    await this.sendProgress(input.progressCallback, `📁 Loading project files`);
+    await new Promise(resolve => setTimeout(resolve, 800));
+    input.files = repoFiles;
   }
 
+  // Step 4: Scanning file structure
+  await this.sendProgress(input.progressCallback, '🔍 Scanning file structure');
+  await new Promise(resolve => setTimeout(resolve, 800));
+  
+  const extractedRoutes = this.extractRoutesFromFiles(repoFiles);
+  if (extractedRoutes.length > 0) {
+    console.log(`🛣️ Found routes:`, extractedRoutes);
+    input.routes = extractedRoutes;
+  }
+
+  // Step 3: Progressive AI Analysis
+  const analysis = await this.performProgressiveAnalysis(input);
+
+  // Step 4: Generate implementation with AI insights
+  const output = await this.generateImplementation(input, analysis.events, analysis);
+
+  // Step 5: Save to both cloud and local storage
+  await this.saveOutput(output, input.repoId, input.appKey, input.progressCallback);
+  
+  return output;
+}
   /**
    * Perform progressive AI analysis of components and behaviors
    */
   private async performProgressiveAnalysis(input: GeneratorInput): Promise<ProgressiveAnalysis> {
-    console.log('🤖 Starting progressive AI analysis...');
+    // Step 5: Detecting framework
+    await this.sendProgress(input.progressCallback, '🛠️ Detecting framework');
+    await new Promise(resolve => setTimeout(resolve, 800));
 
     // Phase 1: Discover components
     const discovery = await this.discoverComponentsWithAI(input);
-    console.log(`📊 Discovered ${discovery.components.length} interactive components`);
+
+    // Step 6: Analyzing components
+    await this.sendProgress(input.progressCallback, '🧩 Analyzing components');
+    await new Promise(resolve => setTimeout(resolve, 800));
 
     // Phase 2: Analyze behaviors
     const behaviors = await this.analyzeBehaviorsWithAI(input, discovery);
-    console.log(`🔍 Analyzed ${behaviors.patterns.length} behavior patterns`);
+
+    // Step 7: Mapping user flows
+    await this.sendProgress(input.progressCallback, '🗺️ Mapping user flows');
+    await new Promise(resolve => setTimeout(resolve, 800));
 
     // Phase 3: Generate optimized events schema
+    // Step 8: Generating tracking schema
+    await this.sendProgress(input.progressCallback, '📊 Generating tracking schema');
+    await new Promise(resolve => setTimeout(resolve, 800));
     const events = await this.generateEventsFromAnalysis(discovery, behaviors);
 
     // Phase 4: Create UI graph
+    // Step 9: Creating integration files
+    await this.sendProgress(input.progressCallback, '📝 Creating integration files');
+    await new Promise(resolve => setTimeout(resolve, 800));
     const uiGraph = await this.generateUIGraphWithAI(input, discovery, behaviors);
 
     return {
@@ -265,7 +310,6 @@ export class AnalyticsIntelligenceGenerator {
       uiGraph
     };
   }
-
   /**
    * Extract the main entry point file content
    */
@@ -639,74 +683,220 @@ ${codeContent}`;
   /**
    * Generate UI graph with only pages, modals, routes, and widgets
    */
+  /**
+ * Generate UI graph with AI analysis - REPLACEMENT METHOD
+ * This replaces the existing generateUIGraphWithAI method in the AnalyticsIntelligenceGenerator class
+ */
   private async generateUIGraphWithAI(
     input: GeneratorInput,
     discovery: ComponentDiscovery,
     behaviors: BehaviorAnalysis
   ): Promise<any> {
-    const routes = input.routes || ['/'];
-    const pages: any = {};
-
-    // Create simplified page entries without component lists
-    routes.forEach((route: string) => {
-      const pageName = this.routeToPageName(route);
-
-      // Determine which types of widgets/modals might be on this page based on route
-      const pageType = this.determinePageType(route);
-
-      // Determine if page has forms based on page type and widgets
-      const hasFormOnPage = pageType.includes('auth') || pageType.includes('checkout');
-      const widgets = this.getWidgetsForPageType(pageType);
-      const hasFormWidget = widgets.includes('auth_form') || widgets.includes('checkout_form');
-
-      // Build event array based on actual page content
-      const pageEvents: string[] = ['PAGE_VIEW']; // All pages have page views
-
-      // Only add BUTTON_CLICK if page likely has buttons
-      if (!hasFormOnPage || pageType === 'home' || pageType === 'product_detail' || pageType === 'cart') {
-        pageEvents.push('BUTTON_CLICK');
-      }
-
-      // Only add FORM_INTERACTION if page has forms
-      if (hasFormOnPage || hasFormWidget) {
-        pageEvents.push('FORM_INTERACTION');
-      }
-
-      // Only add SCROLL_INTERACTION for content-heavy pages
-      if (pageType === 'home' || pageType === 'product_detail' || pageType === 'info') {
-        pageEvents.push('SCROLL_INTERACTION');
-      }
-
-      // Element visibility only for pages with modals
-      const modals = this.getModalsForPageType(pageType);
-      if (modals.length > 0) {
-        pageEvents.push('ELEMENT_VISIBILITY');
-      }
-
-      pages[pageName] = {
-        route,
-        page_type: pageType,
-        widgets: widgets,
-        modals: modals,
-        can_navigate_to: routes.filter((r: string) => r !== route).map((r: string) => this.routeToPageName(r)),
-        events: pageEvents, // Use the dynamically determined events
-        ai_insights: {
-          framework: discovery.framework,
-          interaction_types: Array.from(new Set(discovery.components.map((c: any) => c.interaction_type))),
-          has_forms: hasFormOnPage || hasFormWidget,
-          has_product_interactions: pageType.includes('product') || route === '/'
-        }
+    if (!input.files || input.files.length === 0) {
+      // Fallback if no files
+      return {
+        app_key: input.appKey,
+        framework: discovery.framework || 'unknown',
+        relationships: [],
+        pages: {},
+        widgets: [],
+        modals: []
       };
-    });
+    }
 
-    return {
-      app_key: input.appKey,
-      framework: discovery.framework,
-      relationships: [],
-      pages,
-      widgets: this.identifyGlobalWidgets(discovery),
-      modals: this.identifyModals(discovery)
-    };
+    const codeContent = input.files.slice(0, 30).map((f: FileContent) =>
+      `=== File: ${f.path} ===\n${f.content.slice(0, 2000)}\n`
+    ).join('\n').slice(0, 50000);
+
+    const systemPrompt = `You are an expert UI structure analyzer that generates precise UI graph JSON.
+Analyze code to understand page structure, navigation, widgets, and modals.
+Return ONLY valid JSON in the EXACT format specified.`;
+
+    const userPrompt = `Analyze this code and generate a UI graph JSON structure.
+
+CRITICAL REQUIREMENTS:
+1. can_navigate_to MUST ONLY include pages that have ACTUAL DIRECT LINKS in the code
+   - Look for <Link to="/path">, router.push('/path'), href="/path", navigate('/path')
+   - Do NOT include all pages by default - only connected pages with real navigation code
+   - If a page has NO outgoing links found in code, can_navigate_to should be empty []
+
+2. Detect actual routes from the code:
+   - Look for route definitions, page files, path patterns
+   - Convert routes to page names (e.g., "/products/:id" → "products_param")
+   - Include dynamic routes with :param notation
+
+3. Identify actual widgets and modals from the code:
+   - Look for component imports and usage
+   - Common widgets: header, footer, navigation, search_bar, product_carousel, cart_icon
+   - Common modals: size_guide, quick_view, forgot_password, promo_code
+
+4. Determine page types based on route and content:
+   - home, product_detail, cart, checkout, auth, wishlist, info
+
+5. Determine which events are actually used on each page:
+   - Only include events if the page has relevant interactions
+   - PAGE_VIEW: all pages
+   - BUTTON_CLICK: if page has buttons/links
+   - FORM_INTERACTION: if page has forms
+   - SCROLL_INTERACTION: for content-heavy pages
+   - ELEMENT_VISIBILITY: if page has modals/popups
+
+EXACT OUTPUT FORMAT (this is the REQUIRED structure):
+{
+  "app_key": "${input.appKey}",
+  "framework": "${discovery.framework || 'react'}",
+  "relationships": [],
+  "pages": {
+    "page_name": {
+      "route": "/actual/route",
+      "page_type": "home|product_detail|cart|checkout|auth|wishlist|info",
+      "widgets": ["header", "footer", "actual_widgets_found"],
+      "modals": ["actual_modals_if_any"],
+      "can_navigate_to": ["ONLY_pages_with_actual_links_in_code"],
+      "events": ["PAGE_VIEW", "only_relevant_events"],
+      "ai_insights": {
+        "framework": "${discovery.framework || 'react'}",
+        "interaction_types": ["click", "submit", "etc"],
+        "has_forms": true_or_false,
+        "has_product_interactions": true_or_false
+      }
+    }
+  },
+  "widgets": [],
+  "modals": []
+}
+
+EXAMPLE - if code shows homepage with links to /about and /products only:
+{
+  "app_key": "test-app",
+  "framework": "react",
+  "relationships": [],
+  "pages": {
+    "home": {
+      "route": "/",
+      "page_type": "home",
+      "widgets": ["header", "footer", "product_carousel"],
+      "modals": [],
+      "can_navigate_to": ["about", "products"],  // ONLY these because code has actual links
+      "events": ["PAGE_VIEW", "BUTTON_CLICK", "SCROLL_INTERACTION"],
+      "ai_insights": {
+        "framework": "react",
+        "interaction_types": ["click"],
+        "has_forms": false,
+        "has_product_interactions": true
+      }
+    },
+    "about": {
+      "route": "/about",
+      "page_type": "info",
+      "widgets": ["header", "footer"],
+      "modals": [],
+      "can_navigate_to": ["home"],  // Only if code shows link back to home
+      "events": ["PAGE_VIEW", "BUTTON_CLICK"],
+      "ai_insights": {
+        "framework": "react",
+        "interaction_types": ["click"],
+        "has_forms": false,
+        "has_product_interactions": false
+      }
+    }
+  },
+  "widgets": [],
+  "modals": []
+}
+
+IMPORTANT RULES:
+- Scan the ACTUAL code for navigation patterns
+- can_navigate_to should reflect REAL navigation code, not theoretical possibilities
+- If no navigation links found from a page, can_navigate_to is empty []
+- Include all routes/pages found in the code
+- Use exact format with all required fields
+
+Discovered components for context:
+${JSON.stringify(discovery.components.slice(0, 10), null, 2)}
+
+CODE TO ANALYZE:
+${codeContent}`;
+
+    try {
+      const response = await this.anthropic.messages.create({
+        model: "claude-3-haiku-20240307",
+        max_tokens: CONFIG.LLM_MAX_TOKENS,
+        temperature: 0.1,
+        system: systemPrompt,
+        messages: [{
+          role: "user",
+          content: userPrompt
+        }]
+      });
+
+      const content = response.content[0].type === 'text' ? response.content[0].text : '';
+      const parsed = this.extractJSON(content);
+
+      // Validate and ensure required structure
+      if (parsed && typeof parsed === 'object') {
+        // Ensure all required top-level fields exist
+        const uiGraph = {
+          app_key: parsed.app_key || input.appKey,
+          framework: parsed.framework || discovery.framework || 'unknown',
+          relationships: parsed.relationships || [],
+          pages: parsed.pages || {},
+          widgets: parsed.widgets || [],
+          modals: parsed.modals || []
+        };
+
+        // Validate each page has required fields
+        for (const pageName in uiGraph.pages) {
+          const page = uiGraph.pages[pageName];
+          if (!page.route) page.route = `/${pageName}`;
+          if (!page.page_type) page.page_type = 'general';
+          if (!page.widgets) page.widgets = ['header', 'footer'];
+          if (!page.modals) page.modals = [];
+          if (!page.can_navigate_to) page.can_navigate_to = [];
+          if (!page.events) page.events = ['PAGE_VIEW'];
+          if (!page.ai_insights) {
+            page.ai_insights = {
+              framework: discovery.framework || 'unknown',
+              interaction_types: ['click'],
+              has_forms: false,
+              has_product_interactions: false
+            };
+          }
+        }
+
+        console.log(`📊 Generated UI graph with ${Object.keys(uiGraph.pages).length} pages via AI`);
+        return uiGraph;
+      }
+
+      throw new Error('Invalid UI graph structure from AI');
+    } catch (error) {
+      console.error('❌ AI UI graph generation failed:', error);
+
+      // Fallback to a minimal structure
+      return {
+        app_key: input.appKey,
+        framework: discovery.framework || 'unknown',
+        relationships: [],
+        pages: {
+          home: {
+            route: '/',
+            page_type: 'home',
+            widgets: ['header', 'footer'],
+            modals: [],
+            can_navigate_to: [],
+            events: ['PAGE_VIEW'],
+            ai_insights: {
+              framework: discovery.framework || 'unknown',
+              interaction_types: ['click'],
+              has_forms: false,
+              has_product_interactions: false
+            }
+          }
+        },
+        widgets: [],
+        modals: []
+      };
+    }
   }
 
   /**
@@ -1740,9 +1930,6 @@ ${codeContent}`;
   }
 
   /**
-   * Load actual files from the repository or examples directory
-   */
-  /**
   * Load actual files from the repository or examples directory
   */
   public async loadRepositoryFiles(repoId: string): Promise<FileContent[]> {
@@ -1983,7 +2170,7 @@ ${codeContent}`;
   /**
    * Save output with proper UTF-8 encoding
    */
-  private async saveOutput(output: GeneratorOutput, repoId: string, appKey: string): Promise<string> {
+  private async saveOutput(output: GeneratorOutput, repoId: string, appKey: string, progressCallback?: string): Promise<string> {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const localOutputPath = path.join(CONFIG.OUTPUTS_DIR, 'unified', repoId, timestamp);
 
@@ -2043,10 +2230,13 @@ ${codeContent}`;
     console.log(`☁️ Cloud: ${Object.keys(cloudUrls).length} files uploaded`);
     if (keepLocal) {
       console.log(`💾 Local: ${localOutputPath}`);
+      await this.sendProgress(progressCallback, '✅ Analysis complete!');
     }
+
 
     return localOutputPath;
   }
+
 
   private generateProvider(appKey: string): string {
     return `import React, { createContext, useState, useEffect } from 'react';

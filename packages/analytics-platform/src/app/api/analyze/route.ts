@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     console.log(`Using repo_id: ${dbRepoId}`);
     console.log('=================================');
 
-    // Call the generator service with repository information AND GitHub token
+    // Call the generator service - it handles all progress tracking
     const response = await fetch(`${GENERATOR_API_URL}/analytics/generate-unified`, {
       method: 'POST',
       headers: {
@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         repo_id: dbRepoId,
+        github_repo_id: repoId, // Pass the original GitHub ID for progress tracking
         app_key: appKey,
         domain: `${repoName}.example.com`,
         backend_url: process.env.ANALYTICS_BACKEND_URL || 'http://localhost:8082/ingest/analytics',
@@ -73,7 +74,8 @@ export async function POST(request: NextRequest) {
         github_token: githubToken,
         // Explicitly tell generator to clone from GitHub
         use_github: true,
-        clone_url: `https://github.com/${repoOwner}/${repoName}.git`
+        clone_url: `https://github.com/${repoOwner}/${repoName}.git`,
+        // Progress callback is built into generator - no need to pass it
       })
     });
 

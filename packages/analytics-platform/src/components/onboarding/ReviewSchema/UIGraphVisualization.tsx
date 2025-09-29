@@ -257,8 +257,8 @@ export function UIGraphVisualization({ uiGraph }: UIGraphProps) {
                     <button
                         onClick={() => setShowFooterPages(!showFooterPages)}
                         className={`flex items-center px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showFooterPages
-                                ? 'bg-indigo-100 text-indigo-700'
-                                : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                            ? 'bg-indigo-100 text-indigo-700'
+                            : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                             }`}
                     >
                         <Filter className="w-4 h-4 mr-1" />
@@ -275,6 +275,52 @@ export function UIGraphVisualization({ uiGraph }: UIGraphProps) {
                         preserveAspectRatio="xMidYMid meet"
                         style={{ minWidth: width, minHeight: Math.max(600, height) }}
                     >
+                        {/* Define arrow markers */}
+                        <defs>
+                            <marker
+                                id="arrow-default"
+                                viewBox="0 0 10 10"
+                                refX="9"
+                                refY="5"
+                                markerWidth="5"
+                                markerHeight="5"
+                                orient="auto"
+                            >
+                                <path
+                                    d="M 0 0 L 10 5 L 0 10 z"
+                                    fill="#cbd5e1"
+                                />
+                            </marker>
+                            <marker
+                                id="arrow-highlighted"
+                                viewBox="0 0 10 10"
+                                refX="9"
+                                refY="5"
+                                markerWidth="7"
+                                markerHeight="7"
+                                orient="auto"
+                            >
+                                <path
+                                    d="M 0 0 L 10 5 L 0 10 z"
+                                    fill="#6366f1"
+                                />
+                            </marker>
+                            <marker
+                                id="arrow-selected"
+                                viewBox="0 0 10 10"
+                                refX="9"
+                                refY="5"
+                                markerWidth="7"
+                                markerHeight="7"
+                                orient="auto"
+                            >
+                                <path
+                                    d="M 0 0 L 10 5 L 0 10 z"
+                                    fill="#4f46e5"
+                                />
+                            </marker>
+                        </defs>
+
                         {/* Draw connections/edges */}
                         {filteredPages.map(page => {
                             const pos1 = nodePositions[page.id];
@@ -286,40 +332,51 @@ export function UIGraphVisualization({ uiGraph }: UIGraphProps) {
                                 const pos2 = nodePositions[targetId];
                                 if (!pos2) return null;
 
-                                const isHighlighted = hoveredNode === page.id || hoveredNode === targetId ||
-                                    selectedNode?.id === page.id || selectedNode?.id === targetId;
+                                // Only highlight outgoing connections from hovered/selected node
+                                const isOutgoingHighlighted = hoveredNode === page.id || selectedNode?.id === page.id;
+                                const isSelected = selectedNode?.id === page.id;
 
+                                // Calculate path with slight curve
+                                const dx = pos2.x - pos1.x;
+                                const dy = pos2.y - pos1.y;
+                                const dr = Math.sqrt(dx * dx + dy * dy);
+                                const curvature = dr * 0.15; // 15% curve
+
+                                // Calculate control point for quadratic curve
                                 const midX = (pos1.x + pos2.x) / 2;
                                 const midY = (pos1.y + pos2.y) / 2;
-                                const curvature = 20;
+
+                                // Perpendicular offset for curve
+                                const offsetX = -dy / dr * curvature;
+                                const offsetY = dx / dr * curvature;
 
                                 return (
                                     <g key={`${page.id}-${targetId}`}>
-                                        <defs>
-                                            <marker
-                                                id={`arrow-${page.id}-${targetId}`}
-                                                viewBox="0 0 10 10"
-                                                refX="8"
-                                                refY="5"
-                                                markerWidth="6"
-                                                markerHeight="6"
-                                                orient="auto"
-                                            >
-                                                <path
-                                                    d="M 0 0 L 10 5 L 0 10 z"
-                                                    fill={isHighlighted ? "#6366f1" : "#cbd5e1"}
-                                                />
-                                            </marker>
-                                        </defs>
                                         <path
-                                            d={`M ${pos1.x} ${pos1.y} Q ${midX} ${midY - curvature} ${pos2.x} ${pos2.y}`}
-                                            stroke={isHighlighted ? "#6366f1" : "#cbd5e1"}
-                                            strokeWidth={isHighlighted ? "2" : "1"}
+                                            d={`M ${pos1.x} ${pos1.y} Q ${midX + offsetX} ${midY + offsetY} ${pos2.x} ${pos2.y}`}
+                                            stroke={isOutgoingHighlighted ? (isSelected ? "#4f46e5" : "#6366f1") : "#cbd5e1"}
+                                            strokeWidth={isOutgoingHighlighted ? "2.5" : "1.5"}
                                             fill="none"
-                                            markerEnd={`url(#arrow-${page.id}-${targetId})`}
-                                            style={{ transition: 'all 0.3s ease' }}
-                                            opacity={isHighlighted ? 1 : 0.4}
+                                            markerEnd={`url(#arrow-${isOutgoingHighlighted ? (isSelected ? 'selected' : 'highlighted') : 'default'})`}
+                                            style={{
+                                                transition: 'all 0.3s ease',
+                                                strokeDasharray: isOutgoingHighlighted ? '0' : '0'
+                                            }}
+                                            opacity={isOutgoingHighlighted ? 1 : 0.3}
                                         />
+
+                                        {/* Add small directional indicators along the path when highlighted */}
+                                        {isOutgoingHighlighted && (
+                                            <>
+                                                <circle
+                                                    cx={midX + offsetX}
+                                                    cy={midY + offsetY}
+                                                    r="2"
+                                                    fill={isSelected ? "#4f46e5" : "#6366f1"}
+                                                    opacity="0.6"
+                                                />
+                                            </>
+                                        )}
                                     </g>
                                 );
                             });
@@ -336,6 +393,11 @@ export function UIGraphVisualization({ uiGraph }: UIGraphProps) {
                             const isHome = page.id === 'home' || page.route === '/' || page.page_type === 'home';
                             const isSuccess = page.id.includes('success') || page.id.includes('thank');
 
+                            // Check if this node has outgoing connections
+                            const hasOutgoingConnections = page.can_navigate_to?.some((targetId: string) =>
+                                filteredPages.some(p => p.id === targetId)
+                            );
+
                             return (
                                 <g key={page.id}>
                                     {/* Node shadow */}
@@ -347,6 +409,22 @@ export function UIGraphVisualization({ uiGraph }: UIGraphProps) {
                                             ry="10"
                                             fill="black"
                                             opacity="0.08"
+                                        />
+                                    )}
+
+                                    {/* Glow effect when node has highlighted outgoing connections */}
+                                    {(isHovered || isSelected) && hasOutgoingConnections && (
+                                        <circle
+                                            cx={pos.x}
+                                            cy={pos.y}
+                                            r={isHome || isSuccess ? "55" : "47"}
+                                            fill="none"
+                                            stroke={isSelected ? "#4f46e5" : "#6366f1"}
+                                            strokeWidth="1"
+                                            opacity="0.3"
+                                            style={{
+                                                animation: 'pulse 2s infinite',
+                                            }}
                                         />
                                     )}
 
@@ -386,13 +464,23 @@ export function UIGraphVisualization({ uiGraph }: UIGraphProps) {
                                     >
                                         <div className="w-full h-full flex items-center justify-center">
                                             <PageIcon className={`w-7 h-7 ${isSelected ? 'text-white' :
-                                                    isHovered ? 'text-indigo-600' :
-                                                        isHome ? 'text-amber-600' :
-                                                            isSuccess ? 'text-green-600' :
-                                                                'text-gray-600'
+                                                isHovered ? 'text-indigo-600' :
+                                                    isHome ? 'text-amber-600' :
+                                                        isSuccess ? 'text-green-600' :
+                                                            'text-gray-600'
                                                 }`} />
                                         </div>
                                     </foreignObject>
+
+                                    {/* Small directional indicator for nodes with outgoing connections */}
+                                    {hasOutgoingConnections && !isHovered && !isSelected && (
+                                        <circle
+                                            cx={pos.x + 35}
+                                            cy={pos.y - 35}
+                                            r="3"
+                                            fill="#cbd5e1"
+                                        />
+                                    )}
 
                                     {/* Page name */}
                                     <text
@@ -419,6 +507,17 @@ export function UIGraphVisualization({ uiGraph }: UIGraphProps) {
                                 </g>
                             );
                         })}
+
+                        {/* Add pulse animation */}
+                        <style>
+                            {`
+                                @keyframes pulse {
+                                    0% { opacity: 0.3; }
+                                    50% { opacity: 0.5; }
+                                    100% { opacity: 0.3; }
+                                }
+                            `}
+                        </style>
                     </svg>
                 </div>
 
@@ -516,8 +615,8 @@ export function UIGraphVisualization({ uiGraph }: UIGraphProps) {
                     <button
                         onClick={() => setShowFooterPages(!showFooterPages)}
                         className={`flex items-center px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${showFooterPages
-                                ? 'bg-indigo-100 text-indigo-700'
-                                : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                            ? 'bg-indigo-100 text-indigo-700'
+                            : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                             }`}
                     >
                         <Filter className="w-4 h-4 mr-1" />
@@ -537,9 +636,9 @@ export function UIGraphVisualization({ uiGraph }: UIGraphProps) {
                             <div
                                 key={page.id}
                                 className={`border rounded-lg transition-all ${isSelected ? 'border-indigo-500 bg-indigo-50' :
-                                        isHome ? 'border-amber-400 bg-amber-50' :
-                                            isFooter ? 'border-gray-300 bg-gray-50' :
-                                                'border-gray-200 bg-white hover:border-gray-300'
+                                    isHome ? 'border-amber-400 bg-amber-50' :
+                                        isFooter ? 'border-gray-300 bg-gray-50' :
+                                            'border-gray-200 bg-white hover:border-gray-300'
                                     }`}
                             >
                                 <div
@@ -559,14 +658,14 @@ export function UIGraphVisualization({ uiGraph }: UIGraphProps) {
                                                 )}
                                             </button>
                                             <div className={`p-2 rounded-lg ${isSelected ? 'bg-indigo-200' :
-                                                    isHome ? 'bg-amber-200' :
-                                                        isFooter ? 'bg-gray-200' :
-                                                            'bg-gray-100'
+                                                isHome ? 'bg-amber-200' :
+                                                    isFooter ? 'bg-gray-200' :
+                                                        'bg-gray-100'
                                                 }`}>
                                                 <PageIcon className={`w-5 h-5 ${isSelected ? 'text-indigo-700' :
-                                                        isHome ? 'text-amber-700' :
-                                                            isFooter ? 'text-gray-500' :
-                                                                'text-gray-600'
+                                                    isHome ? 'text-amber-700' :
+                                                        isFooter ? 'text-gray-500' :
+                                                            'text-gray-600'
                                                     }`} />
                                             </div>
                                             <div>

@@ -1,3 +1,4 @@
+// analytics-automation/packages/analytics-generator/src/routes/analytics-intelligence.ts
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 import { AnalyticsIntelligenceGenerator } from '../lib/analytics-intelligence-generator';
@@ -12,6 +13,33 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { persistSession: false } }
 );
+
+// Enhanced progress storage with 10-step tracking
+interface ProgressEntry {
+    message: string;
+    timestamp: number;
+    step?: number;
+    total_steps?: number;
+}
+
+const progressStore = new Map<string, ProgressEntry>();
+
+// Helper to update UI progress (10 steps total)
+function updateUIProgress(repoId: string, step: number, message: string) {
+    const entry: ProgressEntry = {
+        message,
+        timestamp: Date.now(),
+        step,
+        total_steps: 10
+    };
+    progressStore.set(repoId, entry);
+    console.log(`[UI Progress] Step ${step}/10: ${message}`);
+}
+
+// Small delay helper to smooth step updates for UI
+function sleep(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // Helper to execute shell commands
 function executeCommand(command: string, args: string[], options: any = {}): Promise<{ stdout: string; stderr: string }> {
@@ -47,10 +75,72 @@ function executeCommand(command: string, args: string[], options: any = {}): Pro
 }
 
 async function analyticsIntelligenceRoutes(app: FastifyInstance) {
+    // Reduce logging for progress endpoint
+    app.get('/analytics/progress', {
+        logLevel: 'error'  // Only log errors, not every request
+    }, async (req, reply) => {
+        const { repo_id } = req.query as any;
+        if (!repo_id) {
+            return reply.code(400).send({ error: 'repo_id is required' });
+        }
+
+        const progress = progressStore.get(repo_id);
+        reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        reply.header('Pragma', 'no-cache');
+        reply.header('Expires', '0');
+        return reply.send(progress || {
+            message: 'No progress available',
+            timestamp: Date.now(),
+            step: 0,
+            total_steps: 10  // Changed from 5 to 10
+        });
+    });
+
+    // Accept progress POSTs from the generator (maps ALL 10 steps from logs)
+    app.post('/analytics/progress', async (req, reply) => {
+        const { repo_id } = req.query as any;
+        const { message, timestamp } = req.body as any;
+
+        console.log(`📨 POST /analytics/progress received - repo_id: ${repo_id}, message: ${message}`);
+
+        if (!repo_id) {
+            return reply.code(400).send({ error: 'repo_id is required' });
+        }
+
+        const current = progressStore.get(repo_id) || { step: 0, total_steps: 10, message: 'Starting...', timestamp: Date.now() } as any;
+
+        // Map generator log messages to steps 1-10
+        let step = current.step || 0;
+        if (typeof message === 'string') {
+            if (message.includes('Starting unified analytics generation')) step = Math.max(step, 1);
+            else if (message.includes('Cloning from GitHub')) step = Math.max(step, 2);
+            else if (message.includes('Loading project files')) step = Math.max(step, 3);
+            else if (message.includes('Scanning file structure')) step = Math.max(step, 4);
+            else if (message.includes('Detecting framework')) step = Math.max(step, 5);
+            else if (message.includes('Analyzing components')) step = Math.max(step, 6);
+            else if (message.includes('Mapping user flows')) step = Math.max(step, 7);
+            else if (message.includes('Generating tracking schema')) step = Math.max(step, 8);
+            else if (message.includes('Creating integration files')) step = Math.max(step, 9);
+            else if (message.includes('Analysis complete')) step = Math.max(step, 10);
+        }
+
+        console.log(`📊 Progress mapped to step ${step} for repo ${repo_id}`);
+
+        progressStore.set(repo_id, {
+            message: typeof message === 'string' ? message : current.message,
+            timestamp: timestamp || Date.now(),
+            step,
+            total_steps: 10
+        } as any);
+
+        return reply.send({ ok: true });
+    });
+
     app.post('/analytics/generate-unified', async (req, reply) => {
         try {
             const {
                 repo_id,
+                github_repo_id,
                 app_key,
                 domain,
                 backend_url,
@@ -62,7 +152,8 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
                 github_token,
                 use_github,
                 clone_url,
-                use_local_repo // New flag for explicit local repo usage
+                use_local_repo,
+                progress_callback
             } = req.body as any;
 
             if (!repo_id || !app_key) {
@@ -70,6 +161,13 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
                     error: 'repo_id and app_key are required'
                 });
             }
+
+            // CRITICAL FIX: Use GitHub ID for progress tracking (what frontend polls with)
+            const progressKey = String(github_repo_id || repo_id);
+            console.log('  - progress_key:', progressKey, '(github_repo_id:', github_repo_id, ')');
+
+            // Clear any previous progress for this repo
+            progressStore.delete(progressKey);
 
             console.log('🚀 Starting unified analytics generation for:', app_key);
             console.log('📋 Request parameters:');
@@ -136,17 +234,20 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
             // Use the valid repo ID for further operations
             const actualRepoId = repo?.id || repo_id;
 
+            // Build the progress callback URL - keep using the stable key
+            const progressCallbackUrl = progress_callback || `http://localhost:8081/analytics/progress?repo_id=${progressKey}`;
+
             // CRITICAL: Handle GitHub cloning vs local repo
             let targetPath: string | null = null;
 
             // Option 1: Explicit local repo usage (for development/testing)
             if (use_local_repo) {
                 console.log('📁 USE_LOCAL_REPO flag set - using local repository');
-                // The generator will look for local paths as it currently does
-                // No need to set targetPath, let the generator handle it
 
                 // Option 2: GitHub cloning
             } else if (use_github && github_token && clone_url) {
+                console.log('🔄 Cloning from GitHub');
+
                 console.log('🔄 CLONING FROM GITHUB');
                 console.log('  Clone URL:', clone_url);
                 console.log('  Branch:', default_branch || 'main');
@@ -209,6 +310,7 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
                         console.error('  Failed to clean up temp dir:', cleanupError);
                     }
 
+                    progressStore.delete(progressKey);
                     return reply.code(500).send({
                         error: 'Failed to clone repository from GitHub',
                         details: cloneError.message,
@@ -225,6 +327,7 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
                 console.error('  - has github_token:', !!github_token);
                 console.error('  - has clone_url:', !!clone_url);
 
+                progressStore.delete(progressKey);
                 return reply.code(400).send({
                     error: 'No valid repository source specified',
                     details: 'Either set use_local_repo=true for local repos, or provide github_token, use_github=true, and clone_url for GitHub repos',
@@ -237,6 +340,8 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
                 });
             }
 
+            console.log('🔍 Ready to scan file structure');
+
             // Get latest analyzer run for framework detection (if exists)
             const { data: latestRun } = await supabase
                 .from('analyzer_runs')
@@ -248,28 +353,39 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
                 .maybeSingle();
 
             const frameworks = latestRun?.summary?.schema?.frameworks || ['react'];
+            console.log('🛠️ Ready to detect framework');
 
-            // Generate unified implementation
+            // Generate unified implementation - all progress driven by generator logs
             const generator = new AnalyticsIntelligenceGenerator();
 
             // Modify the input based on whether we cloned from GitHub
             const generatorInput: any = {
-                repoId: targetPath || actualRepoId, // Use cloned path if available, otherwise repo ID
+                repoId: targetPath || actualRepoId,
                 appKey: app_key,
                 domain: domain || 'localhost:3000',
                 backendUrl: backend_url || 'http://localhost:8082/ingest/analytics',
                 frameworks,
                 businessContext: business_context,
-                sample_routes
+                sample_routes,
+                // Use URL callback so generator can POST all progress updates
+                progressCallback: progressCallbackUrl
             };
 
             // If we cloned from GitHub, pass the path explicitly
             if (targetPath) {
                 console.log(`🎯 Using cloned repository at: ${targetPath}`);
-                // The generator's loadRepositoryFiles method needs to handle this path
             }
 
+            // Call the generator - it will handle all 10 progress steps via POST callbacks
+            console.log('🤖 Calling generator with progress callback:', progressCallbackUrl);
             const output = await generator.generate(generatorInput);
+
+            console.log('✅ Generator completed successfully');
+
+            // Clear progress after completion (with delay to show final step)
+            setTimeout(() => {
+                progressStore.delete(progressKey);
+            }, 5000);
 
             // Clean up temp directory if we cloned
             if (targetPath && targetPath.startsWith('/tmp/')) {

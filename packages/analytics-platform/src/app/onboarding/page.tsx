@@ -1,3 +1,4 @@
+//analytics-automation/packages/analytics-platform/src/app/api/analyze/progress/route.ts
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -59,6 +60,7 @@ interface GitHubUser {
 interface AnalysisProgress {
   message: string;
   icon: string;
+  timestamp?: number;
 }
 
 interface Schema {
@@ -90,8 +92,7 @@ const STORAGE_KEYS = {
   ENABLED_EVENTS: 'onboarding_enabled_events',
   SITE_URL: 'onboarding_site_url',
   SUBDIRECTORIES: 'onboarding_subdirectories',
-  SELECTED_SUBDIR: 'onboarding_selected_subdir',
-  SHOW_SUBDIR_SELECTION: 'onboarding_show_subdir_selection'
+  SELECTED_SUBDIR: 'onboarding_selected_subdir'
 };
 
 function OnboardingFlow() {
@@ -113,7 +114,7 @@ function OnboardingFlow() {
   const [subdirectories, setSubdirectories] = useState<SubDirectory[]>([]);
   const [selectedSubdir, setSelectedSubdir] = useState<SubDirectory | null>(null);
   const [loadingSubdirs, setLoadingSubdirs] = useState(false);
-  const [showSubdirSelection, setShowSubdirSelection] = useState(false);
+  const [expandedRepos, setExpandedRepos] = useState<Set<number>>(new Set());
 
   // Add a flag to track if we've hydrated from storage
   const [isHydrated, setIsHydrated] = useState(false);
@@ -130,6 +131,7 @@ function OnboardingFlow() {
   const [previewDevice, setPreviewDevice] = useState('desktop');
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [currentProgressStep, setCurrentProgressStep] = useState(0);
+  const [analysisLogs, setAnalysisLogs] = useState<string[]>([]);
 
   // Inject styles only on client
   useEffect(() => {
@@ -166,7 +168,6 @@ function OnboardingFlow() {
     setSiteUrl(loadFromSession(STORAGE_KEYS.SITE_URL, ''));
     setSubdirectories(loadFromSession(STORAGE_KEYS.SUBDIRECTORIES, []));
     setSelectedSubdir(loadFromSession(STORAGE_KEYS.SELECTED_SUBDIR, null));
-    setShowSubdirSelection(loadFromSession(STORAGE_KEYS.SHOW_SUBDIR_SELECTION, false));
 
     setIsHydrated(true);
   }, []);
@@ -242,11 +243,6 @@ function OnboardingFlow() {
     sessionStorage.setItem(STORAGE_KEYS.SELECTED_SUBDIR, JSON.stringify(selectedSubdir));
   }, [selectedSubdir, isHydrated]);
 
-  useEffect(() => {
-    if (!isHydrated) return;
-    sessionStorage.setItem(STORAGE_KEYS.SHOW_SUBDIR_SELECTION, JSON.stringify(showSubdirSelection));
-  }, [showSubdirSelection, isHydrated]);
-
   const steps = [
     { id: 'connect', label: 'Connect GitHub', icon: Github },
     { id: 'select', label: 'Select Repository', icon: Code2 },
@@ -285,41 +281,54 @@ function OnboardingFlow() {
     }
   };
 
-  // Fetch subdirectories for a repository
-  const fetchSubdirectories = async (repo: Repository) => {
-    setLoadingSubdirs(true);
-    setError(null);
+  // Toggle repo expansion to show/hide subdirectories
+  const toggleRepoExpansion = async (repo: Repository) => {
+    const newExpandedRepos = new Set(expandedRepos);
+    
+    if (expandedRepos.has(repo.id)) {
+      // Collapse
+      newExpandedRepos.delete(repo.id);
+      setExpandedRepos(newExpandedRepos);
+    } else {
+      // Expand - fetch subdirectories if not already loaded
+      newExpandedRepos.add(repo.id);
+      setExpandedRepos(newExpandedRepos);
+      
+      // Fetch subdirectories for this repo
+      setLoadingSubdirs(true);
+      setError(null);
 
-    try {
-      const response = await fetch(
-        `/api/repos?owner=${repo.owner.login}&repo=${repo.name}`,
-        {
-          method: 'GET',
-          credentials: 'same-origin'
+      try {
+        const response = await fetch(
+          `/api/repos?owner=${repo.owner.login}&repo=${repo.name}`,
+          {
+            method: 'GET',
+            credentials: 'same-origin'
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to fetch subdirectories');
         }
-      );
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch subdirectories');
+        // Store subdirectories with repo ID for reference
+        setSubdirectories(prev => {
+          const filtered = prev.filter((s: any) => s.repoId !== repo.id);
+          const newSubdirs = (data.subdirs || []).map((s: SubDirectory) => ({
+            ...s,
+            repoId: repo.id
+          }));
+          return [...filtered, ...newSubdirs];
+        });
+      } catch (err) {
+        setError((err as Error).message || 'Failed to fetch subdirectories');
+        newExpandedRepos.delete(repo.id);
+        setExpandedRepos(newExpandedRepos);
+      } finally {
+        setLoadingSubdirs(false);
       }
-
-      setSubdirectories(data.subdirs || []);
-
-      // If this is a monorepo with subdirectories, show selection
-      if (data.subdirs && data.subdirs.length > 0) {
-        setShowSubdirSelection(true);
-      } else {
-        // No subdirectories, proceed normally
-        setShowSubdirSelection(false);
-        setSelectedSubdir(null);
-      }
-    } catch (err) {
-      setError((err as Error).message || 'Failed to fetch subdirectories');
-      setShowSubdirSelection(false);
-    } finally {
-      setLoadingSubdirs(false);
     }
   };
 
@@ -389,112 +398,132 @@ function OnboardingFlow() {
     }
   };
 
-  // Analyze repository with proper progress tracking
-  const analyzeRepository = async () => {
-    if (!selectedRepo) return;
+  // Analyze repository with REAL progress tracking
 
-    // Check if we need subdirectory selection for monorepos
-    if ((selectedRepo.name === 'demo-test-apps' || selectedRepo.isMonorepo) && !selectedSubdir && !showSubdirSelection) {
-      await fetchSubdirectories(selectedRepo);
-      return; // Don't proceed until subdirectory is selected
-    }
 
-    // If subdirectory selection is required but not selected
-    if (showSubdirSelection && !selectedSubdir) {
-      setError('Please select a subdirectory to analyze');
-      return;
-    }
 
-    setIsAnalyzing(true);
-    setError(null);
-    setCurrentStep(2);
-    setAnalysisProgress([]);
-    setCurrentProgressStep(0);
+const analyzeRepository = async () => {
+  if (!selectedRepo) {
+    setError('Please select a repository');
+    return;
+  }
 
-    const progressSteps = [
-      { message: 'Cloning repository', icon: '📦', delay: 500 },
-      { message: 'Scanning file structure', icon: '🔍', delay: 2000 },
-      { message: 'Detecting framework', icon: '🛠️', delay: 3500 },
-      { message: 'Analyzing components', icon: '🧩', delay: 5000 },
-      { message: 'Mapping user flows', icon: '🗺️', delay: 6500 },
-      { message: 'Generating tracking schema', icon: '📊', delay: 8000 },
-      { message: 'Creating integration files', icon: '📝', delay: 9500 }
-    ];
+  setIsAnalyzing(true);
+  setError(null);
+  setCurrentStep(2);
+  setAnalysisProgress([]);
+  setCurrentProgressStep(0);
+  setAnalysisLogs([]);
 
-    const progressTimers: NodeJS.Timeout[] = [];
-    let isStillAnalyzing = true;
+  let pollInterval: NodeJS.Timeout | null = null;
+  let isStillAnalyzing = true;
 
-    progressSteps.forEach((step, index) => {
-      const timer = setTimeout(() => {
-        if (isStillAnalyzing) {
-          setCurrentProgressStep(index);
-          setAnalysisProgress(prev => [...prev, { message: step.message, icon: step.icon }]);
+  
+
+  try {
+    // Start polling for backend progress
+    pollInterval = setInterval(async () => {
+      if (!isStillAnalyzing) return;
+
+      try {
+        const progressResponse = await fetch(
+          `/api/analyze/progress?repo_id=${selectedRepo.id}&_=${Date.now()}`,
+          {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json'
+            },
+            cache: 'no-store'
+          }
+        );
+
+        if (progressResponse.ok) {
+          const progress = await progressResponse.json();
+
+          if (progress.step && progress.step > 0) {
+            // Update progress to show all steps up to current
+            const newProgress = allProgressSteps
+              .filter(s => s.step <= progress.step)
+              .map(s => ({
+                message: s.message,
+                icon: s.icon,
+                timestamp: Date.now()
+              }));
+            
+            setAnalysisProgress(newProgress);
+            setCurrentProgressStep(progress.step);
+
+            // Stop when we reach the final step
+            if (progress.step === allProgressSteps.length) {
+              isStillAnalyzing = false;
+            }
+          }
         }
-      }, step.delay);
-      progressTimers.push(timer);
+      } catch (error) {
+        console.error('Error polling progress:', error);
+      }
+    }, 1000); // Poll every second
+
+    // Start the actual analysis
+    const response = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        repoId: selectedRepo.id,
+        repoName: selectedRepo.name,
+        repoOwner: selectedRepo.owner.login,
+        defaultBranch: selectedRepo.default_branch,
+        siteUrl: siteUrl,
+        subdir: selectedSubdir ? selectedSubdir.path : null,
+        subdirName: selectedSubdir ? selectedSubdir.name : null
+      })
     });
 
-    try {
-      const [response] = await Promise.all([
-        fetch('/api/analyze', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'same-origin',
-          body: JSON.stringify({
-            repoId: selectedRepo.id,
-            repoName: selectedRepo.name,
-            repoOwner: selectedRepo.owner.login,
-            defaultBranch: selectedRepo.default_branch,
-            siteUrl: siteUrl,
-            // Add subdirectory information if selected
-            subdir: selectedSubdir ? selectedSubdir.path : null,
-            subdirName: selectedSubdir ? selectedSubdir.name : null
-          })
-        }),
-        new Promise(resolve => setTimeout(resolve, 10000))
-      ]);
+    isStillAnalyzing = false;
+    if (pollInterval) clearInterval(pollInterval);
 
-      isStillAnalyzing = false;
-      progressTimers.forEach(timer => clearTimeout(timer));
-      setAnalysisProgress([]);
-      setCurrentProgressStep(0);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Analysis failed');
-      }
-
-      const data = await response.json();
-
-      setSchema({
-        events: data.events || [],
-        routes: data.routes || [],
-        uiGraph: data.uiGraph || {},
-        metadata: data.metadata || {},
-        trackerCode: data.trackerCode || '',
-        providerCode: data.providerCode || '',
-        totalPages: data.totalPages || 0,
-        totalComponents: data.totalComponents || 0,
-        estimatedEvents: data.estimatedEvents || '10K/day',
-        appKey: data.appKey || '',
-        siteUrl: siteUrl || data.siteUrl
-      });
-
-      setAppKey(data.appKey || '');
-      setCurrentStep(3);
-
-    } catch (err) {
-      isStillAnalyzing = false;
-      progressTimers.forEach(timer => clearTimeout(timer));
-      setError((err as Error).message || 'Analysis failed');
-      setCurrentStep(1);
-    } finally {
-      setIsAnalyzing(false);
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Analysis failed');
     }
-  };
 
+    const data = await response.json();
+
+    // Progress is already tracked via polling - don't override it
+    
+    setSchema({
+      events: data.events || [],
+      routes: data.routes || [],
+      uiGraph: data.uiGraph || {},
+      metadata: data.metadata || {},
+      trackerCode: data.trackerCode || '',
+      providerCode: data.providerCode || '',
+      totalPages: data.totalPages || 0,
+      totalComponents: data.totalComponents || 0,
+      estimatedEvents: data.estimatedEvents || '10K/day',
+      appKey: data.appKey || '',
+      siteUrl: siteUrl || data.siteUrl
+    });
+
+    setAppKey(data.appKey || '');
+
+    setTimeout(() => {
+      setCurrentStep(3);
+    }, 1500);
+
+  } catch (err) {
+    isStillAnalyzing = false;
+    if (pollInterval) clearInterval(pollInterval);
+    setError((err as Error).message || 'Analysis failed');
+    setCurrentStep(1);
+  } finally {
+    setIsAnalyzing(false);
+    if (pollInterval) clearInterval(pollInterval);
+  }
+};
   // Create Pull Request - REAL API
   const createPR = async () => {
     if (!schema || !selectedRepo) return;
@@ -616,9 +645,24 @@ function OnboardingFlow() {
     setMergeStatus('idle');
     setSubdirectories([]);
     setSelectedSubdir(null);
-    setShowSubdirSelection(false);
+    setExpandedRepos(new Set());
     setLoadingSubdirs(false);
+    setAnalysisLogs([]);
   };
+
+  // Global analysis progress steps (synced with backend)
+  const allProgressSteps = [
+    { step: 1, message: 'Starting unified analytics generation', icon: '🚀' },
+    { step: 2, message: 'Cloning from GitHub', icon: '📦' },
+    { step: 3, message: 'Loading project files', icon: '📁' },
+    { step: 4, message: 'Scanning file structure', icon: '🔍' },
+    { step: 5, message: 'Detecting framework', icon: '🛠️' },
+    { step: 6, message: 'Analyzing components', icon: '🧩' },
+    { step: 7, message: 'Mapping user flows', icon: '🗺️' },
+    { step: 8, message: 'Generating tracking schema', icon: '📊' },
+    { step: 9, message: 'Creating integration files', icon: '📝' },
+    { step: 10, message: 'Analysis complete!', icon: '✅' }
+  ];
 
   // Show a loading state while hydrating from sessionStorage
   if (!isHydrated) {
@@ -904,127 +948,144 @@ function OnboardingFlow() {
                 </div>
               ) : (
                 <>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {filteredRepos.map((repo) => (
-                      <div key={repo.id}>
-                        <div
-                          onClick={() => {
-                            setSelectedRepo(repo);
-                            setSelectedSubdir(null);
-                            setShowSubdirSelection(false);
-                            // Check if this is a monorepo that needs subdirectory selection
-                            if (repo.name === 'demo-test-apps' || repo.isMonorepo) {
-                              fetchSubdirectories(repo);
-                            }
-                          }}
-                          className={`border rounded-lg p-4 cursor-pointer transition-all ${selectedRepo?.id === repo.id
-                              ? 'border-gray-900 bg-gray-50 ring-2 ring-gray-900'
-                              : 'border-gray-200 hover:border-gray-300'
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {filteredRepos.map((repo) => {
+                      const isExpanded = expandedRepos.has(repo.id);
+                      const repoSubdirs = subdirectories.filter((s: any) => s.repoId === repo.id);
+                      const isRepoSelected = selectedRepo?.id === repo.id && !selectedSubdir;
+                      const hasSelectedSubdir = selectedRepo?.id === repo.id && selectedSubdir;
+
+                      return (
+                        <div key={repo.id} className="border rounded-lg overflow-hidden transition-all">
+                          {/* Repository Row */}
+                          <div
+                            className={`p-4 cursor-pointer transition-all ${
+                              isRepoSelected
+                                ? 'bg-indigo-50 border-indigo-200'
+                                : hasSelectedSubdir
+                                ? 'bg-gray-50'
+                                : 'hover:bg-gray-50'
                             }`}
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-2">
-                                <h3 className="font-semibold text-gray-900">{repo.name}</h3>
-                                {repo.private && (
-                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">
-                                    Private
-                                  </span>
-                                )}
-                                {repo.language && (
-                                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
-                                    {repo.language}
-                                  </span>
-                                )}
-                                {(repo.isMonorepo || repo.name === 'demo-test-apps') && (
-                                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">
-                                    Monorepo
-                                  </span>
-                                )}
+                          >
+                            <div className="flex items-start justify-between">
+                              {/* Left: Expand button + Repo info */}
+                              <div className="flex items-start space-x-2 flex-1">
+                                {/* Expand/Collapse Button */}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleRepoExpansion(repo);
+                                  }}
+                                  className="mt-0.5 p-1 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                                >
+                                  {isExpanded ? (
+                                    <ChevronDown className="w-4 h-4 text-gray-600" />
+                                  ) : (
+                                    <ChevronRight className="w-4 h-4 text-gray-600" />
+                                  )}
+                                </button>
+
+                                {/* Repo Info */}
+                                <div
+                                  onClick={() => {
+                                    setSelectedRepo(repo);
+                                    setSelectedSubdir(null);
+                                  }}
+                                  className="flex-1"
+                                >
+                                  <div className="flex items-center space-x-2">
+                                    <h3 className="font-semibold text-gray-900">{repo.name}</h3>
+                                    {repo.private && (
+                                      <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">
+                                        Private
+                                      </span>
+                                    )}
+                                    {repo.language && (
+                                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+                                        {repo.language}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-gray-600 mt-1">{repo.description}</p>
+                                  <p className="text-xs text-gray-500 mt-2">
+                                    {repo.owner.login} · Updated {new Date(repo.updated_at).toLocaleDateString()} · ⭐ {repo.stargazers_count} stars
+                                  </p>
+                                </div>
                               </div>
-                              <p className="text-sm text-gray-600 mt-1">{repo.description}</p>
-                              <p className="text-xs text-gray-500 mt-2">
-                                {repo.owner.login} · Updated {new Date(repo.updated_at).toLocaleDateString()} · ⭐ {repo.stargazers_count} stars
-                              </p>
+
+                              {/* Right: Selection indicator */}
+                              {isRepoSelected && (
+                                <CheckCircle2 className="w-5 h-5 text-indigo-600 flex-shrink-0 ml-2" />
+                              )}
                             </div>
-                            {selectedRepo?.id === repo.id && !showSubdirSelection && (
-                              <CheckCircle2 className="w-5 h-5 text-gray-900 flex-shrink-0" />
-                            )}
                           </div>
-                        </div>
 
-                        {/* Subdirectory Selection */}
-                        {selectedRepo?.id === repo.id && showSubdirSelection && (
-                          <div className="mt-3 ml-8 mr-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded-lg">
-                            <div className="mb-3">
-                              <h4 className="font-semibold text-gray-900 flex items-center">
-                                <FolderOpen className="w-4 h-4 mr-2 text-blue-600" />
-                                Select Subdirectory
-                              </h4>
-                              <p className="text-sm text-gray-600 mt-1">
-                                This repository contains multiple applications. Please select the one you want to analyze:
-                              </p>
-                            </div>
-
-                            {loadingSubdirs ? (
-                              <div className="text-center py-4">
-                                <Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-600" />
-                                <p className="text-sm text-gray-600 mt-2">Loading subdirectories...</p>
-                              </div>
-                            ) : (
-                              <div className="space-y-2 max-h-64 overflow-y-auto">
-                                {subdirectories.length > 0 ? (
-                                  subdirectories.map((subdir) => (
-                                    <div
-                                      key={subdir.path}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedSubdir(subdir);
-                                      }}
-                                      className={`p-3 rounded-lg border cursor-pointer transition-all ${selectedSubdir?.path === subdir.path
-                                          ? 'border-blue-500 bg-white shadow-sm'
-                                          : 'border-gray-200 bg-white hover:border-blue-300'
+                          {/* Subdirectories Tree (Collapsed/Expanded) */}
+                          {isExpanded && (
+                            <div className="border-t border-gray-200 bg-gray-50">
+                              {loadingSubdirs && repoSubdirs.length === 0 ? (
+                                <div className="p-4 text-center">
+                                  <Loader2 className="w-5 h-5 animate-spin mx-auto text-indigo-600" />
+                                  <p className="text-xs text-gray-600 mt-2">Loading subdirectories...</p>
+                                </div>
+                              ) : repoSubdirs.length > 0 ? (
+                                <div className="divide-y divide-gray-200">
+                                  {repoSubdirs.map((subdir: any) => {
+                                    const isSubdirSelected = selectedSubdir?.path === subdir.path && selectedRepo?.id === repo.id;
+                                    
+                                    return (
+                                      <div
+                                        key={subdir.path}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedRepo(repo);
+                                          setSelectedSubdir(subdir);
+                                        }}
+                                        className={`p-3 pl-12 cursor-pointer transition-all ${
+                                          isSubdirSelected
+                                            ? 'bg-indigo-50 border-l-4 border-indigo-500'
+                                            : 'hover:bg-gray-100 border-l-4 border-transparent'
                                         }`}
-                                    >
-                                      <div className="flex items-start justify-between">
-                                        <div className="flex-1">
-                                          <div className="flex items-center space-x-2">
-                                            <FileCode2 className="w-4 h-4 text-gray-500" />
-                                            <span className="font-medium text-gray-900">{subdir.name}</span>
-                                            {subdir.framework && (
-                                              <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
-                                                {subdir.framework}
-                                              </span>
-                                            )}
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center space-x-2 flex-1">
+                                            <FolderOpen className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center space-x-2">
+                                                <span className="font-medium text-gray-900 text-sm truncate">
+                                                  {subdir.name}
+                                                </span>
+                                                {subdir.framework && (
+                                                  <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full flex-shrink-0">
+                                                    {subdir.framework}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              {subdir.description && (
+                                                <p className="text-xs text-gray-600 mt-0.5 truncate">{subdir.description}</p>
+                                              )}
+                                              <p className="text-xs text-gray-500 mt-0.5">/{subdir.path}</p>
+                                            </div>
                                           </div>
-                                          {subdir.description && (
-                                            <p className="text-xs text-gray-600 mt-1 ml-6">{subdir.description}</p>
+                                          {isSubdirSelected && (
+                                            <CheckCircle2 className="w-4 h-4 text-indigo-600 flex-shrink-0 ml-2" />
                                           )}
-                                          <p className="text-xs text-gray-500 mt-1 ml-6">Path: /{subdir.path}</p>
-                                        </div>
-                                        <div className="flex items-center">
-                                          <input
-                                            type="checkbox"
-                                            checked={selectedSubdir?.path === subdir.path}
-                                            onChange={() => { }}
-                                            className="h-4 w-4 text-blue-600 rounded border-gray-300"
-                                            onClick={(e) => e.stopPropagation()}
-                                          />
                                         </div>
                                       </div>
-                                    </div>
-                                  ))
-                                ) : (
-                                  <div className="text-center py-4 text-sm text-gray-600">
-                                    No subdirectories with package.json found
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="p-4 text-center">
+                                  <p className="text-xs text-gray-600">No subdirectories with package.json found</p>
+                                  <p className="text-xs text-gray-500 mt-1">You can analyze the root repository</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {/* Show selected status */}
@@ -1051,7 +1112,6 @@ function OnboardingFlow() {
                   onClick={() => {
                     setCurrentStep(0);
                     setSelectedSubdir(null);
-                    setShowSubdirSelection(false);
                   }}
                   className="px-6 py-3 text-gray-700 font-medium hover:text-gray-900 transition-colors"
                 >
@@ -1059,11 +1119,12 @@ function OnboardingFlow() {
                 </button>
                 <button
                   onClick={analyzeRepository}
-                  disabled={!selectedRepo || (showSubdirSelection && !selectedSubdir)}
-                  className={`px-8 py-3 font-medium rounded-lg transition-all ${selectedRepo && (!showSubdirSelection || selectedSubdir)
+                  disabled={!selectedRepo}
+                  className={`px-8 py-3 font-medium rounded-lg transition-all ${
+                    selectedRepo
                       ? 'bg-gray-900 text-white hover:bg-gray-800'
                       : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    }`}
+                  }`}
                 >
                   Analyze {selectedSubdir ? `${selectedRepo?.name}/${selectedSubdir.name}` : selectedRepo?.name || 'Repository'}
                   <ChevronRight className="inline w-5 h-5 ml-2" />
@@ -1073,7 +1134,7 @@ function OnboardingFlow() {
           </div>
         )}
 
-        {/* Step 2: Analyzing */}
+        {/* Step 2: Analyzing with Real-time Progress */}
         {currentStep === 2 && isAnalyzing && (
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="px-8 py-16">
@@ -1088,62 +1149,96 @@ function OnboardingFlow() {
                   We're scanning {selectedSubdir ? `${selectedRepo?.name}/${selectedSubdir.name}` : selectedRepo?.name} to understand its structure and generate optimal tracking configuration.
                 </p>
 
-                {/* Progress Messages */}
+                {/* Progress Steps Display */}
                 <div className="bg-gray-50 rounded-lg p-6 max-w-md mx-auto">
                   <div className="space-y-0">
-                    {[
-                      { message: 'Cloning repository', icon: '📦', done: analysisProgress.length > 0 },
-                      { message: 'Scanning file structure', icon: '🔍', done: analysisProgress.length > 1 },
-                      { message: 'Detecting framework', icon: '🛠️', done: analysisProgress.length > 2 },
-                      { message: 'Analyzing components', icon: '🧩', done: analysisProgress.length > 3 },
-                      { message: 'Mapping user flows', icon: '🗺️', done: analysisProgress.length > 4 },
-                      { message: 'Generating tracking schema', icon: '📊', done: analysisProgress.length > 5 },
-                      { message: 'Creating integration files', icon: '📝', done: analysisProgress.length > 6 }
-                    ].map((step, index) => (
-                      <div key={index} className="flex items-start">
+                    {/* Show completed and active steps */}
+                    {analysisProgress.map((progress, index) => (
+                      <div key={`progress-${index}`} className="flex items-start">
                         <div className="flex flex-col items-center flex-shrink-0">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${step.done
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${progress.message.includes('complete')
                             ? 'bg-green-100 border-2 border-green-500'
-                            : index === currentProgressStep
+                            : index === analysisProgress.length - 1
                               ? 'bg-indigo-100 border-2 border-indigo-500 animate-pulse'
-                              : 'bg-gray-200 border-2 border-gray-300'
+                              : 'bg-green-100 border-2 border-green-500'
                             }`}>
-                            {step.done ? (
+                            {progress.message.includes('complete') || index < analysisProgress.length - 1 ? (
                               <Check className="w-5 h-5 text-green-600" />
-                            ) : index === currentProgressStep ? (
-                              <Loader2 className="w-5 h-5 text-indigo-600 animate-spin" />
                             ) : (
-                              <span className="text-lg">{step.icon}</span>
+                              <Loader2 className="w-5 h-5 text-indigo-600 animate-spin" />
                             )}
                           </div>
-                          {index < 6 && (
-                            <div className={`w-0.5 h-8 transition-all ${step.done ? 'bg-green-400' : 'bg-gray-300'
-                              }`}></div>
-                          )}
+                          {/* Show connecting line for all but last item OR if there are pending steps */}
+                          {(index < analysisProgress.length - 1 ||
+                            (!progress.message.includes('complete') && analysisProgress.length < 9)) && (
+                              <div className={`w-0.5 h-8 transition-all ${index < analysisProgress.length - 1 ? 'bg-green-400' : 'bg-gray-300'
+                                }`}></div>
+                            )}
                         </div>
                         <div className="ml-4 flex-1 pt-2">
-                          <p className={`text-sm font-medium transition-all ${step.done
-                            ? 'text-green-700'
-                            : index === currentProgressStep
-                              ? 'text-indigo-700'
-                              : 'text-gray-500'
-                            }`}>
-                            {step.message}
-                          </p>
-                          {index === currentProgressStep && (
-                            <p className="text-xs text-indigo-600 mt-1">Processing...</p>
+                          <div className="flex items-center">
+                            <span className="text-lg mr-2">{progress.icon}</span>
+                            <p className={`text-sm font-medium ${progress.message.includes('complete')
+                              ? 'text-green-700'
+                              : index === analysisProgress.length - 1
+                                ? 'text-indigo-700'
+                                : 'text-green-700'
+                              }`}>
+                              {progress.message}
+                            </p>
+                          </div>
+                          {index === analysisProgress.length - 1 && !progress.message.includes('complete') && (
+                            <p className="text-xs text-indigo-600 mt-1 ml-7">Processing...</p>
                           )}
                         </div>
                       </div>
                     ))}
+
+                    {/* Show pending steps (grayed out) */}
+                    {!analysisProgress.some(p => p.message.includes('complete')) && (
+                      <>
+                        {allProgressSteps
+                          .filter(s => !analysisProgress.some(p => p.message === s.message))
+                          .map((step, idx, arr) => (
+                            <div key={`pending-${idx}`} className="flex items-start opacity-40">
+                              <div className="flex flex-col items-center flex-shrink-0">
+                                <div className="w-10 h-10 rounded-full bg-gray-200 border-2 border-gray-300 flex items-center justify-center">
+                                  <span className="text-lg opacity-50">{step.icon}</span>
+                                </div>
+                                {idx < arr.length - 1 && (
+                                    <div className="w-0.5 h-8 bg-gray-300"></div>
+                                  )}
+                              </div>
+                              <div className="ml-4 flex-1 pt-2">
+                                <div className="flex items-center">
+                                  <p className="text-sm text-gray-500 ml-7">{step.message}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                      </>
+                    )}
                   </div>
                 </div>
+
+                {/* Raw logs for debugging (optional) */}
+                {analysisLogs.length > 0 && (
+                  <details className="mt-6 text-left max-w-md mx-auto">
+                    <summary className="cursor-pointer text-xs text-gray-500 hover:text-gray-700">
+                      View backend logs ({analysisLogs.length})
+                    </summary>
+                    <div className="mt-2 max-h-40 overflow-y-auto bg-gray-900 rounded p-3">
+                      <pre className="text-xs text-green-400 font-mono whitespace-pre-wrap">
+                        {analysisLogs.join('\n')}
+                      </pre>
+                    </div>
+                  </details>
+                )}
               </div>
             </div>
           </div>
         )}
-
-        {/* Step 3: Review Schema */}
+        {/* Step 3: Review Schema - CONTINUE FROM HERE */}
         {currentStep === 3 && schema && (
           <div className="space-y-6">
             <div className="bg-white rounded-t-2xl shadow-xl overflow-hidden">

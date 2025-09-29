@@ -1,52 +1,45 @@
 // packages/analytics-platform/src/app/api/analyze/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { Octokit } from '@octokit/rest';
-import { spawn } from 'child_process';
-import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
 
-// Helper to execute commands with promise
-function executeCommand(command: string, args: string[], options: any = {}): Promise<{ stdout: string; stderr: string }> {
-    return new Promise((resolve, reject) => {
-        const child = spawn(command, args, {
-            ...options,
-            shell: true
-        });
+// In-memory storage for logs (in production, use Redis or a database)
+const analysisLogs = new Map<string, string[]>();
 
-        let stdout = '';
-        let stderr = '';
+// Helper function to add logs
+function addLog(repoId: string, message: string) {
+    if (!analysisLogs.has(repoId)) {
+        analysisLogs.set(repoId, []);
+    }
+    analysisLogs.get(repoId)!.push(message);
+    console.log(`[${repoId}] ${message}`);
 
-        child.stdout?.on('data', (data) => {
-            stdout += data.toString();
-            console.log('Generator output:', data.toString());
-        });
+    // Clean up old logs after 5 minutes
+    setTimeout(() => {
+        analysisLogs.delete(repoId);
+    }, 5 * 60 * 1000);
+}
 
-        child.stderr?.on('data', (data) => {
-            stderr += data.toString();
-            console.error('Generator error:', data.toString());
-        });
+// GET endpoint for fetching logs
+export async function GET(request: NextRequest) {
+    const { searchParams } = new URL(request.url);
+    const repoId = searchParams.get('repoId');
 
-        child.on('close', (code) => {
-            if (code !== 0) {
-                reject(new Error(`Command failed with code ${code}: ${stderr}`));
-            } else {
-                resolve({ stdout, stderr });
-            }
-        });
+    if (!repoId) {
+        return NextResponse.json({ error: 'Missing repoId' }, { status: 400 });
+    }
 
-        child.on('error', (error) => {
-            reject(error);
-        });
-    });
+    const logs = analysisLogs.get(repoId) || [];
+    return NextResponse.json({ logs });
 }
 
 export async function POST(request: NextRequest) {
-    let tempDir: string | null = null;
+    let repoId: string = '';
 
     try {
         const body = await request.json();
-        const { repoId, repoName, repoOwner, defaultBranch } = body;
+        repoId = body.repoId?.toString() || crypto.randomBytes(8).toString('hex');
+        const { repoName, repoOwner, defaultBranch, siteUrl, subdir, subdirName } = body;
 
         // Get token from cookie
         const token = request.cookies.get('github_token')?.value;
@@ -58,195 +51,140 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Generate unique app key
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const appKey = `${repoName}-${timestamp}`;
+        // Generate unique app key with timestamp
+        const randomSuffix = crypto.randomBytes(5).toString('base64').replace(/[^a-z0-9]/gi, '').toLowerCase();
+        const appKey = `${repoName}-${new Date().toISOString().split('T')[0]}-${randomSuffix}`;
 
-        console.log(`Starting analysis for ${repoOwner}/${repoName}`);
-        console.log(`  App Key: ${appKey}`);
-
-        // For now, let's use the local test-app-rich instead of cloning
-        // This is a temporary fix to get the flow working
-        const isTestRepo = repoName === 'test-app-rich-demo' || repoName === 'test-app-rich';
-
-        if (isTestRepo) {
-            // Use local test app
-            tempDir = path.resolve(process.cwd(), '../../examples/test-app-rich');
-            console.log(`Using local test app at ${tempDir}`);
-        } else {
-            // Clone the repository
-            tempDir = path.join('/tmp', `repo-${crypto.randomBytes(8).toString('hex')}`);
-            fs.mkdirSync(tempDir, { recursive: true });
-
-            const cloneUrl = `https://${token}@github.com/${repoOwner}/${repoName}.git`;
-            console.log(`Cloning repository to ${tempDir}...`);
-
-            await executeCommand('git', [
-                'clone',
-                '--depth', '1',
-                '--branch', defaultBranch || 'main',
-                cloneUrl,
-                tempDir
-            ]);
+        console.log('=================================');
+        console.log('ANALYTICS GENERATION REQUEST');
+        console.log('=================================');
+        console.log(`Repository: ${repoOwner}/${repoName}`);
+        console.log(`Branch: ${defaultBranch || 'main'}`);
+        console.log(`Generated app key: ${appKey}`);
+        console.log(`Using repo_id: ${repoId}`);
+        if (subdir) {
+            console.log(`Subdirectory: ${subdir}`);
         }
+        console.log('=================================');
 
-        // Run the generator using the deploy-simple.sh approach
-        // Current directory is packages/analytics-platform, need to go up to project root
-        const currentDir = process.cwd();
-        console.log(`Current directory: ${currentDir}`);
+        // Add initial logs for progress tracking
+        addLog(repoId, '🚀 Starting AI-powered generation');
+        addLog(repoId, `Initializing analysis for ${repoName}`);
 
-        const projectRoot = path.resolve(currentDir, '../..');
-        const generatorPath = path.join(projectRoot, 'packages/analytics-generator');
+        // Build GitHub clone URL
+        const cloneUrl = `https://github.com/${repoOwner}/${repoName}.git`;
 
-        console.log(`Project root: ${projectRoot}`);
-        console.log(`Generator path: ${generatorPath}`);
-
-        // Clean old outputs if they exist for the app key
-        const cleanupPath = path.join(
-            generatorPath,
-            'src/utils/generated-outputs/unified',
-            appKey
-        );
-
-        if (fs.existsSync(cleanupPath)) {
-            console.log(`Cleaning old outputs at ${cleanupPath}`);
-            await executeCommand('rm', ['-rf', cleanupPath]);
-        }
-
-        // Set environment variables and run generator
-        process.env.TARGET_PATH = tempDir;
-        process.env.APP_KEY = appKey;
-
-        console.log('Running generator with:');
-        console.log('  TARGET_PATH:', tempDir);
-        console.log('  APP_KEY:', appKey);
-
-        // Change to generator directory and run
-        const originalDir = process.cwd();
-        process.chdir(generatorPath);
-
-        try {
-            // Run the generator with the app key
-            await executeCommand('npx', [
-                'ts-node',
-                'src/test-generator.ts',
-                appKey  // Pass the full app key
-            ], {
-                cwd: generatorPath,
-                env: {
-                    ...process.env,
-                    TARGET_PATH: tempDir,
-                    APP_KEY: appKey
-                }
-            });
-
-            console.log('Generator completed successfully');
-        } finally {
-            process.chdir(originalDir);
-        }
-
-        // Wait a moment for files to be written
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        // Find the generated files - look in the app key directory
-        const outputBasePath = path.join(
-            generatorPath,
-            'src/utils/generated-outputs/unified',
-            appKey  // Use the full app key
-        );
-
-        if (!fs.existsSync(outputBasePath)) {
-            throw new Error(`Output directory not created at ${outputBasePath}`);
-        }
-
-        const dirs = fs.readdirSync(outputBasePath).filter(d => {
-            const fullPath = path.join(outputBasePath, d);
-            return fs.statSync(fullPath).isDirectory();
+        // Call the generator service at port 8081
+        console.log('Calling generator service...');
+        const generatorResponse = await fetch('http://localhost:8081/analytics/generate-unified', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                repo_id: repoId,
+                app_key: appKey,
+                domain: siteUrl || `${repoName}.vercel.app`,
+                backend_url: 'http://localhost:8082/ingest/analytics',
+                repo_name: repoName,
+                repo_owner: repoOwner,
+                default_branch: defaultBranch || 'main',
+                github_token: token,
+                use_github: true,
+                clone_url: cloneUrl,
+                // CRITICAL: Add the progress callback URL
+                progress_callback: `http://localhost:8081/analytics/progress?repo_id=${repoId}`,
+                // Add subdirectory if provided
+                subdir: subdir || null,
+                subdir_name: subdirName || null
+            })
         });
 
-        if (dirs.length === 0) {
-            throw new Error('No output directory created by generator');
+        if (!generatorResponse.ok) {
+            const errorData = await generatorResponse.json();
+            throw new Error(errorData.error || 'Generator service failed');
         }
 
-        const latestDir = dirs.sort().pop();
-        const outputPath = path.join(outputBasePath, latestDir!);
+        const generatorData = await generatorResponse.json();
+        console.log('=================================');
+        console.log('GENERATOR RESPONSE RECEIVED');
+        console.log('=================================');
+        console.log('Components:', {
+            hasEventsSchema: !!generatorData.eventsSchema,
+            hasUIGraph: !!generatorData.uiGraph,
+            hasMetadata: !!generatorData.metadata,
+            hasTrackerCode: !!generatorData.trackerCode,
+            hasProviderCode: !!generatorData.providerCode,
+            hasEntryPoint: !!generatorData.entryPoint
+        });
 
-        console.log(`Reading generated files from ${outputPath}`);
+        // Process the response from the generator
+        const schema = generatorData.eventsSchema || { events: [], routes: [], base_fields: [] };
+        const uiGraph = generatorData.uiGraph || { nodes: [], edges: [] };
+        const metadata = generatorData.metadata || { total_pages: 0, total_components: 0 };
+        const trackerCode = generatorData.trackerCode || '';
+        const providerCode = generatorData.providerCode || '';
 
-        // Read generated files
-        const readFileIfExists = (filePath: string, defaultValue: any = null) => {
-            try {
-                if (fs.existsSync(filePath)) {
-                    const content = fs.readFileSync(filePath, 'utf8');
-                    return filePath.endsWith('.json') ? JSON.parse(content) : content;
-                }
-                return defaultValue;
-            } catch (error) {
-                console.error(`Error reading ${filePath}:`, error);
-                return defaultValue;
-            }
-        };
+        // Extract counts from the data
+        const componentCount = schema.ai_components?.length || 0;
+        const behaviorCount = schema.ai_patterns?.length || 0;
+        const pageCount = Object.keys(uiGraph.pages || {}).length || 0;
+        const routeCount = Object.keys(uiGraph.pages || {}).length || 0;
 
-        const schema = readFileIfExists(
-            path.join(outputPath, 'events-schema.json'),
-            { events: [], routes: [], base_fields: [] }
-        );
+        if (componentCount > 0) {
+            console.log(`Found ${componentCount} AI-discovered components`);
+            addLog(repoId, `📊 Discovered ${componentCount} interactive components`);
+        }
 
-        const uiGraph = readFileIfExists(
-            path.join(outputPath, 'ui-graph.json'),
-            { nodes: [], edges: [] }
-        );
+        if (pageCount > 0) {
+            console.log(`Found ${pageCount} pages`);
+            addLog(repoId, `🔍 Analyzed ${pageCount} pages`);
+        }
 
-        const metadata = readFileIfExists(
-            path.join(outputPath, 'metadata.json'),
-            { total_pages: 0, total_components: 0 }
-        );
+        if (schema.events?.length > 0) {
+            console.log(`Found ${schema.events.length} event types`);
+            addLog(repoId, `🔍 Analyzed ${behaviorCount} behavior patterns`);
+        }
 
-        const trackerCode = readFileIfExists(
-            path.join(outputPath, 'tracker.js'),
-            ''
-        );
+        if (routeCount > 0) {
+            console.log(`Found ${routeCount} routes`);
+        }
 
-        const providerCode = readFileIfExists(
-            path.join(outputPath, 'analytics-provider.tsx'),
-            ''
-        );
+        console.log('=================================');
 
-        // Register the app with the unique tracking key
+        addLog(repoId, '📝 Creating integration files');
+
+        // Register the app with the analytics backend
         try {
             const registerResponse = await fetch('http://localhost:8082/apps/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    app_key: appKey,  // Use the unique timestamped key
+                    app_key: appKey,
                     name: repoName,
-                    domain: `${repoName}.vercel.app`,
-                    repo_owner: repoOwner || 'unknown',
+                    domain: siteUrl || `${repoName}.vercel.app`,
+                    repo_owner: repoOwner,
                     repo_name: repoName
                 })
             });
 
             if (!registerResponse.ok) {
-                const errorText = await registerResponse.text();
-                console.error('App registration failed with status:', registerResponse.status);
-                console.error('Error response:', errorText);
+                const errorData = await registerResponse.json();
+                console.error('App registration failed:', errorData);
                 // Don't throw - continue anyway since the generation succeeded
             } else {
                 console.log(`Registered app with key: ${appKey}`);
+                addLog(repoId, '✅ Registered app with analytics service');
             }
         } catch (e) {
             console.error('App registration failed:', e);
-            // Don't throw - continue anyway since the generation succeeded
+            // Don't throw - continue anyway
         }
 
-        // Clean up temp directory if not using local
-        if (!isTestRepo && tempDir && tempDir.startsWith('/tmp/')) {
-            try {
-                await executeCommand('rm', ['-rf', tempDir]);
-            } catch { }
-        }
+        // Final success log
+        addLog(repoId, '✅ Analysis complete!');
 
-        // Return results
+        // Return results matching what the frontend expects
         return NextResponse.json({
             success: true,
             appKey,
@@ -257,19 +195,17 @@ export async function POST(request: NextRequest) {
             providerCode,
             events: schema.events || [],
             routes: schema.routes || [],
-            totalPages: metadata.total_pages || metadata.pages || 0,
-            totalComponents: metadata.total_components || metadata.components || 0,
-            estimatedEvents: metadata.estimated_events_per_day || '10K'
+            totalPages: pageCount || metadata.total_pages || metadata.pages || 0,
+            totalComponents: componentCount || metadata.total_components || metadata.components || 0,
+            estimatedEvents: metadata.estimated_events_per_day || '10K/day',
+            siteUrl: siteUrl
         });
 
     } catch (error: any) {
         console.error('Analysis error:', error);
 
-        // Clean up temp directory
-        if (tempDir && tempDir.startsWith('/tmp/')) {
-            try {
-                await executeCommand('rm', ['-rf', tempDir]);
-            } catch { }
+        if (repoId) {
+            addLog(repoId, `❌ Error: ${error.message}`);
         }
 
         return NextResponse.json(
