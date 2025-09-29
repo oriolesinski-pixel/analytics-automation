@@ -39,14 +39,16 @@ interface Repository {
   isMonorepo?: boolean;
 }
 
-interface SubDirectory {
+interface DirectoryItem {
   name: string;
   path: string;
-  type: 'dir';
-  hasPackageJson: boolean;
+  type: 'dir' | 'file';
+  hasPackageJson?: boolean;
+  hasFrontendFiles?: boolean;
   framework?: string;
   description?: string;
   scripts?: Record<string, string>;
+  children?: DirectoryItem[];
 }
 
 interface GitHubUser {
@@ -91,14 +93,15 @@ const STORAGE_KEYS = {
   AUTO_MERGE: 'onboarding_auto_merge',
   ENABLED_EVENTS: 'onboarding_enabled_events',
   SITE_URL: 'onboarding_site_url',
-  SUBDIRECTORIES: 'onboarding_subdirectories',
-  SELECTED_SUBDIR: 'onboarding_selected_subdir'
+  DIRECTORY_TREE: 'onboarding_directory_tree',
+  EXPANDED_PATHS: 'onboarding_expanded_paths',
+  SELECTED_PATH: 'onboarding_selected_path'
 };
 
 function OnboardingFlow() {
   // Initialize state
   const [currentStep, setCurrentStep] = useState(0);
-  const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null);
+  // Removed: const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null); - replaced by selectedPath
   const [githubToken, setGithubToken] = useState('');
   const [githubUser, setGithubUser] = useState<GitHubUser | null>(null);
   const [schema, setSchema] = useState<Schema | null>(null);
@@ -110,11 +113,12 @@ function OnboardingFlow() {
   const [enabledEvents, setEnabledEvents] = useState<Record<string, boolean>>({});
   const [siteUrl, setSiteUrl] = useState('');
 
-  // Subdirectory selection state
-  const [subdirectories, setSubdirectories] = useState<SubDirectory[]>([]);
-  const [selectedSubdir, setSelectedSubdir] = useState<SubDirectory | null>(null);
-  const [loadingSubdirs, setLoadingSubdirs] = useState(false);
-  const [expandedRepos, setExpandedRepos] = useState<Set<number>>(new Set());
+  // Recursive directory tree state
+  const [directoryTree, setDirectoryTree] = useState<Record<string, DirectoryItem[]>>({});
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [selectedPath, setSelectedPath] = useState<{repo: Repository, item: DirectoryItem} | null>(null);
+  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(new Set());
+  const [loadingTree, setLoadingTree] = useState(false);
 
   // Add a flag to track if we've hydrated from storage
   const [isHydrated, setIsHydrated] = useState(false);
@@ -155,7 +159,7 @@ function OnboardingFlow() {
     };
 
     setCurrentStep(loadFromSession(STORAGE_KEYS.CURRENT_STEP, 0));
-    setSelectedRepo(loadFromSession(STORAGE_KEYS.SELECTED_REPO, null));
+    // Removed: setSelectedRepo - replaced by selectedPath
     setGithubToken(loadFromSession(STORAGE_KEYS.GITHUB_TOKEN, ''));
     setGithubUser(loadFromSession(STORAGE_KEYS.GITHUB_USER, null));
     setSchema(loadFromSession(STORAGE_KEYS.SCHEMA, null));
@@ -166,8 +170,10 @@ function OnboardingFlow() {
     setAutoMerge(loadFromSession(STORAGE_KEYS.AUTO_MERGE, false));
     setEnabledEvents(loadFromSession(STORAGE_KEYS.ENABLED_EVENTS, {}));
     setSiteUrl(loadFromSession(STORAGE_KEYS.SITE_URL, ''));
-    setSubdirectories(loadFromSession(STORAGE_KEYS.SUBDIRECTORIES, []));
-    setSelectedSubdir(loadFromSession(STORAGE_KEYS.SELECTED_SUBDIR, null));
+    setDirectoryTree(loadFromSession(STORAGE_KEYS.DIRECTORY_TREE, {}));
+    const storedExpandedPaths = loadFromSession(STORAGE_KEYS.EXPANDED_PATHS, []);
+    setExpandedPaths(new Set(storedExpandedPaths));
+    setSelectedPath(loadFromSession(STORAGE_KEYS.SELECTED_PATH, null));
 
     setIsHydrated(true);
   }, []);
@@ -178,10 +184,7 @@ function OnboardingFlow() {
     sessionStorage.setItem(STORAGE_KEYS.CURRENT_STEP, JSON.stringify(currentStep));
   }, [currentStep, isHydrated]);
 
-  useEffect(() => {
-    if (!isHydrated) return;
-    sessionStorage.setItem(STORAGE_KEYS.SELECTED_REPO, JSON.stringify(selectedRepo));
-  }, [selectedRepo, isHydrated]);
+  // Removed: selectedRepo session storage - now handled by selectedPath
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -235,13 +238,18 @@ function OnboardingFlow() {
 
   useEffect(() => {
     if (!isHydrated) return;
-    sessionStorage.setItem(STORAGE_KEYS.SUBDIRECTORIES, JSON.stringify(subdirectories));
-  }, [subdirectories, isHydrated]);
+    sessionStorage.setItem(STORAGE_KEYS.DIRECTORY_TREE, JSON.stringify(directoryTree));
+  }, [directoryTree, isHydrated]);
 
   useEffect(() => {
     if (!isHydrated) return;
-    sessionStorage.setItem(STORAGE_KEYS.SELECTED_SUBDIR, JSON.stringify(selectedSubdir));
-  }, [selectedSubdir, isHydrated]);
+    sessionStorage.setItem(STORAGE_KEYS.EXPANDED_PATHS, JSON.stringify(Array.from(expandedPaths)));
+  }, [expandedPaths, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    sessionStorage.setItem(STORAGE_KEYS.SELECTED_PATH, JSON.stringify(selectedPath));
+  }, [selectedPath, isHydrated]);
 
   const steps = [
     { id: 'connect', label: 'Connect GitHub', icon: Github },
@@ -281,53 +289,138 @@ function OnboardingFlow() {
     }
   };
 
-  // Toggle repo expansion to show/hide subdirectories
-  const toggleRepoExpansion = async (repo: Repository) => {
-    const newExpandedRepos = new Set(expandedRepos);
+  // Fetch directory contents at any depth
+  const fetchDirectoryContents = async (repo: Repository, dirPath: string = '') => {
+    const pathKey = `${repo.id}:${dirPath}`;
     
-    if (expandedRepos.has(repo.id)) {
-      // Collapse
-      newExpandedRepos.delete(repo.id);
-      setExpandedRepos(newExpandedRepos);
-    } else {
-      // Expand - fetch subdirectories if not already loaded
-      newExpandedRepos.add(repo.id);
-      setExpandedRepos(newExpandedRepos);
+    if (loadingPaths.has(pathKey)) return;
+    
+    setLoadingPaths(prev => new Set(prev).add(pathKey));
+    setError(null);
+
+    try {
+      const url = `/api/repos?owner=${repo.owner.login}&repo=${repo.name}${
+        dirPath ? `&path=${encodeURIComponent(dirPath)}` : ''
+      }`;
       
-      // Fetch subdirectories for this repo
-      setLoadingSubdirs(true);
-      setError(null);
+      const response = await fetch(url, {
+          method: 'GET',
+          credentials: 'same-origin'
+      });
 
-      try {
-        const response = await fetch(
-          `/api/repos?owner=${repo.owner.login}&repo=${repo.name}`,
-          {
-            method: 'GET',
-            credentials: 'same-origin'
-          }
-        );
+      const data = await response.json();
 
-        const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch directory contents');
+      }
 
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to fetch subdirectories');
+      // Store using repo.id for root level, or update tree recursively for nested
+      if (!dirPath) {
+        // Root level - store directly with repo.id as key
+        setDirectoryTree(prev => ({
+          ...prev,
+          [repo.id]: data.items || []
+        }));
+      } else {
+        // Nested level - this will be handled by updateTree in togglePathExpansion
+        return data.items || [];
+      }
+
+      return data.items || [];
+    } catch (err) {
+      setError((err as Error).message || 'Failed to fetch directory contents');
+      return [];
+    } finally {
+      setLoadingPaths(prev => {
+        const next = new Set(prev);
+        next.delete(pathKey);
+        return next;
+      });
+    }
+  };
+
+  // Recursive function to update tree structure
+  const updateTree = (
+    currentTree: DirectoryItem[],
+    pathSegments: string[],
+    newChildren: DirectoryItem[]
+  ): DirectoryItem[] => {
+    if (pathSegments.length === 0) {
+      return newChildren;
+    }
+
+    return currentTree.map(node => {
+      const currentPathPart = pathSegments[0];
+      if (node.path.endsWith(currentPathPart) && node.type === 'dir') {
+        if (pathSegments.length === 1) {
+          // We found the target - update its children
+          return { ...node, children: newChildren };
+        } else {
+          // Keep going deeper
+          return {
+            ...node,
+            children: updateTree(node.children || [], pathSegments.slice(1), newChildren)
+          };
         }
+      }
+      return node;
+    });
+  };
 
-        // Store subdirectories with repo ID for reference
-        setSubdirectories(prev => {
-          const filtered = prev.filter((s: any) => s.repoId !== repo.id);
-          const newSubdirs = (data.subdirs || []).map((s: SubDirectory) => ({
-            ...s,
-            repoId: repo.id
-          }));
-          return [...filtered, ...newSubdirs];
+  // Toggle expansion for any directory path
+  const togglePathExpansion = async (repo: Repository, item: DirectoryItem) => {
+    const fullPath = `${repo.id}-${item.path}`;
+    const newExpandedPaths = new Set(expandedPaths);
+    
+    if (expandedPaths.has(fullPath)) {
+      // Collapse - remove this path and all children
+      Array.from(expandedPaths).forEach(path => {
+        if (path.startsWith(fullPath)) {
+          newExpandedPaths.delete(path);
+        }
+      });
+      setExpandedPaths(newExpandedPaths);
+    } else {
+      // Expand
+      newExpandedPaths.add(fullPath);
+      setExpandedPaths(newExpandedPaths);
+      
+      // Fetch children if not already loaded
+      if (!item.children || item.children.length === 0) {
+        const children = await fetchDirectoryContents(repo, item.path);
+        
+        // Update the tree with the fetched children
+        setDirectoryTree(prev => {
+          const repoTree = prev[repo.id] || [];
+          const pathSegments = item.path.split('/').filter(Boolean);
+          const updatedTree = updateTree(repoTree, pathSegments, children);
+          return { ...prev, [repo.id]: updatedTree };
         });
-      } catch (err) {
-        setError((err as Error).message || 'Failed to fetch subdirectories');
-        newExpandedRepos.delete(repo.id);
-        setExpandedRepos(newExpandedRepos);
-      } finally {
-        setLoadingSubdirs(false);
+      }
+    }
+  };
+
+  // Toggle repo expansion (root level)
+  const toggleRepoExpansion = async (repo: Repository) => {
+    const rootKey = `${repo.id}`;
+    const newExpandedPaths = new Set(expandedPaths);
+    
+    if (expandedPaths.has(rootKey)) {
+      // Collapse - remove all paths for this repo
+      Array.from(expandedPaths).forEach(path => {
+        if (path.startsWith(`${repo.id}-`) || path === rootKey) {
+          newExpandedPaths.delete(path);
+        }
+      });
+      setExpandedPaths(newExpandedPaths);
+    } else {
+      // Expand repo root
+      newExpandedPaths.add(rootKey);
+      setExpandedPaths(newExpandedPaths);
+      
+      // Fetch root level contents
+      if (!directoryTree[rootKey]) {
+        await fetchDirectoryContents(repo, '');
       }
     }
   };
@@ -403,10 +496,12 @@ function OnboardingFlow() {
 
 
 const analyzeRepository = async () => {
-  if (!selectedRepo) {
-    setError('Please select a repository');
+  if (!selectedPath) {
+    setError('Please select a repository or directory');
     return;
   }
+
+  const { repo, item } = selectedPath;
 
   setIsAnalyzing(true);
   setError(null);
@@ -427,7 +522,7 @@ const analyzeRepository = async () => {
 
       try {
         const progressResponse = await fetch(
-          `/api/analyze/progress?repo_id=${selectedRepo.id}&_=${Date.now()}`,
+          `/api/analyze/progress?repo_id=${repo.id}&_=${Date.now()}`,
           {
             method: 'GET',
             headers: {
@@ -472,13 +567,13 @@ const analyzeRepository = async () => {
       },
       credentials: 'same-origin',
       body: JSON.stringify({
-        repoId: selectedRepo.id,
-        repoName: selectedRepo.name,
-        repoOwner: selectedRepo.owner.login,
-        defaultBranch: selectedRepo.default_branch,
+        repoId: repo.id,
+        repoName: repo.name,
+        repoOwner: repo.owner.login,
+        defaultBranch: repo.default_branch,
         siteUrl: siteUrl,
-        subdir: selectedSubdir ? selectedSubdir.path : null,
-        subdirName: selectedSubdir ? selectedSubdir.name : null
+        subdir: item.path || null,
+        subdirName: item.name || null
       })
     });
 
@@ -493,7 +588,7 @@ const analyzeRepository = async () => {
     const data = await response.json();
 
     // Progress is already tracked via polling - don't override it
-    
+
     setSchema({
       events: data.events || [],
       routes: data.routes || [],
@@ -526,7 +621,7 @@ const analyzeRepository = async () => {
 };
   // Create Pull Request - REAL API
   const createPR = async () => {
-    if (!schema || !selectedRepo) return;
+    if (!schema || !selectedPath) return;
 
     setDeploymentStatus('creating');
     setCurrentStep(4);
@@ -540,13 +635,13 @@ const analyzeRepository = async () => {
           'X-GitHub-Token': githubToken
         },
         body: JSON.stringify({
-          repoOwner: selectedRepo.owner.login,
-          repoName: selectedRepo.name,
+          repoOwner: selectedPath.repo.owner.login,
+          repoName: selectedPath.repo.name,
           trackerCode: schema.trackerCode,
           providerCode: schema.providerCode,
           appKey: schema.appKey || appKey,
           autoMerge: autoMerge,
-          subdir: selectedSubdir ? selectedSubdir.path : null
+          subdir: selectedPath.item.path || null
         })
       });
 
@@ -577,7 +672,7 @@ const analyzeRepository = async () => {
 
   // Merge Pull Request
   const mergePR = async () => {
-    if (!prNumber || !selectedRepo) return;
+    if (!prNumber || !selectedPath) return;
 
     setMergeStatus('merging');
     setError(null);
@@ -590,8 +685,8 @@ const analyzeRepository = async () => {
           'X-GitHub-Token': githubToken
         },
         body: JSON.stringify({
-          repoOwner: selectedRepo.owner.login,
-          repoName: selectedRepo.name,
+          repoOwner: selectedPath.repo.owner.login,
+          repoName: selectedPath.repo.name,
           prNumber: prNumber
         })
       });
@@ -627,7 +722,7 @@ const analyzeRepository = async () => {
     });
 
     setCurrentStep(0);
-    setSelectedRepo(null);
+    setSelectedPath(null);
     setGithubToken('');
     setGithubUser(null);
     setSchema(null);
@@ -643,10 +738,10 @@ const analyzeRepository = async () => {
     setSiteUrl('');
     setDeploymentStatus('idle');
     setMergeStatus('idle');
-    setSubdirectories([]);
-    setSelectedSubdir(null);
-    setExpandedRepos(new Set());
-    setLoadingSubdirs(false);
+    setDirectoryTree({});
+    setSelectedPath(null);
+    setExpandedPaths(new Set());
+    setLoadingPaths(new Set());
     setAnalysisLogs([]);
   };
 
@@ -950,33 +1045,43 @@ const analyzeRepository = async () => {
                 <>
                   <div className="space-y-2 max-h-96 overflow-y-auto">
                     {filteredRepos.map((repo) => {
-                      const isExpanded = expandedRepos.has(repo.id);
-                      const repoSubdirs = subdirectories.filter((s: any) => s.repoId === repo.id);
-                      const isRepoSelected = selectedRepo?.id === repo.id && !selectedSubdir;
-                      const hasSelectedSubdir = selectedRepo?.id === repo.id && selectedSubdir;
+                      const repoKey = `${repo.id}`;
+                      const isRootExpanded = expandedPaths.has(repoKey);
+                      const repoTree = directoryTree[repo.id] || [];
+                      const isRepoSelected = selectedPath?.repo.id === repo.id && !selectedPath?.item.path;
 
-                      return (
-                        <div key={repo.id} className="border rounded-lg overflow-hidden transition-all">
-                          {/* Repository Row */}
-                          <div
-                            className={`p-4 cursor-pointer transition-all ${
-                              isRepoSelected
-                                ? 'bg-indigo-50 border-indigo-200'
-                                : hasSelectedSubdir
-                                ? 'bg-gray-50'
-                                : 'hover:bg-gray-50'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between">
-                              {/* Left: Expand button + Repo info */}
-                              <div className="flex items-start space-x-2 flex-1">
-                                {/* Expand/Collapse Button */}
+                      // Recursive TreeNode Component
+                      const TreeNode: React.FC<{ item: DirectoryItem; depth: number }> = ({ item, depth }) => {
+                        const fullPath = `${repo.id}-${item.path}`;
+                        const isExpanded = expandedPaths.has(fullPath);
+                        const isSelected = selectedPath?.repo.id === repo.id && selectedPath?.item.path === item.path;
+                        const canBeSelected = item.hasPackageJson || item.hasFrontendFiles;
+
+                        return (
+                          <div key={item.path}>
+                            <div
+                              className={`flex items-center py-2 px-3 cursor-pointer transition-all ${
+                                isSelected
+                                  ? 'bg-indigo-50 border-l-4 border-indigo-500'
+                                  : canBeSelected
+                                  ? 'hover:bg-gray-100 border-l-4 border-transparent'
+                                  : 'opacity-50 border-l-4 border-transparent'
+                              }`}
+                              style={{ paddingLeft: `${depth * 20 + 12}px` }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (canBeSelected) {
+                                  setSelectedPath({ repo, item });
+                                }
+                              }}
+                            >
+                              {item.type === 'dir' && (
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    toggleRepoExpansion(repo);
+                                    togglePathExpansion(repo, item);
                                   }}
-                                  className="mt-0.5 p-1 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                                  className="p-1 -ml-1 mr-1 hover:bg-gray-200 rounded transition-colors"
                                 >
                                   {isExpanded ? (
                                     <ChevronDown className="w-4 h-4 text-gray-600" />
@@ -984,121 +1089,131 @@ const analyzeRepository = async () => {
                                     <ChevronRight className="w-4 h-4 text-gray-600" />
                                   )}
                                 </button>
+                              )}
+                              <FolderOpen className="w-4 h-4 text-gray-500 mr-2 flex-shrink-0" />
+                              <span className={`text-sm font-medium flex-1 truncate ${isSelected ? 'text-indigo-700' : 'text-gray-900'}`}>
+                                {item.name}
+                              </span>
+                              {item.hasPackageJson && (
+                                <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full flex-shrink-0">
+                                  App
+                                </span>
+                              )}
+                              {item.hasFrontendFiles && !item.hasPackageJson && (
+                                <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full flex-shrink-0">
+                                  Frontend
+                                </span>
+                              )}
+                              {item.framework && (
+                                <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full flex-shrink-0">
+                                  {item.framework}
+                                </span>
+                              )}
+                              {isSelected && (
+                                <CheckCircle2 className="w-4 h-4 text-indigo-600 flex-shrink-0 ml-2" />
+                              )}
+                            </div>
+                            {isExpanded && item.children && item.children.length > 0 && (
+                              <div>
+                                {item.children.map((child) => (
+                                  <TreeNode key={child.path} item={child} depth={depth + 1} />
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      };
 
-                                {/* Repo Info */}
-                                <div
-                                  onClick={() => {
-                                    setSelectedRepo(repo);
-                                    setSelectedSubdir(null);
+                      return (
+                        <div key={repo.id} className="border rounded-lg overflow-hidden transition-all">
+                          {/* Repository Row */}
+                          <div
+                            className={`p-4 cursor-pointer transition-all ${
+                              isRepoSelected ? 'bg-indigo-50 border-indigo-200' : 'hover:bg-gray-50'
+                            }`}
+                        >
+                          <div className="flex items-start justify-between">
+                              <div className="flex items-start space-x-2 flex-1">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleRepoExpansion(repo);
                                   }}
+                                  className="mt-0.5 p-1 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                                >
+                                  {isRootExpanded ? (
+                                    <ChevronDown className="w-4 h-4 text-gray-600" />
+                                  ) : (
+                                    <ChevronRight className="w-4 h-4 text-gray-600" />
+                                  )}
+                                </button>
+                                <div
+                                  onClick={() => setSelectedPath({ repo, item: { name: repo.name, path: '', type: 'dir' } })}
                                   className="flex-1"
                                 >
-                                  <div className="flex items-center space-x-2">
-                                    <h3 className="font-semibold text-gray-900">{repo.name}</h3>
-                                    {repo.private && (
-                                      <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">
-                                        Private
-                                      </span>
-                                    )}
-                                    {repo.language && (
-                                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
-                                        {repo.language}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-sm text-gray-600 mt-1">{repo.description}</p>
-                                  <p className="text-xs text-gray-500 mt-2">
-                                    {repo.owner.login} · Updated {new Date(repo.updated_at).toLocaleDateString()} · ⭐ {repo.stargazers_count} stars
-                                  </p>
-                                </div>
+                              <div className="flex items-center space-x-2">
+                                <h3 className="font-semibold text-gray-900">{repo.name}</h3>
+                                {repo.private && (
+                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">
+                                    Private
+                                  </span>
+                                )}
+                                {repo.language && (
+                                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+                                    {repo.language}
+                                  </span>
+                                )}
                               </div>
-
-                              {/* Right: Selection indicator */}
+                              <p className="text-sm text-gray-600 mt-1">{repo.description}</p>
+                              <p className="text-xs text-gray-500 mt-2">
+                                {repo.owner.login} · Updated {new Date(repo.updated_at).toLocaleDateString()} · ⭐ {repo.stargazers_count} stars
+                              </p>
+                            </div>
+                              </div>
                               {isRepoSelected && (
                                 <CheckCircle2 className="w-5 h-5 text-indigo-600 flex-shrink-0 ml-2" />
-                              )}
-                            </div>
+                            )}
                           </div>
+                        </div>
 
-                          {/* Subdirectories Tree (Collapsed/Expanded) */}
-                          {isExpanded && (
+                          {/* Recursive Directory Tree */}
+                          {isRootExpanded && (
                             <div className="border-t border-gray-200 bg-gray-50">
-                              {loadingSubdirs && repoSubdirs.length === 0 ? (
+                              {loadingTree && repoTree.length === 0 ? (
                                 <div className="p-4 text-center">
                                   <Loader2 className="w-5 h-5 animate-spin mx-auto text-indigo-600" />
-                                  <p className="text-xs text-gray-600 mt-2">Loading subdirectories...</p>
-                                </div>
-                              ) : repoSubdirs.length > 0 ? (
-                                <div className="divide-y divide-gray-200">
-                                  {repoSubdirs.map((subdir: any) => {
-                                    const isSubdirSelected = selectedSubdir?.path === subdir.path && selectedRepo?.id === repo.id;
-                                    
-                                    return (
-                                      <div
-                                        key={subdir.path}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setSelectedRepo(repo);
-                                          setSelectedSubdir(subdir);
-                                        }}
-                                        className={`p-3 pl-12 cursor-pointer transition-all ${
-                                          isSubdirSelected
-                                            ? 'bg-indigo-50 border-l-4 border-indigo-500'
-                                            : 'hover:bg-gray-100 border-l-4 border-transparent'
-                                        }`}
-                                      >
-                                        <div className="flex items-center justify-between">
-                                          <div className="flex items-center space-x-2 flex-1">
-                                            <FolderOpen className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                                            <div className="flex-1 min-w-0">
-                                              <div className="flex items-center space-x-2">
-                                                <span className="font-medium text-gray-900 text-sm truncate">
-                                                  {subdir.name}
-                                                </span>
-                                                {subdir.framework && (
-                                                  <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full flex-shrink-0">
-                                                    {subdir.framework}
-                                                  </span>
-                                                )}
-                                              </div>
-                                              {subdir.description && (
-                                                <p className="text-xs text-gray-600 mt-0.5 truncate">{subdir.description}</p>
-                                              )}
-                                              <p className="text-xs text-gray-500 mt-0.5">/{subdir.path}</p>
-                                            </div>
-                                          </div>
-                                          {isSubdirSelected && (
-                                            <CheckCircle2 className="w-4 h-4 text-indigo-600 flex-shrink-0 ml-2" />
-                                          )}
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <div className="p-4 text-center">
-                                  <p className="text-xs text-gray-600">No subdirectories with package.json found</p>
-                                  <p className="text-xs text-gray-500 mt-1">You can analyze the root repository</p>
-                                </div>
-                              )}
+                                  <p className="text-xs text-gray-600 mt-2">Loading directories...</p>
                             </div>
-                          )}
-                        </div>
+                              ) : repoTree.length > 0 ? (
+                                <div className="divide-y divide-gray-200">
+                                  {repoTree.map((item) => (
+                                    <TreeNode key={item.path} item={item} depth={0} />
+                                  ))}
+                              </div>
+                            ) : (
+                                <div className="p-4 text-center">
+                                  <p className="text-xs text-gray-600">No subdirectories found</p>
+                                  <p className="text-xs text-gray-500 mt-1">You can analyze the root repository</p>
+                                          </div>
+                              )}
+                                  </div>
+                                )}
+                              </div>
                       );
                     })}
                   </div>
 
                   {/* Show selected status */}
-                  {selectedRepo && selectedSubdir && (
+                  {selectedPath && selectedPath.item.path && (
                     <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
                       <div className="flex items-center">
                         <CheckCircle2 className="w-5 h-5 text-green-600 mr-2" />
                         <div>
                           <p className="text-sm font-medium text-green-900">
-                            Selected: {selectedRepo.name}/{selectedSubdir.name}
+                            Selected: {selectedPath.repo.name}/{selectedPath.item.name}
                           </p>
                           <p className="text-xs text-green-700 mt-1">
-                            Framework: {selectedSubdir.framework || 'Unknown'}
+                            Path: {selectedPath.item.path}
                           </p>
                         </div>
                       </div>
@@ -1111,7 +1226,7 @@ const analyzeRepository = async () => {
                 <button
                   onClick={() => {
                     setCurrentStep(0);
-                    setSelectedSubdir(null);
+                    setSelectedPath(null);
                   }}
                   className="px-6 py-3 text-gray-700 font-medium hover:text-gray-900 transition-colors"
                 >
@@ -1119,14 +1234,14 @@ const analyzeRepository = async () => {
                 </button>
                 <button
                   onClick={analyzeRepository}
-                  disabled={!selectedRepo}
+                  disabled={!selectedPath}
                   className={`px-8 py-3 font-medium rounded-lg transition-all ${
-                    selectedRepo
-                      ? 'bg-gray-900 text-white hover:bg-gray-800'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  }`}
+                    selectedPath
+                    ? 'bg-gray-900 text-white hover:bg-gray-800'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    }`}
                 >
-                  Analyze {selectedSubdir ? `${selectedRepo?.name}/${selectedSubdir.name}` : selectedRepo?.name || 'Repository'}
+                  Analyze {selectedPath?.item.path ? `${selectedPath.repo.name}/${selectedPath.item.name}` : selectedPath?.repo.name || 'Repository'}
                   <ChevronRight className="inline w-5 h-5 ml-2" />
                 </button>
               </div>
@@ -1146,7 +1261,7 @@ const analyzeRepository = async () => {
                   Analyzing Your Codebase
                 </h2>
                 <p className="text-lg text-gray-600 mb-8">
-                  We're scanning {selectedSubdir ? `${selectedRepo?.name}/${selectedSubdir.name}` : selectedRepo?.name} to understand its structure and generate optimal tracking configuration.
+                  We're scanning {selectedPath?.item.path ? `${selectedPath.repo.name}/${selectedPath.item.name}` : selectedPath?.repo.name} to understand its structure and generate optimal tracking configuration.
                 </p>
 
                 {/* Progress Steps Display */}
@@ -1247,7 +1362,7 @@ const analyzeRepository = async () => {
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900">Review Analytics Schema</h2>
                     <p className="text-gray-600 mt-1">
-                      Customize your tracking configuration for {selectedSubdir ? `${selectedRepo?.name}/${selectedSubdir.name}` : selectedRepo?.name}
+                      Customize your tracking configuration for {selectedPath?.item.path ? `${selectedPath.repo.name}/${selectedPath.item.name}` : selectedPath?.repo.name}
                     </p>
                   </div>
                   <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-medium rounded-full">
@@ -1421,7 +1536,7 @@ const analyzeRepository = async () => {
 
                         <div className="h-[400px]">
                           <SitePreviewSandbox
-                            selectedRepo={selectedRepo}
+                            selectedRepo={selectedPath?.repo}
                             previewDevice={previewDevice}
                             schema={schema}
                           />
