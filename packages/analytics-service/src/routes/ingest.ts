@@ -1,241 +1,136 @@
 // src/routes/ingest.ts
 import type { FastifyInstance } from 'fastify';
-import { createClient } from '@supabase/supabase-js';
-import { z } from 'zod';
 import crypto from 'node:crypto';
 import { logAnalyticsEvent } from '../utils/event-logger';
+import { insertEvents } from '../utils/supabase';
+import { broadcast } from '../utils/event-bus';
+import { validateIngestRequest, AnalyticsEvent } from '../utils/validation';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Simple in-memory rate limiter
+const rateLimiter = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT = 100; // requests per minute
+const RATE_WINDOW = 60 * 1000; // 1 minute in milliseconds
 
-// ---------- Schemas for Product Analytics ----------
-const ProductEventSchema = z.object({
-  id: z.string(),
-  ts: z.number(), // timestamp in milliseconds
-  event_type: z.string().optional(), // from tracker
-  verb: z.string().optional(), // for database
-  user_id: z.string(),
-  session_id: z.string(),
-  data: z.record(z.unknown()).default({}),
-  // Optional fields that tracker might send
-  app_key: z.string().optional(),
-});
+function checkRateLimit(ip: string): { allowed: boolean; remaining: number } {
+  const now = Date.now();
+  const record = rateLimiter.get(ip);
 
-const AnalyticsIngestSchema = z.object({
-  app_key: z.string(),
-  session_id: z.string().optional(),
-  events: z.array(ProductEventSchema)
-});
+  if (!record || record.resetAt < now) {
+    // New window
+    rateLimiter.set(ip, { count: 1, resetAt: now + RATE_WINDOW });
+    return { allowed: true, remaining: RATE_LIMIT - 1 };
+  }
+
+  if (record.count >= RATE_LIMIT) {
+    return { allowed: false, remaining: 0 };
+  }
+
+  record.count++;
+  return { allowed: true, remaining: RATE_LIMIT - record.count };
+}
+
+// Cleanup old rate limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, record] of rateLimiter.entries()) {
+    if (record.resetAt < now) {
+      rateLimiter.delete(ip);
+    }
+  }
+}, 5 * 60 * 1000);
 
 // ---------- Route Module ----------
 export default async function ingestRoutes(app: FastifyInstance) {
 
-  // --- Product Analytics Ingest Endpoint ---
+  // --- Product Analytics Ingest Endpoint with SSE Broadcasting ---
   app.post('/ingest/analytics', async (req, reply) => {
     try {
-      const body = AnalyticsIngestSchema.parse(req.body);
-
-      // Clean app_key (remove timestamp suffix if present)
-      const appKey = body.app_key.replace(/-\d{13}$/, '');
-
-      // Check if app exists
-      const { data: appData } = await supabase
-        .from('apps')
-        .select('id, repo_id')
-        .eq('app_key', appKey)
-        .single();
-
-      if (!appData) {
-        return reply.code(404).send({
+      // Rate limiting
+      const clientIp = req.ip;
+      const rateCheck = checkRateLimit(clientIp);
+      
+      if (!rateCheck.allowed) {
+        return reply.code(429).send({
           ok: false,
-          error: `App with key '${appKey}' not found`
+          error: 'Rate limit exceeded. Maximum 100 requests per minute.',
         });
       }
 
-      // Process events
-      const processedEvents = [];
-      const failedEvents = [];
-
-      for (const event of body.events) {
-        try {
-          // Get event_type (NO MORE VERB!)
-          const eventType = event.event_type || 'UNKNOWN';
-
-          // Keep timestamp as milliseconds (convert if needed)
-          const timestamp = event.ts > 9999999999
-            ? event.ts  // Already in milliseconds
-            : event.ts * 1000; // Convert from seconds to milliseconds
-
-          // Build the SIMPLE event row - only 7 fields!
-          const eventRow = {
-            id: event.id || crypto.randomUUID(),
-            event_type: eventType.toUpperCase(), // Normalize to uppercase
-            app_key: appKey,
-            user_id: event.user_id,
-            session_id: event.session_id || body.session_id,
-            ts: timestamp,
-            data: event.data || {}
-          };
-
-          // Insert into analytics_product_events table
-          const { error } = await supabase
-            .from('analytics_product_events')
-            .insert(eventRow);
-
-          if (error) {
-            console.error('Failed to insert event:', error);
-            failedEvents.push({ event: event.id, error: error.message });
-          } else {
-            processedEvents.push(eventRow);
-          }
-        } catch (eventError: any) {
-          console.error('Error processing event:', eventError);
-          failedEvents.push({
-            event: event.id,
-            error: eventError.message || 'Processing failed'
-          });
-        }
+      // Pre-process: Ensure all events have app_key before validation
+      const body = req.body as any;
+      if (body && body.app_key && Array.isArray(body.events)) {
+        body.events = body.events.map((event: any) => ({
+          ...event,
+          app_key: event.app_key || body.app_key, // Use event's app_key or fall back to request-level
+        }));
       }
 
-      // Log the events with beautiful formatting (optional)
+      // Validate request body (now all events have app_key)
+      const validation = validateIngestRequest(body);
+      
+      if (!validation.success) {
+        return reply.code(400).send({
+          ok: false,
+          error: 'Validation failed',
+          errors: validation.errors,
+        });
+      }
+
+      const { app_key, events } = validation.data!;
+
+      // Process and normalize events
+      const processedEvents: AnalyticsEvent[] = events.map(event => ({
+        id: event.id || crypto.randomUUID(),
+        event_type: event.event_type.toUpperCase(),
+        app_key: event.app_key, // Already merged in pre-processing
+        user_id: event.user_id,
+        session_id: event.session_id,
+        ts: event.ts > 9999999999 ? event.ts : event.ts * 1000, // Convert to ms if needed
+        data: event.data || {},
+      }));
+
+      // Insert into database
+      const result = await insertEvents(processedEvents);
+
+      // Broadcast to SSE clients (even if DB insert failed, for real-time monitoring)
+      processedEvents.forEach(event => {
+        broadcast(event);
+      });
+
+      // Log the events with beautiful formatting (if available)
       if (typeof logAnalyticsEvent === 'function') {
-        logAnalyticsEvent(processedEvents, appKey);
+        logAnalyticsEvent(processedEvents, app_key);
       }
 
       // Return response
+      if (!result.success) {
+        return reply.code(500).send({
+          ok: false,
+          received: events.length,
+          stored: result.inserted,
+          errors: result.errors,
+          message: `Stored ${result.inserted}/${events.length} events`,
+        });
+      }
+
       return reply.send({
         ok: true,
-        stored: processedEvents.length,
-        failed: failedEvents.length,
-        message: `Processed ${processedEvents.length} events successfully${failedEvents.length > 0 ? `, ${failedEvents.length} failed` : ''
-          }`
+        received: events.length,
+        stored: result.inserted,
+        errors: [],
+        message: `Successfully stored ${result.inserted} events`,
       });
 
     } catch (error: any) {
       console.error('Ingest error:', error);
-      return reply.code(400).send({
-        ok: false,
-        error: error.message || 'Invalid request format'
-      });
-    }
-  });
-
-  // --- GET endpoint for checking event data ---
-  app.get('/analytics/events', async (req, reply) => {
-    try {
-      const { app_key, limit = 10 } = req.query as any;
-
-      if (!app_key) {
-        return reply.code(400).send({
-          ok: false,
-          error: 'app_key parameter required'
-        });
-      }
-
-      const { data, error } = await supabase
-        .from('analytics_product_events')
-        .select('*')
-        .eq('metadata->>app_key', app_key)
-        .order('ts', { ascending: false })
-        .limit(parseInt(limit));
-
-      if (error) {
-        return reply.code(500).send({
-          ok: false,
-          error: error.message
-        });
-      }
-
-      return reply.send({
-        ok: true,
-        events: data,
-        count: data.length
-      });
-    } catch (error: any) {
       return reply.code(500).send({
         ok: false,
-        error: error.message
+        error: error.message || 'Internal server error',
       });
     }
   });
 
-  // --- Overview endpoint for dashboard ---
-  app.get('/analytics/overview', async (req, reply) => {
-    try {
-      const { app_key, from, to } = req.query as any;
-
-      if (!app_key) {
-        return reply.code(400).send({
-          ok: false,
-          error: 'app_key parameter required'
-        });
-      }
-
-      // Build date range
-      const fromDate = from ? new Date(from) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const toDate = to ? new Date(to) : new Date();
-
-      // Query analytics_product_events table
-      let query = supabase
-        .from('analytics_product_events')
-        .select('verb, user_id, session_id, ts')
-        .eq('metadata->>app_key', app_key)
-        .gte('ts', fromDate.toISOString())
-        .lte('ts', toDate.toISOString());
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('Overview query error:', error);
-        return reply.code(500).send({
-          ok: false,
-          error: error.message
-        });
-      }
-
-      // Calculate overview metrics
-      const uniqueUsers = new Set(data?.map(e => e.user_id) || []);
-      const uniqueSessions = new Set(data?.map(e => e.session_id) || []);
-
-      // Group by event type
-      const eventsByType: Record<string, number> = {};
-      data?.forEach(event => {
-        const verb = event.verb || 'unknown';
-        eventsByType[verb] = (eventsByType[verb] || 0) + 1;
-      });
-
-      const overview = {
-        app_key,
-        period: {
-          from: fromDate.toISOString(),
-          to: toDate.toISOString()
-        },
-        total_events: data?.length || 0,
-        unique_sessions: uniqueSessions.size,
-        unique_users: uniqueUsers.size,
-        events_by_type: Object.entries(eventsByType).map(([verb, count]) => ({
-          verb,
-          count
-        }))
-      };
-
-      return reply.send({
-        ok: true,
-        overview
-      });
-
-    } catch (error: any) {
-      console.error('Overview error:', error);
-      return reply.code(500).send({
-        ok: false,
-        error: error.message
-      });
-    }
-  });
-
-  // Keep your existing sandbox and other endpoints...
+  // --- Existing sandbox endpoint ---
   app.get('/sandbox', async (_req, reply) => {
     reply
       .header('content-type', 'text/html; charset=utf-8')
@@ -244,28 +139,44 @@ export default async function ingestRoutes(app: FastifyInstance) {
 <style>body{font:14px/1.4 system-ui, sans-serif; padding:16px; max-width:1100px; margin:auto}
 pre,textarea{width:100%; min-height:160px; font:12px/1.4 ui-monospace,Menlo,monospace}
 .grid{display:grid; gap:16px; grid-template-columns:1fr 1fr}
-.card{border:1px solid #ddd; border-radius:10px; padding:12px}</style>
+.card{border:1px solid #ddd; border-radius:10px; padding:12px}
+button{padding:8px 16px; cursor:pointer; background:#007bff; color:white; border:none; border-radius:4px}
+button:hover{background:#0056b3}</style>
 </head><body>
-<h1>Analytics Product Events — Sandbox</h1>
+<h1>📊 Analytics Product Events — Sandbox</h1>
 <div class="card">
   <h3>Send Test Analytics Event</h3>
-  <label>App Key: <input id="appKey" value="test-app-rich"/></label><br/>
-  <label>Event Type: <input id="eventType" value="PAGE_VIEW"/></label><br/>
-  <label>User ID: <input id="userId" value="12345678"/></label><br/>
-  <label>Session ID: <input id="sessionId" value="test-session-123"/></label><br/>
+  <label>App Key: <input id="appKey" value="test-app-rich" style="width:300px"/></label><br/><br/>
+  <label>Event Type: <input id="eventType" value="PAGE_VIEW" style="width:300px"/></label><br/><br/>
+  <label>User ID: <input id="userId" value="user-${Date.now()}" style="width:300px"/></label><br/><br/>
+  <label>Session ID: <input id="sessionId" value="session-${Date.now()}" style="width:300px"/></label><br/><br/>
   <label>Event Data JSON:</label>
   <textarea id="eventData">{ "url": "/test", "title": "Test Page" }</textarea>
   <button onclick="sendAnalyticsEvent()">Send Event</button>
   <pre id="result"></pre>
 </div>
+
+<div class="card" style="margin-top:20px">
+  <h3>📡 Live Event Stream (SSE)</h3>
+  <label>App Key: <input id="streamAppKey" value="test-app-rich" style="width:300px"/></label>
+  <label>Session ID (optional): <input id="streamSessionId" value="" style="width:300px"/></label><br/><br/>
+  <button onclick="startStream()">Start Stream</button>
+  <button onclick="stopStream()">Stop Stream</button>
+  <pre id="streamResult" style="background:#f5f5f5; max-height:400px; overflow:auto"></pre>
+</div>
+
 <script>
+let eventSource = null;
+
 async function sendAnalyticsEvent(){
+  const appKey = document.getElementById('appKey').value;
   const body = {
-    app_key: document.getElementById('appKey').value,
+    app_key: appKey,
     events: [{
-      id: 'test-' + Date.now(),
+      id: crypto.randomUUID(),
       ts: Date.now(),
       event_type: document.getElementById('eventType').value,
+      app_key: appKey,
       user_id: document.getElementById('userId').value,
       session_id: document.getElementById('sessionId').value,
       data: JSON.parse(document.getElementById('eventData').value || '{}')
@@ -276,7 +187,47 @@ async function sendAnalyticsEvent(){
     headers:{'content-type':'application/json'}, 
     body: JSON.stringify(body)
   });
-  document.getElementById('result').textContent = await r.text();
+  const result = await r.json();
+  document.getElementById('result').textContent = JSON.stringify(result, null, 2);
+}
+
+function startStream() {
+  stopStream(); // Close any existing stream
+  
+  const appKey = document.getElementById('streamAppKey').value;
+  const sessionId = document.getElementById('streamSessionId').value;
+  
+  let url = '/events/stream?app_key=' + encodeURIComponent(appKey);
+  if (sessionId) {
+    url += '&session_id=' + encodeURIComponent(sessionId);
+  }
+  
+  eventSource = new EventSource(url);
+  const resultEl = document.getElementById('streamResult');
+  resultEl.textContent = '🟢 Connected. Listening for events...\\n\\n';
+  
+  eventSource.onmessage = (e) => {
+    if (e.data === 'heartbeat') {
+      resultEl.textContent += '💓 heartbeat\\n';
+    } else {
+      const event = JSON.parse(e.data);
+      resultEl.textContent += JSON.stringify(event, null, 2) + '\\n\\n';
+      resultEl.scrollTop = resultEl.scrollHeight;
+    }
+  };
+  
+  eventSource.onerror = (e) => {
+    resultEl.textContent += '🔴 Connection error or closed\\n';
+    stopStream();
+  };
+}
+
+function stopStream() {
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+    document.getElementById('streamResult').textContent += '\\n⏹ Stream stopped\\n';
+  }
 }
 </script>
 </body></html>`);

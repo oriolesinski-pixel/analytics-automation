@@ -4,6 +4,8 @@ import Fastify from 'fastify';
 import { createClient } from '@supabase/supabase-js';
 import ingestRoutes from './routes/ingest';
 import analyticsRoutes from './routes/analytics';
+import eventsRoutes from './routes/events';
+import healthRoutes from './routes/health';
 import selfcheck from "./selfcheck";
 import deployRoutes from './routes/deploy';
 import mergeRoutes from './routes/merge';
@@ -21,15 +23,7 @@ const supabase = createClient(
 async function start() {
     // Register CORS FIRST - before any routes
     await app.register(require('@fastify/cors'), {
-        origin: [
-            'http://localhost:3000',
-            'http://localhost:3001',
-            'http://localhost:3002',
-            'http://localhost:3003',
-            'http://localhost:3004',
-            'http://localhost:3005',
-            'https://test-app-rich-demo.vercel.app' // Add production domain
-        ],
+        origin: '*', // Allow all origins for SSE and analytics ingestion
         credentials: true,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization']
@@ -410,6 +404,8 @@ async function start() {
     });
 
     // Register other routes after CORS
+    await app.register(healthRoutes);
+    await app.register(eventsRoutes);
     await app.register(ingestRoutes);
     await app.register(selfcheck);
     await app.register(analyticsRoutes);
@@ -427,7 +423,9 @@ async function start() {
 ║     Port: ${PORT}                                   ║
 ║                                                      ║
 ║     Core Endpoints:                                 ║
-║       • POST   /ingest/analytics                    ║
+║       • POST   /ingest/analytics  (SSE enabled)    ║
+║       • GET    /events/stream     (SSE)            ║
+║       • GET    /health                             ║
 ║       • POST   /ingest/app                         ║
 ║       • GET    /events                             ║
 ║       • GET    /metrics                            ║
@@ -450,9 +448,27 @@ async function start() {
 ║     GitHub Integration:                            ║
 ║       • POST   /deploy                             ║
 ║                                                      ║
+║     Developer Tools:                               ║
+║       • GET    /sandbox            (Test UI)       ║
+║                                                      ║
 ╚══════════════════════════════════════════════════════╝
     `);
 }
+
+// Graceful shutdown handler for SSE connections
+process.on('SIGTERM', async () => {
+    console.log('SIGTERM received, closing server gracefully...');
+    await app.close();
+    console.log('Server closed');
+    process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+    console.log('SIGINT received, closing server gracefully...');
+    await app.close();
+    console.log('Server closed');
+    process.exit(0);
+});
 
 // kick it off
 start().catch((e) => { app.log.error(e); process.exit(1); });
