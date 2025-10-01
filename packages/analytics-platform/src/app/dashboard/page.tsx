@@ -61,6 +61,9 @@ export default function AnalyticsDashboard() {
     const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesPoint[]>([]);
     const [funnelData, setFunnelData] = useState<FunnelStep[]>([]);
     const [kpiData, setKpiData] = useState<any[]>([]);
+    const [analyticsExists, setAnalyticsExists] = useState(false);
+    const [checkingAnalytics, setCheckingAnalytics] = useState(true);
+    const [removing, setRemoving] = useState(false);
 
     // Time range options
     const timeRanges = [
@@ -388,9 +391,77 @@ export default function AnalyticsDashboard() {
         setTimeout(() => setRefreshing(false), 1000);
     };
 
+    // Check if analytics files exist in repository
+    const checkAnalyticsFiles = async () => {
+        const owner = sessionStorage.getItem('github_owner');
+        const repo = sessionStorage.getItem('github_repo');
+        const token = sessionStorage.getItem('github_token');
+        
+        if (!owner || !repo || !token) {
+            setCheckingAnalytics(false);
+            return;
+        }
+        
+        try {
+            const response = await fetch(
+                `https://api.github.com/repos/${owner}/${repo}/contents/public/tracker.js`,
+                {
+                    headers: {
+                        Authorization: `token ${token}`,
+                        Accept: 'application/vnd.github.v3+json'
+                    }
+                }
+            );
+            
+            setAnalyticsExists(response.ok);
+        } catch (error) {
+            console.error('Error checking analytics files:', error);
+            setAnalyticsExists(false);
+        } finally {
+            setCheckingAnalytics(false);
+        }
+    };
+
+    // Handle analytics removal
+    const handleRemoveAnalytics = async () => {
+        if (!confirm('Are you sure you want to remove analytics from your repository? This action cannot be undone.')) {
+            return;
+        }
+        
+        setRemoving(true);
+        
+        const owner = sessionStorage.getItem('github_owner');
+        const repo = sessionStorage.getItem('github_repo');
+        const token = sessionStorage.getItem('github_token');
+        
+        try {
+            const response = await fetch('/api/remove-analytics', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ owner, repo, token })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                alert('Analytics removed successfully!');
+                setAnalyticsExists(false);
+                // Clear onboarding state to allow re-running
+                sessionStorage.removeItem('onboarding_complete');
+            } else {
+                alert(`Failed to remove analytics: ${data.error}`);
+            }
+        } catch (error: any) {
+            alert(`Error: ${error.message}`);
+        } finally {
+            setRemoving(false);
+        }
+    };
+
     // Effects
     useEffect(() => {
         fetchApps();
+        checkAnalyticsFiles();
     }, []);
 
     useEffect(() => {
@@ -497,6 +568,29 @@ export default function AnalyticsDashboard() {
             </div>
 
             <div className="p-6">
+                {/* Remove Analytics Button */}
+                {!checkingAnalytics && analyticsExists && (
+                    <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-sm font-medium text-red-800">
+                                    Analytics Integration Active
+                                </h3>
+                                <p className="mt-1 text-sm text-red-600">
+                                    Remove analytics files from your repository
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleRemoveAnalytics}
+                                disabled={removing}
+                                className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                {removing ? 'Removing...' : 'Remove Analytics'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* KPI Cards */}
                 <div className="grid grid-cols-5 gap-4 mb-6">
                     {kpiData.map((kpi, index) => (

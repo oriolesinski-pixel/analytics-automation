@@ -136,6 +136,7 @@ function OnboardingFlow() {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [currentProgressStep, setCurrentProgressStep] = useState(0);
   const [analysisLogs, setAnalysisLogs] = useState<string[]>([]);
+  const [removing, setRemoving] = useState(false);
 
   // Inject styles only on client
   useEffect(() => {
@@ -699,11 +700,57 @@ const analyzeRepository = async () => {
       const data = await response.json();
       setMergeStatus('success');
 
+      // Store repo info for dashboard
+      sessionStorage.setItem('github_owner', selectedPath.repo.owner.login);
+      sessionStorage.setItem('github_repo', selectedPath.repo.name);
+      sessionStorage.setItem('github_token', githubToken);
+
       setTimeout(() => setCurrentStep(6), 2000);
 
     } catch (err) {
       setError((err as Error).message || 'Merge failed');
       setMergeStatus('failed');
+    }
+  };
+
+  // Remove Analytics Integration
+  const handleRemoveAnalytics = async () => {
+    if (!selectedPath) return;
+    
+    if (!confirm('Are you sure you want to remove analytics from your repository? This will delete the PR and all analytics files.')) {
+      return;
+    }
+    
+    setRemoving(true);
+    setError(null);
+    
+    try {
+      const response = await fetch('/api/remove-analytics', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'X-GitHub-Token': githubToken
+        },
+        body: JSON.stringify({ 
+          owner: selectedPath.repo.owner.login, 
+          repo: selectedPath.repo.name, 
+          token: githubToken 
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        alert('Analytics removed successfully! Restarting onboarding...');
+        // Reset the flow
+        resetFlow();
+      } else {
+        alert(`Failed to remove analytics: ${data.error}`);
+      }
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -1842,6 +1889,25 @@ const analyzeRepository = async () => {
                       </div>
                     </div>
 
+                    {/* Remove Analytics Option */}
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-8 text-left max-w-md mx-auto">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-medium text-red-800">Changed your mind?</h4>
+                          <p className="text-xs text-red-600 mt-1">
+                            Remove the PR and analytics files from your repository
+                          </p>
+                        </div>
+                        <button
+                          onClick={handleRemoveAnalytics}
+                          disabled={removing}
+                          className="px-3 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap ml-3"
+                        >
+                          {removing ? 'Removing...' : 'Remove Analytics'}
+                        </button>
+                      </div>
+                    </div>
+
                     <div className="flex justify-center space-x-4">
                       <button
                         onClick={() => setCurrentStep(4)}
@@ -2001,6 +2067,25 @@ const analyzeRepository = async () => {
                     </div>
                   </div>
                 )}
+
+                {/* Remove Analytics Option */}
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-8 max-w-md mx-auto">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-medium text-red-800">Need to remove analytics?</h4>
+                      <p className="text-xs text-red-600 mt-1">
+                        Remove all analytics files from your repository
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleRemoveAnalytics}
+                      disabled={removing}
+                      className="px-3 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap ml-3"
+                    >
+                      {removing ? 'Removing...' : 'Remove Analytics'}
+                    </button>
+                  </div>
+                </div>
 
                 <div className="flex justify-center space-x-4">
                   <button
