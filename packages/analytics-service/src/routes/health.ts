@@ -7,3 +7,4 @@ const healthRoutes: FastifyPluginAsync = async (fastify) => {
 };
 
 export default healthRoutes;
+

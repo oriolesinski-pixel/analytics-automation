@@ -62,3 +62,4 @@ export async function insertEvents(events: AnalyticsEvent[]): Promise<{ success:
     return { success: false, inserted: 0, errors };
   }
 }
+

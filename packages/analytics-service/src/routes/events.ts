@@ -61,3 +61,4 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
 };
 
 export default eventsRoutes;
+

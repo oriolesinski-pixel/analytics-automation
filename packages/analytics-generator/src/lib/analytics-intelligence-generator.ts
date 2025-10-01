@@ -1175,9 +1175,13 @@ ${codeContent}`;
   // ============ MAIN ANALYTICS TRACKER ============
   class AnalyticsTracker {
     constructor() {
+      // 🎯 PRODUCTION ENDPOINT - Hardcoded by design
+      // This tracker is a runtime UMD bundle that sends events to our centralized analytics service.
+      // All customer apps point to this same endpoint - each app is identified by its unique app_key.
+      // For local testing, manually edit this line in the generated tracker.js file.
       this.config = {
         appKey: '${appKey}',
-        endpoint: '${endpoint}',
+        endpoint: 'https://analytics-service-production.up.railway.app/ingest/analytics',
         batchSize: 10,
         flushInterval: 30000
       };
