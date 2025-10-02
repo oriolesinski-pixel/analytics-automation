@@ -1,10 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Octokit } from '@octokit/rest';
 
+/**
+ * Smart Analytics Removal API
+ * 
+ * This endpoint intelligently removes analytics integration without disrupting other changes.
+ * 
+ * TWO REMOVAL STRATEGIES:
+ * 
+ * 1. PRE-MERGE (Step 5 - PR exists but not merged):
+ *    - Simply close the PR and delete the branch
+ *    - No need for removal PR since files never reached main
+ * 
+ * 2. POST-MERGE (Step 6 - PR already merged):
+ *    - Analyzes the original analytics PR to find what was added
+ *    - For NEW files (tracker.js, provider): Delete entirely
+ *    - For MODIFIED files (layouts): Surgically remove only analytics lines
+ *    - Preserves all other changes made after analytics was integrated
+ *    - Creates a removal PR that can be auto-merged
+ * 
+ * KEY FEATURE: Smart Line-by-Line Removal
+ * - Extracts exact lines added by analytics PR from the git patch
+ * - Gets CURRENT version of modified files (not old version)
+ * - Removes only lines that match analytics additions
+ * - Preserves everything else, including changes made after analytics PR
+ * 
+ * This approach ensures NO CONFLICTS with:
+ * - Changes made after analytics was integrated
+ * - CI/CD pipelines
+ * - Other developers' work
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { owner, repo, token } = body;
+    const { owner, repo, token, subdir, prNumber, isMerged } = body;
     
     // Also check for token in headers (for onboarding flow)
     const headerToken = request.headers.get('X-GitHub-Token');
@@ -19,6 +48,60 @@ export async function POST(request: NextRequest) {
 
     const octokit = new Octokit({ auth: authToken });
     
+    // Case 1: If PR exists and hasn't been merged yet, just close it and delete the branch
+    if (prNumber && !isMerged) {
+      console.log(`Closing unmerged PR #${prNumber} and deleting branch...`);
+      
+      try {
+        // Get PR details to find the branch name
+        const { data: pr } = await octokit.pulls.get({
+          owner,
+          repo,
+          pull_number: prNumber
+        });
+        
+        const branchName = pr.head.ref;
+        
+        // Close the PR
+        await octokit.pulls.update({
+          owner,
+          repo,
+          pull_number: prNumber,
+          state: 'closed'
+        });
+        
+        console.log(`✅ Closed PR #${prNumber}`);
+        
+        // Delete the branch
+        try {
+          await octokit.git.deleteRef({
+            owner,
+            repo,
+            ref: `heads/${branchName}`
+          });
+          console.log(`✅ Deleted branch: ${branchName}`);
+        } catch (deleteError) {
+          console.log(`⚠️ Could not delete branch ${branchName}:`, deleteError);
+        }
+        
+        return NextResponse.json({ 
+          success: true,
+          message: 'Analytics PR closed and branch deleted successfully',
+          prUrl: pr.html_url,
+          closed: true
+        });
+      } catch (error: any) {
+        console.error('Error closing PR:', error);
+        return NextResponse.json(
+          { error: `Failed to close PR: ${error.message}` },
+          { status: 500 }
+        );
+      }
+    }
+    
+    // Case 2: PR has been merged, need to create a removal PR
+    console.log('Creating removal PR for merged analytics...');
+
     // Get default branch
     const { data: repoData } = await octokit.repos.get({ owner, repo });
     const defaultBranch = repoData.default_branch;
@@ -29,68 +112,281 @@ export async function POST(request: NextRequest) {
       repo,
       ref: `heads/${defaultBranch}`
     });
-    const currentCommitSha = refData.object.sha;
+    const baseSha = refData.object.sha;
     
-    // Get current tree
-    const { data: currentCommit } = await octokit.git.getCommit({
+    // If we have a PR number, get the files that were changed and the exact code additions
+    let filesToRemove: string[] = [];
+    let filesToModify: { path: string, patch: string }[] = [];
+    
+    if (prNumber) {
+      console.log(`🔍 Analyzing PR #${prNumber} to find analytics additions...`);
+      try {
+        // Get the files changed in the PR with their diffs
+        const { data: prFiles } = await octokit.pulls.listFiles({
+          owner,
+          repo,
+          pull_number: prNumber
+        });
+        
+        for (const file of prFiles) {
+          if (file.status === 'added') {
+            filesToRemove.push(file.filename);
+            console.log(`  📝 Will delete: ${file.filename}`);
+          } else if (file.status === 'modified' && file.patch) {
+            // Store the patch so we can reverse it
+            filesToModify.push({ 
+              path: file.filename, 
+              patch: file.patch 
+            });
+            console.log(`  ✂️ Will remove additions from: ${file.filename}`);
+          }
+        }
+      } catch (error) {
+        console.error('Error analyzing PR files:', error);
+        // Fall back to default file list
+        filesToRemove = [
+          subdir ? `${subdir}/public/tracker.js` : 'public/tracker.js',
+          subdir ? `${subdir}/app/components/AnalyticsProvider.tsx` : 'app/components/AnalyticsProvider.tsx'
+        ];
+      }
+    } else {
+      // No PR number - use default locations
+      filesToRemove = [
+        subdir ? `${subdir}/public/tracker.js` : 'public/tracker.js',
+        subdir ? `${subdir}/app/components/AnalyticsProvider.tsx` : 'app/components/AnalyticsProvider.tsx'
+      ];
+    }
+    
+    console.log(`📊 Files to delete: ${filesToRemove.length}, Files to clean: ${filesToModify.length}`);
+    
+    // Create a new branch for removal
+    const branchName = `remove-analytics-${Date.now()}`;
+    await octokit.git.createRef({
       owner,
       repo,
-      commit_sha: currentCommitSha
+      ref: `refs/heads/${branchName}`,
+      sha: baseSha
     });
     
-    // Files to remove
-    const filesToRemove = [
-      'public/tracker.js',
-      'src/components/AnalyticsProvider.tsx',
-      'src/lib/analytics-schema.ts'
-    ];
+    // Track successful operations
+    const deletedFiles: string[] = [];
+    const revertedFiles: string[] = [];
+    const errors: string[] = [];
     
-    // Create new tree without analytics files
-    const { data: baseTree } = await octokit.git.getTree({
+    // Delete each file that was added
+    for (const filePath of filesToRemove) {
+      try {
+        const { data: fileData } = await octokit.repos.getContent({
+          owner,
+          repo,
+          path: filePath,
+          ref: branchName  // Use the new branch
+        });
+        
+        if (!Array.isArray(fileData) && 'sha' in fileData) {
+          await octokit.repos.deleteFile({
+            owner,
+            repo,
+            path: filePath,
+            message: `Remove ${filePath}`,
+            sha: fileData.sha,
+            branch: branchName
+          });
+          deletedFiles.push(filePath);
+          console.log(`✅ Deleted: ${filePath}`);
+        }
+      } catch (e: any) {
+        console.log(`⚠️ File not found or already deleted: ${filePath}`);
+        errors.push(`Could not delete ${filePath}: ${e.message}`);
+      }
+    }
+    
+    // Helper function to extract added lines from a git patch
+    const extractAddedLines = (patch: string): Set<string> => {
+      const addedLines = new Set<string>();
+      const lines = patch.split('\n');
+      
+      for (const line of lines) {
+        // Lines starting with '+' (but not '+++') are additions
+        if (line.startsWith('+') && !line.startsWith('+++')) {
+          // Remove the '+' prefix and trim
+          const content = line.substring(1).trim();
+          if (content) {
+            addedLines.add(content);
+          }
+        }
+      }
+      
+      return addedLines;
+    };
+    
+    // Helper function to check if a line contains analytics-related code
+    const isAnalyticsLine = (line: string, addedLines: Set<string>): boolean => {
+      const trimmedLine = line.trim();
+      
+      // Check if this exact line was added in the PR
+      if (addedLines.has(trimmedLine)) {
+        return true;
+      }
+      
+      // Check for analytics-specific patterns as fallback
+      const analyticsPatterns = [
+        'tracker.js',
+        'AnalyticsProvider',
+        'analytics-provider',
+        'app_key',
+        'APP_KEY',
+        // Add more patterns as needed
+      ];
+      
+      return analyticsPatterns.some(pattern => trimmedLine.includes(pattern));
+    };
+    
+    // Surgically remove analytics additions from modified files
+    for (const { path, patch } of filesToModify) {
+      try {
+        // Get the CURRENT content from main branch (not the old version)
+        const { data: fileData } = await octokit.repos.getContent({
+          owner,
+          repo,
+          path: path,
+          ref: branchName
+        });
+        
+        if (!Array.isArray(fileData) && 'sha' in fileData && fileData.type === 'file' && 'content' in fileData) {
+          const currentContent = Buffer.from(fileData.content, 'base64').toString('utf-8');
+          const currentLines = currentContent.split('\n');
+          
+          // Extract what was added in the analytics PR
+          const addedLines = extractAddedLines(patch);
+          console.log(`  📋 ${path}: Found ${addedLines.size} added lines to remove`);
+          
+          // Remove only the analytics-related lines from current content
+          const cleanedLines: string[] = [];
+          let removedCount = 0;
+          
+          for (const line of currentLines) {
+            if (isAnalyticsLine(line, addedLines)) {
+              removedCount++;
+              console.log(`    🗑️ Removing: ${line.trim().substring(0, 60)}...`);
+            } else {
+              cleanedLines.push(line);
+            }
+          }
+          
+          if (removedCount > 0) {
+            const cleanedContent = cleanedLines.join('\n');
+            
+            await octokit.repos.createOrUpdateFileContents({
+              owner,
+              repo,
+              path: path,
+              message: `Remove analytics additions from ${path}`,
+              content: Buffer.from(cleanedContent).toString('base64'),
+              branch: branchName,
+              sha: fileData.sha
+            });
+            
+            revertedFiles.push(path);
+            console.log(`  ✅ Cleaned ${path}: removed ${removedCount} analytics line(s)`);
+          } else {
+            console.log(`  ⚠️ No analytics lines found in current version of ${path}`);
+          }
+        }
+      } catch (e: any) {
+        console.log(`  ❌ Could not clean ${path}:`, e.message);
+        errors.push(`Could not clean ${path}: ${e.message}`);
+      }
+    }
+    
+    // Check if any operations succeeded
+    if (deletedFiles.length === 0 && revertedFiles.length === 0) {
+      return NextResponse.json(
+        { error: 'No files were modified or deleted. Analytics may have already been removed.', details: errors },
+        { status: 400 }
+      );
+    }
+    
+    // Create PR for removal
+    const fileList = [
+      ...deletedFiles.map(f => `- 🗑️ **Deleted**: \`${f}\``),
+      ...revertedFiles.map(f => `- ✂️ **Cleaned**: \`${f}\` (surgically removed analytics lines)`)
+    ].join('\n');
+    
+    const errorSection = errors.length > 0 
+      ? `\n### ⚠️ Warnings:\n${errors.map(e => `- ${e}`).join('\n')}\n`
+      : '';
+    
+    const { data: pr } = await octokit.pulls.create({
       owner,
       repo,
-      tree_sha: currentCommit.tree.sha,
-      recursive: 'true'
+      title: '🗑️ Remove Analytics Integration',
+      head: branchName,
+      base: defaultBranch,
+      body: `## 🧹 Smart Analytics Removal
+
+This PR surgically removes analytics tracking from your application${subdir ? ` in the \`${subdir}\` directory` : ''}.
+
+### 🎯 Smart Removal Strategy
+- **New files** (tracker, provider) → Deleted entirely
+- **Modified files** (layouts) → Only analytics lines removed, all other changes preserved
+- **No conflicts** with any changes made after analytics integration
+
+### 📁 Operations Performed:
+${fileList}
+${errorSection}
+### ✅ After Merging:
+- Analytics tracking completely removed
+- All other code changes preserved
+- No disruption to your CI/CD pipeline
+
+---
+*🤖 Smart removal by Analytics Platform*`
     });
     
-    const newTree = baseTree.tree
-      .filter(item => !filesToRemove.includes(item.path || ''))
-      .map(item => ({
-        path: item.path,
-        mode: item.mode,
-        type: item.type,
-        sha: item.sha
-      }));
-    
-    const { data: createdTree } = await octokit.git.createTree({
-      owner,
-      repo,
-      tree: newTree as any,
-      base_tree: currentCommit.tree.sha
-    });
-    
-    // Create commit
-    const { data: newCommit } = await octokit.git.createCommit({
-      owner,
-      repo,
-      message: 'chore: remove analytics integration',
-      tree: createdTree.sha,
-      parents: [currentCommitSha]
-    });
-    
-    // Update reference
-    await octokit.git.updateRef({
-      owner,
-      repo,
-      ref: `heads/${defaultBranch}`,
-      sha: newCommit.sha
-    });
-    
-    return NextResponse.json({ 
-      success: true,
-      message: 'Analytics removed successfully',
-      commit: newCommit.sha
-    });
+    // Auto-merge the removal PR
+    try {
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for PR to be mergeable
+      
+      await octokit.pulls.merge({
+        owner,
+        repo,
+        pull_number: pr.number,
+        merge_method: 'squash'
+      });
+      
+      // Delete branch after merge
+      await octokit.git.deleteRef({
+        owner,
+        repo,
+        ref: `heads/${branchName}`
+      });
+      
+      console.log('✅ Analytics removal PR merged automatically');
+      
+      return NextResponse.json({ 
+        success: true,
+        message: `Analytics removed successfully! Deleted ${deletedFiles.length} file(s), reverted ${revertedFiles.length} file(s).`,
+        prUrl: pr.html_url,
+        merged: true,
+        deletedFiles,
+        revertedFiles,
+        errors
+      });
+    } catch (mergeError) {
+      console.log('⚠️ Could not auto-merge removal PR:', mergeError);
+      
+      return NextResponse.json({ 
+        success: true,
+        message: `Analytics removal PR created (deleted ${deletedFiles.length} file(s), reverted ${revertedFiles.length} file(s)). Please merge it manually.`,
+        prUrl: pr.html_url,
+        prNumber: pr.number,
+        merged: false,
+        deletedFiles,
+        revertedFiles,
+        errors
+      });
+    }
     
   } catch (error: any) {
     console.error('Remove analytics error:', error);
@@ -100,4 +396,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

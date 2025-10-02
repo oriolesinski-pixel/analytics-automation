@@ -79,15 +79,23 @@ export default async function ingestRoutes(app: FastifyInstance) {
       const { app_key, events } = validation.data!;
 
       // Process and normalize events
-      const processedEvents: AnalyticsEvent[] = events.map(event => ({
-        id: event.id || crypto.randomUUID(),
+      const processedEvents = events.map(event => ({
+        id: event.id ?? crypto.randomUUID(),
         event_type: event.event_type.toUpperCase(),
         app_key: event.app_key, // Already merged in pre-processing
         user_id: event.user_id,
         session_id: event.session_id,
         ts: event.ts > 9999999999 ? event.ts : event.ts * 1000, // Convert to ms if needed
         data: event.data || {},
-      }));
+      })) as Array<{
+        id: string;
+        event_type: string;
+        app_key: string;
+        user_id: string;
+        session_id: string;
+        ts: number;
+        data: Record<string, any>;
+      }>;
 
       // Insert into database
       const result = await insertEvents(processedEvents);

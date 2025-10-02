@@ -548,6 +548,17 @@ export default function AnalyticsDashboard() {
                                 ))}
                             </div>
 
+                            <a
+                                href="/events"
+                                className="inline-flex items-center px-4 py-2 border border-green-300 rounded-md shadow-sm text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
+                            >
+                                <Activity className="h-4 w-4 mr-2" />
+                                <span className="flex items-center gap-2">
+                                    Live Events
+                                    <span className="inline-flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
+                                </span>
+                            </a>
+
                             <button
                                 onClick={handleRefresh}
                                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"

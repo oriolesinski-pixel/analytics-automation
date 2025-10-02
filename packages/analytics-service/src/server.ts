@@ -117,7 +117,7 @@ async function start() {
 
     // NEW: Register app (upsert - create or update)
     app.post('/apps/register', async (req, reply) => {
-        const { app_key, name, domain, repo_id, github_repo, setup_status } = req.body as any;
+        const { app_key, name, domain, repo_id, repo_owner, repo_name, github_repo } = req.body as any;
 
         if (!app_key || !name) {
             return reply.code(400).send({ ok: false, error: 'app_key and name are required' });
@@ -138,8 +138,6 @@ async function start() {
                     name,
                     domain: domain || `${app_key}.localhost`,
                     repo_id,
-                    github_repo,
-                    setup_status: setup_status || 'registered',
                     updated_at: new Date().toISOString()
                 })
                 .eq('app_key', app_key)
@@ -190,8 +188,6 @@ async function start() {
             name,
             domain: domain || `${app_key}.localhost`,
             repo_id: finalRepoId || '1a8cdd0b-1150-4806-b1d0-2fcbca7f19d7', // fallback to demo repo
-            github_repo,
-            setup_status: setup_status || 'registered',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
         };
@@ -216,7 +212,7 @@ async function start() {
 
     // NEW: Update app (for status updates, PR info, etc)
     app.post('/apps/update', async (req, reply) => {
-        const { app_key, setup_status, pr_url, pr_number, domain } = req.body as any;
+        const { app_key, pr_url, pr_number, domain } = req.body as any;
 
         if (!app_key) {
             return reply.code(400).send({ ok: false, error: 'app_key is required' });
@@ -226,7 +222,6 @@ async function start() {
             updated_at: new Date().toISOString()
         };
 
-        if (setup_status !== undefined) updateData.setup_status = setup_status;
         if (pr_url !== undefined) updateData.pr_url = pr_url;
         if (pr_number !== undefined) updateData.pr_number = pr_number;
         if (domain !== undefined) updateData.domain = domain;
@@ -245,7 +240,7 @@ async function start() {
             return reply.code(500).send({ ok: false, error: error.message });
         }
 
-        console.log(`✅ Updated app ${app_key} status to: ${setup_status || 'updated'}`);
+        console.log(`✅ Updated app ${app_key}`);
         return reply.send({
             ok: true,
             app: updatedApp

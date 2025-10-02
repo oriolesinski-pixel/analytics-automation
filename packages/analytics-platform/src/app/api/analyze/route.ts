@@ -16,7 +16,7 @@ const supabase = createClient(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { repoId, repoName, repoOwner, defaultBranch } = body;
+    const { repoId, repoName, repoOwner, defaultBranch, subdir } = body;
 
     // Get GitHub token from cookies
     const cookieStore = cookies();
@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
     console.log('=================================');
     console.log(`Repository: ${repoOwner}/${repoName}`);
     console.log(`Branch: ${defaultBranch || 'main'}`);
+    console.log(`Subdirectory: ${subdir || '(root)'}`);
     console.log(`Generated app key: ${appKey}`);
     console.log(`Using repo_id: ${dbRepoId}`);
     console.log('=================================');
@@ -75,6 +76,8 @@ export async function POST(request: NextRequest) {
         // Explicitly tell generator to clone from GitHub
         use_github: true,
         clone_url: `https://github.com/${repoOwner}/${repoName}.git`,
+        // CRITICAL: Pass the subdirectory to analyze only that path
+        subdir: subdir || null,
         // Progress callback is built into generator - no need to pass it
       })
     });
@@ -100,6 +103,11 @@ export async function POST(request: NextRequest) {
       hasTrackerCode: !!result.trackerCode,
       hasProviderCode: !!result.providerCode,
       hasEntryPoint: !!result['entry-point.js']
+    });
+    console.log('Deployment Plan:', {
+      hasDeploymentPlan: !!result.deploymentPlan,
+      framework: result.deploymentPlan?.framework || 'none',
+      filesCount: result.deploymentPlan?.files?.length || 0
     });
 
     // Parse the actual component count from the AI analysis
@@ -154,6 +162,7 @@ export async function POST(request: NextRequest) {
       totalComponents,
       estimatedEvents: result.estimatedEvents || '10K/day',
       appKey: result.appKey || appKey,
+      deploymentPlan: result.deploymentPlan  // CRITICAL: Pass through the LLM deployment plan
     };
 
     // Register the app with analytics service

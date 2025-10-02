@@ -153,6 +153,7 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
                 use_github,
                 clone_url,
                 use_local_repo,
+                subdir,
                 progress_callback
             } = req.body as any;
 
@@ -174,6 +175,7 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
             console.log('  - repo_id:', repo_id);
             console.log('  - repo_owner:', repo_owner);
             console.log('  - repo_name:', repo_name);
+            console.log('  - subdir:', subdir || '(root)');
             console.log('  - use_github:', use_github);
             console.log('  - has_github_token:', !!github_token);
             console.log('  - clone_url:', clone_url);
@@ -289,11 +291,20 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
                     }
 
                     // Set the target path for the generator
-                    targetPath = tempDir;
+                    if (subdir) {
+                        const subdirPath = path.join(tempDir, subdir);
+                        if (!fs.existsSync(subdirPath)) {
+                            throw new Error(`Subdirectory "${subdir}" not found in repository`);
+                        }
+                        targetPath = subdirPath;
+                        console.log(`  📁 Using subdirectory: ${subdir}`);
+                    } else {
+                        targetPath = tempDir;
+                    }
 
                     // Log some basic info about what was cloned
-                    const files = fs.readdirSync(tempDir);
-                    console.log(`  Files in cloned repo: ${files.length} items`);
+                    const files = fs.readdirSync(targetPath);
+                    console.log(`  Files in target path: ${files.length} items`);
                     console.log(`  Sample files: ${files.slice(0, 5).join(', ')}${files.length > 5 ? '...' : ''}`);
 
                 } catch (cloneError: any) {
@@ -402,13 +413,14 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
                 success: true,
                 app_key,
                 metadata: output.metadata,
-                files: Object.keys(output).filter(k => k !== 'metadata'),
+                files: Object.keys(output).filter(k => k !== 'metadata' && k !== 'deploymentPlan'),
                 message: `Generated ${output.metadata.eventCount} contextual events with required fields`,
                 // Include the generated outputs for the analyze route
                 eventsSchema: output['events-schema.json'],
                 uiGraph: output['ui-graph.json'],
                 trackerCode: output['tracker.js'],
                 providerCode: output['analytics-provider.tsx'],
+                deploymentPlan: output.deploymentPlan,
                 source: targetPath ? 'github_clone' : 'local_repo'
             });
 

@@ -77,6 +77,7 @@ interface Schema {
   estimatedEvents: string;
   appKey?: string;
   siteUrl?: string;
+  deploymentPlan?: any;
 }
 
 // Session storage keys
@@ -159,12 +160,31 @@ function OnboardingFlow() {
       }
     };
 
+    // Special handler for app key - handle both raw string and JSON stringified
+    const loadAppKey = () => {
+      try {
+        const item = sessionStorage.getItem(STORAGE_KEYS.APP_KEY);
+        if (!item) return '';
+        
+        // Try to parse as JSON first (old format)
+        try {
+          const parsed = JSON.parse(item);
+          return typeof parsed === 'string' ? parsed : '';
+        } catch {
+          // If JSON parse fails, treat as raw string (new format)
+          return item;
+        }
+      } catch {
+        return '';
+      }
+    };
+
     setCurrentStep(loadFromSession(STORAGE_KEYS.CURRENT_STEP, 0));
     // Removed: setSelectedRepo - replaced by selectedPath
     setGithubToken(loadFromSession(STORAGE_KEYS.GITHUB_TOKEN, ''));
     setGithubUser(loadFromSession(STORAGE_KEYS.GITHUB_USER, null));
     setSchema(loadFromSession(STORAGE_KEYS.SCHEMA, null));
-    setAppKey(loadFromSession(STORAGE_KEYS.APP_KEY, ''));
+    setAppKey(loadAppKey());
     setPrUrl(loadFromSession(STORAGE_KEYS.PR_URL, ''));
     setPrNumber(loadFromSession(STORAGE_KEYS.PR_NUMBER, null));
     setRepositories(loadFromSession(STORAGE_KEYS.REPOSITORIES, []));
@@ -204,7 +224,13 @@ function OnboardingFlow() {
 
   useEffect(() => {
     if (!isHydrated) return;
-    sessionStorage.setItem(STORAGE_KEYS.APP_KEY, JSON.stringify(appKey));
+    // Store app key as raw string, not JSON stringified
+    if (appKey) {
+      sessionStorage.setItem(STORAGE_KEYS.APP_KEY, appKey);
+      // Also store in the standard location for events page
+      sessionStorage.setItem('app_key', appKey);
+      localStorage.setItem('app_key', appKey);
+    }
   }, [appKey, isHydrated]);
 
   useEffect(() => {
@@ -588,6 +614,16 @@ const analyzeRepository = async () => {
 
     const data = await response.json();
 
+    console.log('\n📊 === ONBOARDING: RECEIVED FROM GENERATOR ===');
+    console.log('   Has deploymentPlan:', !!data.deploymentPlan);
+    console.log('   Has files array:', !!data.deploymentPlan?.files);
+    console.log('   Files array length:', data.deploymentPlan?.files?.length || 0);
+    console.log('   Framework:', data.deploymentPlan?.framework || 'none');
+    if (data.deploymentPlan?.files) {
+      console.log('   Files:', data.deploymentPlan.files.map((f: any) => `${f.action} ${f.path}`).join(', '));
+    }
+    console.log('==========================================\n');
+
     // Progress is already tracked via polling - don't override it
 
     setSchema({
@@ -601,10 +637,17 @@ const analyzeRepository = async () => {
       totalComponents: data.totalComponents || 0,
       estimatedEvents: data.estimatedEvents || '10K/day',
       appKey: data.appKey || '',
-      siteUrl: siteUrl || data.siteUrl
+      siteUrl: siteUrl || data.siteUrl,
+      deploymentPlan: data.deploymentPlan
     });
 
     setAppKey(data.appKey || '');
+
+    // Store app_key seamlessly for events dashboard
+    if (data.appKey) {
+      sessionStorage.setItem('app_key', data.appKey);
+      localStorage.setItem('app_key', data.appKey);
+    }
 
     setTimeout(() => {
       setCurrentStep(3);
@@ -629,6 +672,16 @@ const analyzeRepository = async () => {
     setError(null);
 
     try {
+      console.log('\n🚀 === ONBOARDING: SENDING TO DEPLOY ===');
+      console.log('   Has schema.deploymentPlan:', !!schema.deploymentPlan);
+      console.log('   Has files array:', !!schema.deploymentPlan?.files);
+      console.log('   Files array length:', schema.deploymentPlan?.files?.length || 0);
+      console.log('   Framework:', schema.deploymentPlan?.framework || 'none');
+      if (schema.deploymentPlan?.files) {
+        console.log('   Files:', schema.deploymentPlan.files.map((f: any) => `${f.action} ${f.path}`).join(', '));
+      }
+      console.log('========================================\n');
+
       const response = await fetch('/api/onboarding/deploy', {
         method: 'POST',
         headers: {
@@ -642,7 +695,8 @@ const analyzeRepository = async () => {
           providerCode: schema.providerCode,
           appKey: schema.appKey || appKey,
           autoMerge: autoMerge,
-          subdir: selectedPath.item.path || null
+          subdir: selectedPath.item.path || null,
+          deploymentPlan: schema.deploymentPlan
         })
       });
 
@@ -705,6 +759,12 @@ const analyzeRepository = async () => {
       sessionStorage.setItem('github_repo', selectedPath.repo.name);
       sessionStorage.setItem('github_token', githubToken);
 
+      // Store app_key for events page
+      if (schema?.appKey || appKey) {
+        sessionStorage.setItem('app_key', schema?.appKey || appKey);
+        localStorage.setItem('app_key', schema?.appKey || appKey);
+      }
+
       setTimeout(() => setCurrentStep(6), 2000);
 
     } catch (err) {
@@ -734,14 +794,17 @@ const analyzeRepository = async () => {
         body: JSON.stringify({ 
           owner: selectedPath.repo.owner.login, 
           repo: selectedPath.repo.name, 
-          token: githubToken 
+          token: githubToken,
+          subdir: selectedPath.item.path || null,
+          prNumber: prNumber || null,
+          isMerged: currentStep === 6 // If we're on step 6, the PR is merged
         })
       });
       
       const data = await response.json();
       
       if (response.ok) {
-        alert('Analytics removed successfully! Restarting onboarding...');
+        alert(data.message || 'Analytics removed successfully! Restarting onboarding...');
         // Reset the flow
         resetFlow();
       } else {
@@ -2023,7 +2086,7 @@ const analyzeRepository = async () => {
                   Analytics Now Active! 🎉
                 </h2>
                 <p className="text-lg text-gray-600 mb-8">
-                  Your analytics integration is live and collecting data from your main branch
+                  Watch live events flowing into your analytics in real-time
                 </p>
 
                 {/* Success Summary */}
@@ -2089,11 +2152,15 @@ const analyzeRepository = async () => {
 
                 <div className="flex justify-center space-x-4">
                   <button
-                    onClick={() => window.location.href = `/dashboard?app=${schema?.appKey || appKey}`}
-                    className="px-8 py-3 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                    onClick={() => {
+                      // Pass app key as URL parameter as backup
+                      const url = appKey ? `/events?app=${encodeURIComponent(appKey)}` : '/events';
+                      window.location.href = url;
+                    }}
+                    className="px-8 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
                   >
-                    <BarChart3 className="w-5 h-5 mr-2 inline" />
-                    View Analytics Dashboard
+                    <Activity className="w-5 h-5 mr-2 inline" />
+                    View Live Events
                     <ArrowRight className="inline w-5 h-5 ml-2" />
                   </button>
                 </div>

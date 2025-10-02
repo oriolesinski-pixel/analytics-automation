@@ -68,6 +68,23 @@ interface GeneratorInput {
   progressCallback?: string;
 }
 
+interface DeploymentPlan {
+  framework: string;
+  files: Array<{
+    path: string;
+    action: 'create' | 'modify';
+    content: string;
+    description: string;
+  }>;
+  instructions: string[];
+}
+
+interface DetectedImportPattern {
+  prefix: string;
+  componentsPath: string;
+  providerImport: string;
+}
+
 interface GeneratorOutput {
   'tracker.js': string;
   'events-schema.json': any;
@@ -76,6 +93,7 @@ interface GeneratorOutput {
   'analytics.types.ts': string;
   'integration-guide.md': string;
   'entry-point.js'?: string;
+  deploymentPlan?: DeploymentPlan;
   metadata: {
     generatedAt: string;
     appKey: string;
@@ -995,6 +1013,254 @@ ${codeContent}`;
   }
 
   /**
+   * Detect import pattern used in the codebase
+   */
+  private detectImportPattern(files: FileContent[]): DetectedImportPattern {
+    const allImports = files.flatMap(f => {
+      const matches = f.content.match(/import\s+(?:[\s\S]*?)\s+from\s+['"](.*)['"];/g) || [];
+      return matches.map(m => m.match(/from\s+['"](.*?)['"]/)?.[1]).filter(Boolean);
+    });
+
+    const componentImports = allImports.filter(imp => 
+      imp && (imp.includes('/components/') || imp.includes('components/'))
+    ) as string[];
+
+    let prefix = './';
+    let componentsPath = 'components';
+
+    if (componentImports.some(i => i?.startsWith('@/app/components'))) {
+      prefix = '@/';
+      componentsPath = 'app/components';
+    } else if (componentImports.some(i => i?.startsWith('@/components'))) {
+      prefix = '@/';
+      componentsPath = 'components';
+    } else if (files.some(f => f.path.startsWith('app/components'))) {
+      prefix = '@/';
+      componentsPath = 'app/components';
+    }
+
+    return { 
+      prefix, 
+      componentsPath, 
+      providerImport: `${prefix}${componentsPath}/AnalyticsProvider` 
+    };
+  }
+
+  /**
+   * Detect framework from file structure
+   */
+  private detectFrameworkFromStructure(files: FileContent[]): string {
+    const paths = files.map(f => f.path);
+    if (paths.some(p => p.match(/app\/layout\.(tsx?|jsx?)$/))) return 'nextjs-app-router';
+    if (paths.some(p => p.match(/pages\/_app\.(tsx?|jsx?)$/))) return 'nextjs-pages-router';
+    if (paths.some(p => p.match(/src\/main\.(tsx?|jsx?)$/))) return 'vite-react';
+    return 'unknown';
+  }
+
+  /**
+   * Safely truncate content at line boundaries
+   */
+  private safeTruncate(content: string, maxChars: number): string {
+    if (content.length <= maxChars) return content;
+    const truncated = content.slice(0, maxChars);
+    const lastNewline = truncated.lastIndexOf('\n');
+    if (lastNewline > maxChars * 0.8) {
+      return truncated.slice(0, lastNewline) + '\n// ... (truncated)';
+    }
+    return truncated + '\n// ... (truncated)';
+  }
+
+  /**
+   * Create fallback deployment plan when LLM analysis isn't possible
+   */
+  private createFallbackPlan(
+    files: FileContent[],
+    trackerCode: string,
+    providerCode: string
+  ): DeploymentPlan {
+    const framework = this.detectFrameworkFromStructure(files);
+    const importPattern = this.detectImportPattern(files);
+
+    return {
+      framework,
+      files: [
+        { 
+          path: 'public/tracker.js', 
+          action: 'create', 
+          content: trackerCode, 
+          description: 'Create tracker' 
+        },
+        { 
+          path: importPattern.componentsPath + '/AnalyticsProvider.tsx', 
+          action: 'create', 
+          content: providerCode, 
+          description: 'Create provider' 
+        }
+      ],
+      instructions: [
+        'Manual setup required',
+        'Add <script src="/tracker.js" defer></script> to layout',
+        'Import and wrap with <AnalyticsProvider>'
+      ]
+    };
+  }
+
+  /**
+   * Generate deployment plan using LLM to analyze and modify layout files
+   */
+  private async generateDeploymentPlan(
+    input: GeneratorInput,
+    trackerCode: string,
+    providerCode: string
+  ): Promise<DeploymentPlan> {
+    console.log('\n🚀 === generateDeploymentPlan CALLED ===');
+    console.log('   Input files:', input.files?.length || 0);
+    
+    if (!input.files || input.files.length === 0) {
+      console.log('❌ No files provided, using fallback');
+      return this.createFallbackPlan([], trackerCode, providerCode);
+    }
+
+    const importPattern = this.detectImportPattern(input.files);
+    const framework = this.detectFrameworkFromStructure(input.files);
+
+    const layoutCandidates = input.files.filter(f => 
+      f.path.includes('app/layout.') || f.path.includes('_app.')
+    );
+
+    if (layoutCandidates.length === 0) {
+      return this.createFallbackPlan(input.files, trackerCode, providerCode);
+    }
+
+    const primaryLayout = layoutCandidates[0];
+    const safeContent = this.safeTruncate(primaryLayout.content, 30000);
+
+    console.log('🤖 Calling LLM to generate deployment plan...');
+    console.log('   Framework:', framework);
+    console.log('   Layout file:', primaryLayout.path);
+    console.log('   Import pattern:', importPattern.providerImport);
+    console.log('   Content length:', safeContent.length, 'chars');
+
+    try {
+      const response = await this.anthropic.messages.create({
+        model: "claude-3-5-haiku-20241022",
+        max_tokens: 8192,
+        temperature: 0.1,
+        system: "You are a code modification assistant. Return ONLY the modified code file, with NO markdown, NO JSON, NO explanations. Just the raw code.",
+        messages: [{
+          role: "user",
+          content: `Modify this ${framework} layout file to integrate analytics tracking.
+
+REQUIRED CHANGES:
+1. Add this import at the top with other imports:
+   import AnalyticsProvider from '${importPattern.providerImport}';
+
+2. If there's a <script src="/tracker.js" defer></script> tag in <head>, preserve it exactly
+
+3. Wrap the ENTIRE <body> content with <AnalyticsProvider>:
+   <body>
+     <AnalyticsProvider>
+       {/* all existing body content */}
+     </AnalyticsProvider>
+   </body>
+
+CRITICAL:
+- Preserve ALL existing imports, components, code, and styling
+- DO NOT modify any existing logic
+- DO NOT remove any existing providers or wrappers  
+- Add AnalyticsProvider as the OUTERMOST wrapper inside <body>
+- Return ONLY the complete modified file code (no markdown, no JSON, no explanation)
+
+Layout file to modify:
+${safeContent}`
+        }]
+      });
+
+      console.log('✅ LLM responded successfully');
+      const content = response.content[0].type === 'text' ? response.content[0].text : '';
+      console.log('   Response length:', content.length, 'chars');
+      console.log('   Response preview:', content.substring(0, 200));
+      
+      // Clean up any potential markdown formatting
+      let modifiedCode = content.trim();
+      
+      // Remove markdown code blocks if present
+      const codeBlockMatch = modifiedCode.match(/```(?:typescript|tsx|javascript|jsx)?\s*\n([\s\S]*?)\n```/);
+      if (codeBlockMatch) {
+        modifiedCode = codeBlockMatch[1];
+        console.log('   Stripped markdown code block');
+      }
+      
+      console.log('   Modified code length:', modifiedCode.length, 'chars');
+
+      // Validate the modified code has required elements
+      const file = { content: modifiedCode, path: primaryLayout.path, action: 'modify' };
+        
+      // Strict validation: check for actual import statement
+      const hasImport = /import\s+(?:\w+\s*,\s*)?\{?\s*AnalyticsProvider\s*\}?\s+from\s+['"][^'"]+['"]/.test(file.content) ||
+                       /import\s+AnalyticsProvider\s+from\s+['"][^'"]+['"]/.test(file.content);
+      const hasScript = file.content.includes('tracker.js');
+      const hasWrapper = file.content.includes('<AnalyticsProvider');
+      const hasClosingTag = file.content.includes('</AnalyticsProvider>');
+
+      console.log('🔍 LLM Response Validation:', {
+        hasImport,
+        hasScript,
+        hasWrapper,
+        hasClosingTag,
+        importPattern: importPattern.providerImport
+      });
+
+      if (hasImport && hasWrapper && hasClosingTag) {
+        console.log('✅ LLM deployment plan validation passed!');
+        return {
+          framework: framework,
+          files: [
+            { 
+              path: 'public/tracker.js', 
+              action: 'create', 
+              content: trackerCode, 
+              description: 'Create tracker' 
+            },
+            { 
+              path: importPattern.componentsPath + '/AnalyticsProvider.tsx', 
+              action: 'create', 
+              content: providerCode, 
+              description: 'Create provider' 
+            },
+            {
+              path: primaryLayout.path,
+              action: 'modify',
+              content: modifiedCode,
+              description: 'Add AnalyticsProvider integration'
+            }
+          ],
+          instructions: []
+        };
+      } else {
+        console.error('❌ LLM validation failed:', {
+          hasImport,
+          hasScript,
+          hasWrapper,
+          hasClosingTag,
+          contentPreview: file.content.substring(0, 500)
+        });
+      }
+
+      throw new Error('Invalid LLM response - missing required elements');
+    } catch (error: any) {
+      console.error('\n❌ === LLM DEPLOYMENT PLAN FAILED ===');
+      console.error('   Error type:', error.constructor.name);
+      console.error('   Error message:', error.message);
+      if (error.stack) {
+        console.error('   Stack trace:', error.stack.split('\n').slice(0, 3).join('\n'));
+      }
+      console.error('   Using fallback plan instead\n');
+      return this.createFallbackPlan(input.files, trackerCode, providerCode);
+    }
+  }
+
+  /**
    * Generate implementation with AI-driven insights
    */
   private async generateImplementation(
@@ -1007,8 +1273,15 @@ ${codeContent}`;
     // Extract entry point file
     const entryPoint = await this.extractEntryPoint(input);
 
+    // Generate tracker and provider code
+    const trackerCode = this.generateAIEnhancedTracker(input.appKey, backend, analysis);
+    const providerCode = this.generateProvider(input.appKey);
+
+    // Generate LLM-driven deployment plan
+    const deploymentPlan = await this.generateDeploymentPlan(input, trackerCode, providerCode);
+
     const output: GeneratorOutput = {
-      'tracker.js': this.generateAIEnhancedTracker(input.appKey, backend, analysis),
+      'tracker.js': trackerCode,
       'events-schema.json': {
         base_fields: {
           id: { type: 'string', format: 'uuid', source: 'generated' },
@@ -1027,9 +1300,10 @@ ${codeContent}`;
         ai_patterns: analysis.behaviors.patterns
       },
       'ui-graph.json': analysis.uiGraph,
-      'analytics-provider.tsx': this.generateProvider(input.appKey),
+      'analytics-provider.tsx': providerCode,
       'analytics.types.ts': this.generateTypes(events),
       'integration-guide.md': this.generateIntegrationGuide(input.appKey, events, analysis),
+      deploymentPlan,
       metadata: {
         generatedAt: new Date().toISOString(),
         appKey: input.appKey,
@@ -1039,6 +1313,10 @@ ${codeContent}`;
     };
 
     // Add entry point if found
+    if (entryPoint) {
+      output['entry-point.js'] = entryPoint.content;
+      output.metadata.entryPointFile = entryPoint.filename;
+    }
 
     return output;
   }

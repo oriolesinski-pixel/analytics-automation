@@ -175,5 +175,3 @@ trap 'echo -e "\n${YELLOW}Stopping services...${NC}"; kill $SERVICE_PID $GENERAT
 
 # Keep script running
 wait
-
-s
