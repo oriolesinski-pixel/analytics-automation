@@ -7,12 +7,12 @@ import analyticsRoutes from './routes/analytics';
 import eventsRoutes from './routes/events';
 import healthRoutes from './routes/health';
 import selfcheck from "./selfcheck";
-import deployRoutes from './routes/deploy';
-import mergeRoutes from './routes/merge';
+// import deployRoutes from './routes/deploy'; // Temporarily disabled - Octokit ESM issue
+// import mergeRoutes from './routes/merge'; // Temporarily disabled - may depend on deploy
 import crypto from 'crypto';
 
 const app = Fastify({ logger: true });
-const PORT = Number(process.env.ANALYTICS_PORT || 8082);
+const PORT = Number(process.env.PORT || process.env.ANALYTICS_PORT || 8082);
 
 const supabase = createClient(
     process.env.SUPABASE_URL!,
@@ -428,8 +428,8 @@ async function start() {
     await app.register(ingestRoutes);
     await app.register(selfcheck);
     await app.register(analyticsRoutes);
-    await app.register(deployRoutes);
-    await app.register(mergeRoutes);
+    // await app.register(deployRoutes); // Temporarily disabled
+    // await app.register(mergeRoutes); // Temporarily disabled
 
 
     await app.listen({ port: PORT, host: '0.0.0.0' });

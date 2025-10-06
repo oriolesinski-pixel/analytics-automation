@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
                 repo_id: repoId,
                 app_key: appKey,
                 domain: siteUrl || `${repoName}.vercel.app`,
-                backend_url: 'http://localhost:8082/ingest/analytics',
+                backend_url: process.env.ANALYTICS_BACKEND_URL || 'https://analytics-service-production-0f0c.up.railway.app/ingest/analytics',
                 repo_name: repoName,
                 repo_owner: repoOwner,
                 default_branch: defaultBranch || 'main',

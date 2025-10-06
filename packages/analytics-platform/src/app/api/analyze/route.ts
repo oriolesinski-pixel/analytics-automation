@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         github_repo_id: repoId, // Pass the original GitHub ID for progress tracking
         app_key: appKey,
         domain: `${repoName}.example.com`,
-        backend_url: process.env.ANALYTICS_BACKEND_URL || 'http://localhost:8082/ingest/analytics',
+        backend_url: process.env.ANALYTICS_BACKEND_URL || 'https://analytics-service-production-0f0c.up.railway.app/ingest/analytics',
         sample_routes: ['/'],
         // Include repo information for cloning
         repo_name: repoName,

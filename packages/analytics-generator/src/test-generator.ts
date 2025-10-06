@@ -174,7 +174,7 @@ async function runGenerator() {
         appName: appName,
         repoId: appName,  // Use same name for repoId
         appKey: `${appName}-${Date.now()}`,  // Add timestamp for uniqueness
-        backendUrl: process.env.BACKEND_URL || 'http://localhost:8082/ingest/analytics',
+        backendUrl: process.env.BACKEND_URL || 'https://analytics-service-production-0f0c.up.railway.app/ingest/analytics',
         domain: process.env.DOMAIN || `https://${appName}.vercel.app`,
         targetPath: targetPath
     };

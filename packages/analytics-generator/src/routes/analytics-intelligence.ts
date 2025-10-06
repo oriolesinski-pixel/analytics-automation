@@ -14,6 +14,9 @@ const supabase = createClient(
     { auth: { persistSession: false } }
 );
 
+// Default backend URL configuration
+const DEFAULT_BACKEND_URL = process.env.ANALYTICS_BACKEND_URL || 'https://analytics-service-production-0f0c.up.railway.app/ingest/analytics';
+
 // Enhanced progress storage with 10-step tracking
 interface ProgressEntry {
     message: string;
@@ -374,7 +377,7 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
                 repoId: targetPath || actualRepoId,
                 appKey: app_key,
                 domain: domain || 'localhost:3000',
-                backendUrl: backend_url || 'http://localhost:8082/ingest/analytics',
+                backendUrl: backend_url || DEFAULT_BACKEND_URL,
                 frameworks,
                 businessContext: business_context,
                 sample_routes,

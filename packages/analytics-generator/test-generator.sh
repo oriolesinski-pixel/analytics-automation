@@ -36,7 +36,7 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key_here
 KEEP_LOCAL_COPY=true
 
 # Optional: Custom backend URL
-ANALYTICS_BACKEND_URL=http://localhost:8082/ingest/analytics
+ANALYTICS_BACKEND_URL=https://analytics-service-production-0f0c.up.railway.app/ingest/analytics
 
 # Node environment
 NODE_ENV=development

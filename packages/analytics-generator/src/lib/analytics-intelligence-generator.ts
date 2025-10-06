@@ -32,7 +32,8 @@ const CONFIG = {
   EXAMPLES_DIR: '/Users/oriolesinski/analytics-automation/examples',
   MAX_FILES: 50,
   MAX_FILE_CONTENT_LENGTH: 5000,
-  LLM_MAX_TOKENS: 4096
+  LLM_MAX_TOKENS: 4096,
+  DEFAULT_BACKEND_URL: process.env.ANALYTICS_BACKEND_URL || 'https://analytics-service-production-0f0c.up.railway.app/ingest/analytics'
 };
 
 // Required base fields that MUST be in every event
@@ -1458,7 +1459,13 @@ ${safeContent}`
     events: EventSchema[],
     analysis: ProgressiveAnalysis
   ): Promise<GeneratorOutput> {
-    const backend = input.backendUrl || 'http://localhost:8082/ingest/analytics';
+    const backend = input.backendUrl || CONFIG.DEFAULT_BACKEND_URL;
+    console.log('🔍 BACKEND URL DEBUG:', {
+      inputBackendUrl: input.backendUrl,
+      envVariable: process.env.ANALYTICS_BACKEND_URL,
+      configDefault: CONFIG.DEFAULT_BACKEND_URL,
+      finalBackend: backend
+    });
 
     // Extract entry point file
     const entryPoint = await this.extractEntryPoint(input);
@@ -1656,13 +1663,12 @@ ${safeContent}`
   // ============ MAIN ANALYTICS TRACKER ============
   class AnalyticsTracker {
     constructor() {
-      // 🎯 LOCAL DEVELOPMENT ENDPOINT
-      // This tracker connects to the locally-running analytics service for development.
+      // 🎯 ANALYTICS ENDPOINT
+      // This tracker connects to the analytics service.
       // Each app is identified by its unique app_key.
-      // For production deployments, update this to your production analytics service URL.
       this.config = {
         appKey: '${appKey}',
-        endpoint: 'http://localhost:8082/ingest/analytics',
+        endpoint: '${endpoint}',
         batchSize: 10,
         flushInterval: 30000
       };
