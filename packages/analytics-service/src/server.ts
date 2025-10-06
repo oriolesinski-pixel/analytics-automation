@@ -23,7 +23,31 @@ const supabase = createClient(
 async function start() {
     // Register CORS FIRST - before any routes
     await app.register(require('@fastify/cors'), {
-        origin: '*', // Allow all origins for SSE and analytics ingestion
+        origin: (origin: string | undefined, callback: (err: Error | null, allow: boolean) => void) => {
+            // Allow server-to-server requests (no origin header)
+            if (!origin) {
+                return callback(null, true);
+            }
+
+            // Allow localhost (any port) for development
+            if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+                return callback(null, true);
+            }
+
+            // Allow Vercel deployments
+            if (origin.endsWith('.vercel.app')) {
+                return callback(null, true);
+            }
+
+            // Allow Railway deployments
+            if (origin.endsWith('.railway.app')) {
+                return callback(null, true);
+            }
+
+            // Reject all other origins
+            console.warn(`🚫 CORS blocked origin: ${origin}`);
+            return callback(new Error('Not allowed by CORS'), false);
+        },
         credentials: true,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
         allowedHeaders: ['Content-Type', 'Authorization']
@@ -51,7 +75,7 @@ async function start() {
         if (repo.error) return reply.code(404).send({ ok: false, error: 'repo not found' });
 
         let query = supabase
-            .from('events')
+            .from('analytics_product_events')
             .select('*')
             .eq('repo_id', repo.data.id)
             .order('ts', { ascending: false })
@@ -310,13 +334,13 @@ async function start() {
 
         // Get event counts
         const { count: totalEvents } = await supabase
-            .from('events')
+            .from('analytics_product_events')
             .select('*', { count: 'exact', head: true })
             .eq('app_key', appKey);
 
         // Get recent events
         const { data: recentEvents } = await supabase
-            .from('events')
+            .from('analytics_product_events')
             .select('*')
             .eq('app_key', appKey)
             .order('ts', { ascending: false })
@@ -324,7 +348,7 @@ async function start() {
 
         // Get unique sessions
         const { data: sessions } = await supabase
-            .from('events')
+            .from('analytics_product_events')
             .select('session_id')
             .eq('app_key', appKey);
 
@@ -354,7 +378,7 @@ async function start() {
 
         // Insert event with app_key
         const { data: result, error } = await supabase
-            .from('events')
+            .from('analytics_product_events')
             .insert({
                 source,
                 repo_id: '1a8cdd0b-1150-4806-b1d0-2fcbca7f19d7', // Your demo repo

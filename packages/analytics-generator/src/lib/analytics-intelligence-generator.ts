@@ -495,9 +495,18 @@ For each component found:
 4. Use parent element context to create more specific selectors
 5. Only include components that actually appear in the code
 
+FRAMEWORK DETECTION HEURISTICS (use these clues from file paths and imports):
+- If you see file paths like "app/layout.tsx", "app/page.tsx" → likely "nextjs-app-router"
+- If you see file paths like "pages/_app.tsx", "pages/index.tsx" → likely "nextjs-pages-router"  
+- If you see file paths like "src/main.tsx" or "src/App.tsx" → likely "vite-react" or "create-react-app"
+- If you see imports like "from 'next/font/google'" or "import type { Metadata } from 'next'" → definitely Next.js
+- If you see "app/" directory structure with layout.tsx → specifically "nextjs-app-router"
+- If you see "pages/" directory structure → specifically "nextjs-pages-router"
+- Look at the actual file paths provided, not just the code content
+
 Also, return this EXACT JSON structure:
 {
-  "framework": "react|vue|angular|vanilla|unknown",
+  "framework": "nextjs-app-router|nextjs-pages-router|vite-react|create-react-app|vue|angular|vanilla|unknown",
   "components": [
     {
       "name": "component_name_from_code",
@@ -1058,15 +1067,59 @@ ${codeContent}`;
   }
 
   /**
-   * Safely truncate content at line boundaries
+   * Safely truncate content at line boundaries while preserving essential HTML structure
    */
   private safeTruncate(content: string, maxChars: number): string {
-    if (content.length <= maxChars) return content;
+    console.log(`📏 safeTruncate called: content.length=${content.length}, maxChars=${maxChars}`);
+    
+    if (content.length <= maxChars) {
+      console.log(`📏 Content fits within limit, returning full content`);
+      return content;
+    }
+    
+    // For layout files, ensure we include critical tags
+    const bodyOpenIndex = content.indexOf('<body');
+    const bodyCloseIndex = content.indexOf('</body>');
+    
+    console.log(`📏 Body tag positions: open=${bodyOpenIndex}, close=${bodyCloseIndex}`);
+    
+    // If file has body tags, try to include the complete body section
+    if (bodyOpenIndex !== -1 && bodyCloseIndex !== -1) {
+      const bodyEndIndex = bodyCloseIndex + 7; // Include </body>
+      
+      console.log(`📏 Body section ends at: ${bodyEndIndex} chars`);
+      
+      // For layout files, always try to include the complete body section if reasonable
+      // Most layout files are < 5000 chars, so 150k (3x 50k) is very generous
+      if (bodyEndIndex < maxChars * 3) {
+        console.log(`📏 ✅ Including full body section (${bodyEndIndex} chars < ${maxChars * 3} limit)`);
+        return content.slice(0, bodyEndIndex);
+      }
+      
+      // Body section is massive (>150k), but at least ensure opening tag is included
+      console.log(`📏 ⚠️ Body section very large (${bodyEndIndex} chars), including minimum`);
+      const bodyTagEnd = content.indexOf('>', bodyOpenIndex) + 1;
+      
+      if (bodyTagEnd > maxChars) {
+        // Body tag itself is beyond limit, expand to include it
+        console.log(`📏 Expanding to include opening <body> tag at ${bodyTagEnd}`);
+        return content.slice(0, bodyTagEnd) + '\n// ... (truncated)';
+      }
+      
+      // Body tag is within limit, truncate normally but ensure it's included
+      console.log(`📏 Body tag within limit, standard truncation`);
+    } else {
+      console.log(`📏 ⚠️ No body tags found in content`);
+    }
+    
+    // Standard truncation at line boundary
     const truncated = content.slice(0, maxChars);
     const lastNewline = truncated.lastIndexOf('\n');
     if (lastNewline > maxChars * 0.8) {
+      console.log(`📏 Truncating at line boundary: ${lastNewline} chars`);
       return truncated.slice(0, lastNewline) + '\n// ... (truncated)';
     }
+    console.log(`📏 Standard truncation at: ${maxChars} chars`);
     return truncated + '\n// ... (truncated)';
   }
 
@@ -1133,45 +1186,106 @@ ${codeContent}`;
     }
 
     const primaryLayout = layoutCandidates[0];
-    const safeContent = this.safeTruncate(primaryLayout.content, 30000);
+    
+    // Check if original content has body tags before truncation
+    if (!primaryLayout.content.includes('<body')) {
+      console.warn('⚠️ WARNING: Original layout file missing <body> tag!');
+      console.warn('   File path:', primaryLayout.path);
+      console.warn('   Content length:', primaryLayout.content.length);
+      console.warn('   This may indicate incomplete file loading');
+    }
+    
+    const safeContent = this.safeTruncate(primaryLayout.content, 50000); // Increased from 30000
 
     console.log('🤖 Calling LLM to generate deployment plan...');
     console.log('   Framework:', framework);
     console.log('   Layout file:', primaryLayout.path);
     console.log('   Import pattern:', importPattern.providerImport);
     console.log('   Content length:', safeContent.length, 'chars');
+    
+    // Debug: Content analysis before LLM call
+    console.log('🔍 DEBUG: Content preview (first 500 chars):');
+    console.log(safeContent.substring(0, 500));
+    console.log('🔍 DEBUG: Content includes <body>?', safeContent.includes('<body>'));
+    console.log('🔍 DEBUG: Content includes </body>?', safeContent.includes('</body>'));
+    console.log('🔍 DEBUG: Content includes AuthProvider?', safeContent.includes('AuthProvider'));
 
     try {
       const response = await this.anthropic.messages.create({
         model: "claude-3-5-haiku-20241022",
-        max_tokens: 8192,
+        max_tokens: 8000,  // Haiku's maximum is 8192
         temperature: 0.1,
-        system: "You are a code modification assistant. Return ONLY the modified code file, with NO markdown, NO JSON, NO explanations. Just the raw code.",
+        system: "You are a precise code editor. Make ONLY the necessary analytics changes. Preserve ALL existing code structure exactly. Return the complete file with minimal modifications.",
         messages: [{
           role: "user",
-          content: `Modify this ${framework} layout file to integrate analytics tracking.
+          content: `TASK: Add AnalyticsProvider wrapper to this ${framework} layout file.
 
-REQUIRED CHANGES:
-1. Add this import at the top with other imports:
-   import AnalyticsProvider from '${importPattern.providerImport}';
+STEP 1: Add imports at top
+Add these lines with the other imports:
+${framework === 'nextjs-app-router' ? `import Script from 'next/script';
+` : ''}import AnalyticsProvider from '${importPattern.providerImport}';
 
-2. If there's a <script src="/tracker.js" defer></script> tag in <head>, preserve it exactly
+STEP 2: Add tracker script (framework-specific)
+${framework === 'nextjs-app-router' ? 
+`For Next.js App Router, use the Script component INSIDE <body>:
+<Script src="/tracker.js" strategy="beforeInteractive" />
+Place it at the beginning of the body content, before AnalyticsProvider.` :
+`Add this inside the <head> section:
+<script src="/tracker.js" defer></script>`}
 
-3. Wrap the ENTIRE <body> content with <AnalyticsProvider>:
-   <body>
-     <AnalyticsProvider>
-       {/* all existing body content */}
-     </AnalyticsProvider>
-   </body>
+STEP 3: Wrap body content with AnalyticsProvider
+Find the <body> tag and wrap its content with <AnalyticsProvider>:
+- Locate the opening <body> tag (e.g., <body> or <body className="...">)
+${framework === 'nextjs-app-router' ? 
+`- Add <Script src="/tracker.js" strategy="beforeInteractive" /> as first element in body
+- Then add <AnalyticsProvider> wrapper around remaining content` :
+`- Add <AnalyticsProvider> right after the opening <body> tag`}
+- Keep all the original content exactly the same
+- Add </AnalyticsProvider> before the closing </body> tag
 
-CRITICAL:
-- Preserve ALL existing imports, components, code, and styling
-- DO NOT modify any existing logic
-- DO NOT remove any existing providers or wrappers  
-- Add AnalyticsProvider as the OUTERMOST wrapper inside <body>
-- Return ONLY the complete modified file code (no markdown, no JSON, no explanation)
+FRAMEWORK-SPECIFIC EXAMPLE for ${framework}:
+${framework === 'nextjs-app-router' ? `
+\`\`\`tsx
+import Script from 'next/script';
+import AnalyticsProvider from '${importPattern.providerImport}';
 
-Layout file to modify:
+export default function RootLayout({ children }) {
+  return (
+    <html>
+      <body>
+        <Script src="/tracker.js" strategy="beforeInteractive" />
+        <AnalyticsProvider>
+          {/* all existing body content */}
+        </AnalyticsProvider>
+      </body>
+    </html>
+  );
+}
+\`\`\`
+` : `
+\`\`\`tsx
+import AnalyticsProvider from '${importPattern.providerImport}';
+
+export default function Layout({ children }) {
+  return (
+    <html>
+      <head>
+        <script src="/tracker.js" defer></script>
+      </head>
+      <body>
+        <AnalyticsProvider>
+          {children}
+        </AnalyticsProvider>
+      </body>
+    </html>
+  );
+}
+\`\`\`
+`}
+
+CRITICAL: Copy the entire body content exactly as provided. Do not omit, reorder, or modify anything inside the body.
+
+Original file:
 ${safeContent}`
         }]
       });
@@ -1179,7 +1293,12 @@ ${safeContent}`
       console.log('✅ LLM responded successfully');
       const content = response.content[0].type === 'text' ? response.content[0].text : '';
       console.log('   Response length:', content.length, 'chars');
-      console.log('   Response preview:', content.substring(0, 200));
+      
+      // Debug: Raw LLM response analysis
+      console.log('🔍 DEBUG: Raw LLM response length:', content.length);
+      console.log('🔍 DEBUG: Raw LLM response preview (first 300 chars):');
+      console.log(content.substring(0, 300));
+      console.log('🔍 DEBUG: Raw response includes markdown?', content.includes('```'));
       
       // Clean up any potential markdown formatting
       let modifiedCode = content.trim();
@@ -1192,26 +1311,80 @@ ${safeContent}`
       }
       
       console.log('   Modified code length:', modifiedCode.length, 'chars');
+      
+      // Debug: Cleaned response analysis
+      console.log('🔍 DEBUG: Cleaned response length:', modifiedCode.length);
+      console.log('🔍 DEBUG: Cleaned response preview (first 300 chars):');
+      console.log(modifiedCode.substring(0, 300));
+
+      // Structure validation (framework-specific)
+      const hasTrackerScript = modifiedCode.includes('tracker.js');
+      const hasScriptComponent = modifiedCode.includes('<Script') && modifiedCode.includes("from 'next/script'");
+      const hasHead = modifiedCode.includes('<head>');
+      
+      // For Next.js App Router, Script component should be used (no head required)
+      // For other frameworks, head section with script tag should be present
+      if (framework === 'nextjs-app-router') {
+        if (!hasTrackerScript || !hasScriptComponent) {
+          console.error('❌ Next.js App Router: Missing Script component or tracker.js reference');
+          throw new Error('Generated layout missing Script component for Next.js App Router');
+        }
+      } else {
+        if (!hasHead || !hasTrackerScript) {
+          console.error('❌ Standard framework: Missing head section or tracker script');
+          throw new Error('Generated layout missing head section or tracker script');
+        }
+      }
+      
+      // Check for empty body content (critical failure)
+      const bodyContentMatch = modifiedCode.match(/<AnalyticsProvider>\s*<\/AnalyticsProvider>/);
+      if (bodyContentMatch) {
+        console.error('❌ CRITICAL: LLM generated empty AnalyticsProvider tags!');
+        console.error('   Original body content was lost during generation');
+        throw new Error('LLM generated empty body content - failing to fallback');
+      }
 
       // Validate the modified code has required elements
       const file = { content: modifiedCode, path: primaryLayout.path, action: 'modify' };
         
-      // Strict validation: check for actual import statement
-      const hasImport = /import\s+(?:\w+\s*,\s*)?\{?\s*AnalyticsProvider\s*\}?\s+from\s+['"][^'"]+['"]/.test(file.content) ||
-                       /import\s+AnalyticsProvider\s+from\s+['"][^'"]+['"]/.test(file.content);
+      // Strict validation: check for actual import statements
+      const hasProviderImport = /import\s+(?:\w+\s*,\s*)?\{?\s*AnalyticsProvider\s*\}?\s+from\s+['"][^'"]+['"]/.test(file.content) ||
+                                /import\s+AnalyticsProvider\s+from\s+['"][^'"]+['"]/.test(file.content);
+      const hasScriptImport = file.content.includes("import Script from 'next/script'");
       const hasScript = file.content.includes('tracker.js');
       const hasWrapper = file.content.includes('<AnalyticsProvider');
       const hasClosingTag = file.content.includes('</AnalyticsProvider>');
 
+      // Framework-specific validation
+      const isNextAppRouter = framework === 'nextjs-app-router';
+      const hasRequiredImports = isNextAppRouter ? (hasProviderImport && hasScriptImport) : hasProviderImport;
+
+      // Debug: Detailed validation checks
+      console.log('🔍 DEBUG: Validation checks:');
+      console.log({
+        framework,
+        hasProviderImport: /import.*AnalyticsProvider/.test(modifiedCode),
+        hasProviderImportStrict: hasProviderImport,
+        hasScriptImport: hasScriptImport,
+        hasScript: modifiedCode.includes('tracker.js'),
+        hasScriptComponent: modifiedCode.includes('<Script'),
+        hasWrapper: modifiedCode.includes('<AnalyticsProvider'),
+        hasClosingTag: modifiedCode.includes('</AnalyticsProvider>'),
+        hasHead: modifiedCode.includes('<head>'),
+        hasBody: modifiedCode.includes('<body>')
+      });
+
       console.log('🔍 LLM Response Validation:', {
-        hasImport,
+        hasRequiredImports,
+        hasProviderImport,
+        hasScriptImport: isNextAppRouter ? hasScriptImport : 'N/A',
         hasScript,
         hasWrapper,
         hasClosingTag,
         importPattern: importPattern.providerImport
       });
 
-      if (hasImport && hasWrapper && hasClosingTag) {
+      if (hasRequiredImports && hasWrapper && hasClosingTag) {
         console.log('✅ LLM deployment plan validation passed!');
         return {
           framework: framework,
@@ -1239,7 +1412,10 @@ ${safeContent}`
         };
       } else {
         console.error('❌ LLM validation failed:', {
-          hasImport,
+          framework,
+          hasRequiredImports,
+          hasProviderImport,
+          hasScriptImport: isNextAppRouter ? hasScriptImport : 'N/A (not required)',
           hasScript,
           hasWrapper,
           hasClosingTag,
@@ -1247,15 +1423,29 @@ ${safeContent}`
         });
       }
 
-      throw new Error('Invalid LLM response - missing required elements');
+      throw new Error(`Invalid LLM response - missing required elements for ${framework}`);
     } catch (error: any) {
       console.error('\n❌ === LLM DEPLOYMENT PLAN FAILED ===');
       console.error('   Error type:', error.constructor.name);
       console.error('   Error message:', error.message);
+      
+      // Debug: Detailed error information
+      console.error('🔍 DEBUG: Error details:', {
+        name: error.name,
+        message: error.message,
+        status: error.status,
+        statusText: error.statusText,
+        type: error.type
+      });
+      
       if (error.stack) {
-        console.error('   Stack trace:', error.stack.split('\n').slice(0, 3).join('\n'));
+        console.error('   Stack trace:');
+        console.error(error.stack.split('\n').slice(0, 5).join('\n'));
       }
-      console.error('   Using fallback plan instead\n');
+      
+      console.error('   ⚠️ LLM failed to preserve layout structure correctly');
+      console.error('   📋 Falling back to manual integration plan');
+      console.error('   → Files will be created but layout requires manual modification\n');
       return this.createFallbackPlan(input.files, trackerCode, providerCode);
     }
   }
@@ -1273,9 +1463,22 @@ ${safeContent}`
     // Extract entry point file
     const entryPoint = await this.extractEntryPoint(input);
 
+    // Detect actual framework from file structure (fallback if AI is wrong)
+    const actualFramework = input.files ? this.detectFrameworkFromStructure(input.files) : 'unknown';
+    const aiFramework = analysis.discovery.framework;
+    const aiIsCorrect = aiFramework === actualFramework;
+    
+    console.log('🔍 Framework detection in generateImplementation:', {
+      aiDiscoveryFramework: aiFramework,
+      fileStructureFramework: actualFramework,
+      aiMatchesFileStructure: aiIsCorrect,
+      usingFramework: actualFramework,
+      note: aiIsCorrect ? 'AI correctly identified framework ✓' : 'Using file structure fallback (AI needs prompt improvement)'
+    });
+
     // Generate tracker and provider code
     const trackerCode = this.generateAIEnhancedTracker(input.appKey, backend, analysis);
-    const providerCode = this.generateProvider(input.appKey);
+    const providerCode = this.generateProvider(input.appKey, actualFramework);
 
     // Generate LLM-driven deployment plan
     const deploymentPlan = await this.generateDeploymentPlan(input, trackerCode, providerCode);
@@ -1453,13 +1656,13 @@ ${safeContent}`
   // ============ MAIN ANALYTICS TRACKER ============
   class AnalyticsTracker {
     constructor() {
-      // 🎯 PRODUCTION ENDPOINT - Hardcoded by design
-      // This tracker is a runtime UMD bundle that sends events to our centralized analytics service.
-      // All customer apps point to this same endpoint - each app is identified by its unique app_key.
-      // For local testing, manually edit this line in the generated tracker.js file.
+      // 🎯 LOCAL DEVELOPMENT ENDPOINT
+      // This tracker connects to the locally-running analytics service for development.
+      // Each app is identified by its unique app_key.
+      // For production deployments, update this to your production analytics service URL.
       this.config = {
         appKey: '${appKey}',
-        endpoint: 'https://analytics-service-production.up.railway.app/ingest/analytics',
+        endpoint: 'http://localhost:8082/ingest/analytics',
         batchSize: 10,
         flushInterval: 30000
       };
@@ -2520,8 +2723,28 @@ ${safeContent}`
   }
 
 
-  private generateProvider(appKey: string): string {
-    return `import React, { createContext, useState, useEffect } from 'react';
+  private generateProvider(appKey: string, framework?: string): string {
+    // Detect if this is Next.js App Router (needs "use client" directive for React hooks)
+    // Other React frameworks don't need/support this directive
+    console.log('🔍 generateProvider called with framework:', framework);
+    
+    const frameworkLower = framework?.toLowerCase() || '';
+    const isNextAppRouter = frameworkLower.includes('nextjs-app') || 
+                           frameworkLower.includes('next.js app');
+    
+    console.log('🔍 Framework detection:', {
+      framework,
+      frameworkLower,
+      isNextAppRouter,
+      includesNextjsApp: frameworkLower.includes('nextjs-app'),
+      includesNextjsSpace: frameworkLower.includes('next.js app')
+    });
+    
+    const clientDirective = isNextAppRouter ? `'use client';\n\n` : '';
+    
+    console.log('🔍 Client directive:', clientDirective ? '"use client" will be added' : 'No "use client" directive');
+    
+    return `${clientDirective}import React, { createContext, useState, useEffect } from 'react';
 
 export const AnalyticsContext = createContext({
   appKey: '',
@@ -2529,7 +2752,7 @@ export const AnalyticsContext = createContext({
   userId: null as string | null
 });
 
-export function AnalyticsProvider({ 
+function AnalyticsProvider({ 
   children, 
   userId = null 
 }: { 
@@ -2560,7 +2783,9 @@ export function AnalyticsProvider({
       {children}
     </AnalyticsContext.Provider>
   );
-}`;
+}
+
+export default AnalyticsProvider;`;
   }
 
   private generateTypes(events: EventSchema[]): string {

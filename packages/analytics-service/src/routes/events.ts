@@ -2,6 +2,13 @@
 import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { subscribe } from '../utils/event-bus';
 import { StreamQuerySchema } from '../utils/validation';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false, autoRefreshToken: false } }
+);
 
 const eventsRoutes: FastifyPluginAsync = async (fastify) => {
   
@@ -19,6 +26,15 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
 
     const { app_key, session_id } = queryValidation.data;
 
+    // Hijack the reply to prevent Fastify from auto-closing the connection
+    reply.hijack();
+
+    // Set CORS headers (required when using hijack, as we bypass Fastify's CORS handling)
+    reply.raw.setHeader('Access-Control-Allow-Origin', request.headers.origin || '*');
+    reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+    reply.raw.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    reply.raw.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
     // Set SSE headers
     reply.raw.setHeader('Content-Type', 'text/event-stream');
     reply.raw.setHeader('Cache-Control', 'no-cache');
@@ -28,11 +44,51 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
     // Send initial connection confirmation
     reply.raw.write(`data: ${JSON.stringify({ type: 'connected', app_key, session_id })}\n\n`);
 
+    // Send recent historical events (last 50 events)
+    try {
+      let query = supabase
+        .from('analytics_product_events')
+        .select('id, event_type, app_key, user_id, session_id, ts, data')
+        .eq('app_key', app_key)
+        .order('ts', { ascending: false })
+        .limit(50);
+
+      if (session_id) {
+        query = query.eq('session_id', session_id);
+      }
+
+      const { data: historicalEvents, error: histError } = await query;
+
+      if (histError) {
+        console.error('Error fetching historical events:', histError);
+      } else if (historicalEvents && historicalEvents.length > 0) {
+        console.log(`Sending ${historicalEvents.length} historical events to client`);
+        // Send events in chronological order (oldest first)
+        historicalEvents.reverse().forEach((event, index) => {
+          try {
+            const message = { type: 'event', event };
+            const written = reply.raw.write(`data: ${JSON.stringify(message)}\n\n`);
+            if (!written) {
+              console.warn(`Backpressure detected at event ${index + 1}/${historicalEvents.length}`);
+            }
+          } catch (writeError) {
+            console.error(`Error writing event ${index + 1}:`, writeError);
+          }
+        });
+        console.log(`Finished sending ${historicalEvents.length} historical events`);
+      } else {
+        console.log('No historical events found for app_key:', app_key);
+      }
+    } catch (err) {
+      console.error('Exception fetching historical events:', err);
+    }
+
     // Subscribe to events
     const unsubscribe = subscribe(app_key, (event) => {
       try {
-        // Write event to stream
-        reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+        // Write event to stream - wrap in expected format
+        const message = { type: 'event', event };
+        reply.raw.write(`data: ${JSON.stringify(message)}\n\n`);
       } catch (err) {
         console.error('Error writing to SSE stream:', err);
       }

@@ -33,16 +33,18 @@ export default function LiveEventFeed({ appKey }: LiveEventFeedProps) {
     const eventSource = new EventSource(`${serviceUrl}/events/stream?app_key=${appKey}&_=${Date.now()}-${jitter}`);
     
     eventSource.onopen = () => {
-      console.log('SSE connection opened');
+      console.log('✅ SSE connection opened');
       setIsConnected(true);
     };
 
     eventSource.onmessage = (event) => {
       try {
+        console.log('📨 Received SSE message:', event.data.substring(0, 100));
         const data = JSON.parse(event.data);
         
         // Filter out heartbeat messages
         if (data.type === 'event') {
+          console.log('📊 Processing event:', data.event.event_type, data.event.id);
           setEvents((prev) => {
             const next = [data.event, ...prev];
             try {
@@ -54,14 +56,17 @@ export default function LiveEventFeed({ appKey }: LiveEventFeedProps) {
           });
           // Track unique event types for filter
           setEventTypes((prev) => new Set([...prev, data.event.event_type]));
+        } else if (data.type === 'connected') {
+          console.log('🔗 Connection confirmed:', data.app_key);
         }
       } catch (error) {
-        console.error('Error parsing event:', error);
+        console.error('❌ Error parsing event:', error, 'Raw data:', event.data);
       }
     };
 
     eventSource.onerror = (error) => {
-      console.error('SSE error:', error);
+      console.error('❌ SSE error:', error);
+      console.log('EventSource readyState:', eventSource.readyState);
       setIsConnected(false);
     };
 

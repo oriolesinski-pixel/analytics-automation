@@ -221,25 +221,96 @@ export async function POST(request: NextRequest) {
     };
     
     // Helper function to check if a line contains analytics-related code
-    const isAnalyticsLine = (line: string, addedLines: Set<string>): boolean => {
+    // Uses context-aware matching to avoid removing structural code
+    const isAnalyticsLine = (line: string, addedLines: Set<string>, lineIndex: number, allLines: string[]): boolean => {
       const trimmedLine = line.trim();
       
-      // Check if this exact line was added in the PR
-      if (addedLines.has(trimmedLine)) {
-        return true;
+      // Skip empty lines and very short structural lines (like single '}' or '>')
+      if (!trimmedLine || trimmedLine.length <= 2) {
+        return false;
       }
       
-      // Check for analytics-specific patterns as fallback
+      // Check for analytics-specific patterns (must contain these keywords)
       const analyticsPatterns = [
         'tracker.js',
         'AnalyticsProvider',
         'analytics-provider',
         'app_key',
         'APP_KEY',
-        // Add more patterns as needed
+        "from 'next/script'",
+        'import Script from',
       ];
       
-      return analyticsPatterns.some(pattern => trimmedLine.includes(pattern));
+      const hasAnalyticsKeyword = analyticsPatterns.some(pattern => trimmedLine.includes(pattern));
+      
+      // Only check addedLines if the line contains analytics keywords
+      // This prevents removing structural code that happens to match
+      if (hasAnalyticsKeyword && addedLines.has(trimmedLine)) {
+        return true;
+      }
+      
+      // Additional check: is this an analytics import line?
+      if (trimmedLine.startsWith('import') && hasAnalyticsKeyword) {
+        return true;
+      }
+      
+      // Check for Script component tag (Next.js specific)
+      if (trimmedLine.includes('<Script') && trimmedLine.includes('tracker.js')) {
+        return true;
+      }
+      
+      // Check for AnalyticsProvider opening tag (with or without props)
+      if (trimmedLine.match(/^<AnalyticsProvider(\s|>)/)) {
+        return true;
+      }
+      
+      // Check for AnalyticsProvider closing tag - BUT only if it's standalone
+      // and the previous/next lines suggest it's the analytics wrapper
+      if (trimmedLine === '</AnalyticsProvider>') {
+        // Look at context: check if surrounding lines suggest this is the provider wrapper
+        const prevLine = lineIndex > 0 ? allLines[lineIndex - 1].trim() : '';
+        const nextLine = lineIndex < allLines.length - 1 ? allLines[lineIndex + 1].trim() : '';
+        
+        // Only remove if it's clearly part of the analytics wrapper
+        // (e.g., near body tags or other provider-related code)
+        if (prevLine.includes('children') || nextLine.includes('</body>') || 
+            prevLine.includes('</div>') || nextLine === '</body>') {
+          return true;
+        }
+      }
+      
+      return false;
+    };
+    
+    // Helper to unwrap AnalyticsProvider while preserving content
+    const unwrapAnalyticsProvider = (content: string): string => {
+      // Find the AnalyticsProvider opening tag
+      const openingTagRegex = /<AnalyticsProvider[^>]*>/;
+      const openingMatch = content.match(openingTagRegex);
+      
+      if (!openingMatch) {
+        return content; // No provider to unwrap
+      }
+      
+      const openingIndex = openingMatch.index!;
+      const openingTag = openingMatch[0];
+      
+      // Find the matching closing tag
+      const closingTag = '</AnalyticsProvider>';
+      const closingIndex = content.lastIndexOf(closingTag);
+      
+      if (closingIndex === -1 || closingIndex <= openingIndex) {
+        console.log('  ⚠️ Could not find matching closing tag for AnalyticsProvider');
+        return content;
+      }
+      
+      // Extract content before, inside, and after the provider
+      const before = content.substring(0, openingIndex);
+      const inside = content.substring(openingIndex + openingTag.length, closingIndex);
+      const after = content.substring(closingIndex + closingTag.length);
+      
+      console.log('  ✂️ Unwrapping AnalyticsProvider wrapper');
+      return before + inside + after;
     };
     
     // Surgically remove analytics additions from modified files
@@ -254,29 +325,37 @@ export async function POST(request: NextRequest) {
         });
         
         if (!Array.isArray(fileData) && 'sha' in fileData && fileData.type === 'file' && 'content' in fileData) {
-          const currentContent = Buffer.from(fileData.content, 'base64').toString('utf-8');
+          let currentContent = Buffer.from(fileData.content, 'base64').toString('utf-8');
+          
+          // Step 1: Unwrap AnalyticsProvider (preserves content inside)
+          currentContent = unwrapAnalyticsProvider(currentContent);
+          
           const currentLines = currentContent.split('\n');
           
           // Extract what was added in the analytics PR
           const addedLines = extractAddedLines(patch);
           console.log(`  📋 ${path}: Found ${addedLines.size} added lines to remove`);
           
-          // Remove only the analytics-related lines from current content
+          // Step 2: Remove analytics-specific lines (imports, Script tags, etc.)
           const cleanedLines: string[] = [];
           let removedCount = 0;
           
-          for (const line of currentLines) {
-            if (isAnalyticsLine(line, addedLines)) {
+          for (let i = 0; i < currentLines.length; i++) {
+            const line = currentLines[i];
+            if (isAnalyticsLine(line, addedLines, i, currentLines)) {
               removedCount++;
-              console.log(`    🗑️ Removing: ${line.trim().substring(0, 60)}...`);
+              console.log(`    🗑️ Removing line ${i + 1}: ${line.trim().substring(0, 60)}...`);
             } else {
               cleanedLines.push(line);
             }
           }
           
-          if (removedCount > 0) {
-            const cleanedContent = cleanedLines.join('\n');
-            
+          // Always update if we unwrapped the provider or removed lines
+          const originalContent = Buffer.from(fileData.content, 'base64').toString('utf-8');
+          const cleanedContent = cleanedLines.join('\n');
+          const contentChanged = originalContent !== cleanedContent;
+          
+          if (contentChanged) {
             await octokit.repos.createOrUpdateFileContents({
               owner,
               repo,
@@ -288,9 +367,9 @@ export async function POST(request: NextRequest) {
             });
             
             revertedFiles.push(path);
-            console.log(`  ✅ Cleaned ${path}: removed ${removedCount} analytics line(s)`);
+            console.log(`  ✅ Cleaned ${path}: unwrapped provider and removed ${removedCount} analytics line(s)`);
           } else {
-            console.log(`  ⚠️ No analytics lines found in current version of ${path}`);
+            console.log(`  ⚠️ No analytics changes detected in current version of ${path}`);
           }
         }
       } catch (e: any) {
