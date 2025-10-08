@@ -79,18 +79,51 @@ export default async function appsRoutes(fastify: FastifyInstance) {
                 return reply.status(400).send({ error: 'app_key and name are required' });
             }
 
-            // Check if app already exists
-            const { data: existingApp } = await supabase
-                .from('apps')
-                .select('id')
-                .eq('app_key', app_key)
-                .single();
+            // Check if app already exists by github_repo (primary) or repo_id (secondary) or app_key (fallback)
+            let existingApp = null;
+            
+            if (github_repo) {
+                const { data } = await supabase
+                    .from('apps')
+                    .select('*')
+                    .eq('github_repo', github_repo)
+                    .single();
+                existingApp = data;
+                if (existingApp) {
+                    console.log(`Found existing app by github_repo: ${github_repo}`);
+                }
+            }
+            
+            if (!existingApp && repo_id) {
+                const { data } = await supabase
+                    .from('apps')
+                    .select('*')
+                    .eq('repo_id', repo_id)
+                    .single();
+                existingApp = data;
+                if (existingApp) {
+                    console.log(`Found existing app by repo_id: ${repo_id}`);
+                }
+            }
+            
+            if (!existingApp) {
+                const { data } = await supabase
+                    .from('apps')
+                    .select('*')
+                    .eq('app_key', app_key)
+                    .single();
+                existingApp = data;
+                if (existingApp) {
+                    console.log(`Found existing app by app_key: ${app_key}`);
+                }
+            }
 
             if (existingApp) {
                 // Update existing app
                 const { data: updatedApp, error: updateError } = await supabase
                     .from('apps')
                     .update({
+                        app_key,  // Update to the new app_key if different
                         name,
                         domain: domain || `${app_key}.localhost`,
                         repo_id,
@@ -98,7 +131,7 @@ export default async function appsRoutes(fastify: FastifyInstance) {
                         setup_status: setup_status || 'registered',
                         updated_at: new Date().toISOString()
                     })
-                    .eq('app_key', app_key)
+                    .eq('id', existingApp.id)
                     .select()
                     .single();
 
@@ -107,7 +140,7 @@ export default async function appsRoutes(fastify: FastifyInstance) {
                     return reply.status(500).send({ error: updateError.message });
                 }
 
-                console.log(`✅ Updated existing app: ${app_key}`);
+                console.log(`✅ Updated existing app (ID: ${existingApp.id}) with new app_key: ${app_key}`);
                 return reply.send({
                     app: updatedApp,
                     message: 'App updated successfully',

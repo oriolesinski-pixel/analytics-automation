@@ -6,6 +6,8 @@ import ingestRoutes from './routes/ingest';
 import analyticsRoutes from './routes/analytics';
 import eventsRoutes from './routes/events';
 import healthRoutes from './routes/health';
+import queryRoutes from './routes/query';
+import tilesRoutes from './routes/tiles';
 import selfcheck from "./selfcheck";
 // import deployRoutes from './routes/deploy'; // Temporarily disabled - Octokit ESM issue
 // import mergeRoutes from './routes/merge'; // Temporarily disabled - may depend on deploy
@@ -426,6 +428,8 @@ async function start() {
     await app.register(healthRoutes);
     await app.register(eventsRoutes);
     await app.register(ingestRoutes);
+    await app.register(queryRoutes);
+    await app.register(tilesRoutes);
     await app.register(selfcheck);
     await app.register(analyticsRoutes);
     // await app.register(deployRoutes); // Temporarily disabled

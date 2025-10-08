@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { ChevronRight, Github, Check, Loader2, Code2, GitBranch, BarChart3, ArrowRight, Shield, Zap, Eye, Copy, CheckCircle2, XCircle, AlertCircle, ExternalLink, Terminal, FileCode2, GitPullRequest, Activity, Plus, Key, Settings, ChevronDown, ChevronUp, Lock, Globe, Smartphone, Tablet, Monitor, BookOpen, RefreshCw, ToggleLeft, ToggleRight, Circle, Square, Layers, Home, ShoppingCart, User, Package, CreditCard, Heart, ClipboardCopy, FileSearch, Link, GitMerge, FolderOpen } from 'lucide-react';
+import { ChevronRight, Github, Check, Loader2, Code2, GitBranch, BarChart3, ArrowRight, Shield, Zap, Eye, Copy, CheckCircle2, XCircle, AlertCircle, ExternalLink, Terminal, FileCode2, GitPullRequest, Activity, Plus, Key, Settings, ChevronDown, ChevronUp, Lock, Globe, Smartphone, Tablet, Monitor, BookOpen, RefreshCw, ToggleLeft, ToggleRight, Circle, Square, Layers, Home, ShoppingCart, User, Package, CreditCard, Heart, ClipboardCopy, FileSearch, Link, GitMerge, FolderOpen, Rocket, Box, Folder, Search, Wrench, Puzzle, Map, FileText, Sparkles } from 'lucide-react';
 import { EventDetailsCollapsible, UIGraphVisualization, SitePreviewSandbox } from '@/components/onboarding/ReviewSchema';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082';
@@ -61,7 +61,7 @@ interface GitHubUser {
 
 interface AnalysisProgress {
   message: string;
-  icon: string;
+  icon: React.ComponentType<{ className?: string }>;
   timestamp?: number;
 }
 
@@ -857,16 +857,16 @@ const analyzeRepository = async () => {
 
   // Global analysis progress steps (synced with backend)
   const allProgressSteps = [
-    { step: 1, message: 'Starting unified analytics generation', icon: '🚀' },
-    { step: 2, message: 'Cloning from GitHub', icon: '📦' },
-    { step: 3, message: 'Loading project files', icon: '📁' },
-    { step: 4, message: 'Scanning file structure', icon: '🔍' },
-    { step: 5, message: 'Detecting framework', icon: '🛠️' },
-    { step: 6, message: 'Analyzing components', icon: '🧩' },
-    { step: 7, message: 'Mapping user flows', icon: '🗺️' },
-    { step: 8, message: 'Generating tracking schema', icon: '📊' },
-    { step: 9, message: 'Creating integration files', icon: '📝' },
-    { step: 10, message: 'Analysis complete!', icon: '✅' }
+    { step: 1, message: 'Starting unified analytics generation', icon: Rocket },
+    { step: 2, message: 'Cloning from GitHub', icon: Box },
+    { step: 3, message: 'Loading project files', icon: Folder },
+    { step: 4, message: 'Scanning file structure', icon: Search },
+    { step: 5, message: 'Detecting framework', icon: Wrench },
+    { step: 6, message: 'Analyzing components', icon: Puzzle },
+    { step: 7, message: 'Mapping user flows', icon: Map },
+    { step: 8, message: 'Generating tracking schema', icon: BarChart3 },
+    { step: 9, message: 'Creating integration files', icon: FileText },
+    { step: 10, message: 'Analysis complete!', icon: CheckCircle2 }
   ];
 
   // Show a loading state while hydrating from sessionStorage
@@ -1017,12 +1017,17 @@ const analyzeRepository = async () => {
                   </p>
                 </div>
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-6 text-left">
-                  <p className="text-sm text-yellow-800 font-medium mb-1">⚠️ Important: Full repo access required</p>
-                  <p className="text-xs text-yellow-700">
-                    The <code className="bg-yellow-100 px-1">repo</code> scope grants read AND write access.
-                    This is necessary to create pull requests with your analytics integration.
-                    Make sure the entire "repo" checkbox is selected, not just some sub-permissions.
-                  </p>
+                  <div className="flex items-start">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 mr-2 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm text-yellow-800 font-medium mb-1">Important: Full repo access required</p>
+                      <p className="text-xs text-yellow-700">
+                        The <code className="bg-yellow-100 px-1">repo</code> scope grants read AND write access.
+                        This is necessary to create pull requests with your analytics integration.
+                        Make sure the entire "repo" checkbox is selected, not just some sub-permissions.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Connect Button */}
@@ -1099,9 +1104,12 @@ const analyzeRepository = async () => {
                             <code className="bg-white px-2 py-1 rounded border border-gray-300 text-xs">✓ read:org</code>
                             <span className="text-xs text-gray-600">(Read organization data)</span>
                           </div>
-                          <p className="text-xs text-red-600 mt-1">
-                            ⚠️ Ensure ALL sub-permissions under "repo" are checked
-                          </p>
+                          <div className="flex items-start gap-1 mt-1">
+                            <AlertCircle className="w-3 h-3 text-red-600 flex-shrink-0 mt-0.5" />
+                            <p className="text-xs text-red-600">
+                              Ensure ALL sub-permissions under "repo" are checked
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1402,7 +1410,12 @@ const analyzeRepository = async () => {
                         </div>
                         <div className="ml-4 flex-1 pt-2">
                           <div className="flex items-center">
-                            <span className="text-lg mr-2">{progress.icon}</span>
+                            <progress.icon className={`w-4 h-4 mr-2 ${progress.message.includes('complete')
+                              ? 'text-green-600'
+                              : index === analysisProgress.length - 1
+                                ? 'text-indigo-600'
+                                : 'text-green-600'
+                              }`} />
                             <p className={`text-sm font-medium ${progress.message.includes('complete')
                               ? 'text-green-700'
                               : index === analysisProgress.length - 1
@@ -1424,11 +1437,13 @@ const analyzeRepository = async () => {
                       <>
                         {allProgressSteps
                           .filter(s => !analysisProgress.some(p => p.message === s.message))
-                          .map((step, idx, arr) => (
+                          .map((step, idx, arr) => {
+                            const IconComponent = step.icon;
+                            return (
                             <div key={`pending-${idx}`} className="flex items-start opacity-40">
                               <div className="flex flex-col items-center flex-shrink-0">
                                 <div className="w-10 h-10 rounded-full bg-gray-200 border-2 border-gray-300 flex items-center justify-center">
-                                  <span className="text-lg opacity-50">{step.icon}</span>
+                                  <IconComponent className="w-4 h-4 text-gray-500" />
                                 </div>
                                 {idx < arr.length - 1 && (
                                     <div className="w-0.5 h-8 bg-gray-300"></div>
@@ -1440,7 +1455,8 @@ const analyzeRepository = async () => {
                                 </div>
                               </div>
                             </div>
-                          ))}
+                          );
+                          })}
                       </>
                     )}
                   </div>
@@ -2082,9 +2098,12 @@ const analyzeRepository = async () => {
                 <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-green-400 to-green-600 rounded-full mb-6">
                   <CheckCircle2 className="w-10 h-10 text-white" />
                 </div>
-                <h2 className="text-3xl font-bold text-gray-900 mb-4">
-                  Analytics Now Active! 🎉
-                </h2>
+                <div className="flex items-center justify-center gap-2 mb-4">
+                  <h2 className="text-3xl font-bold text-gray-900">
+                    Analytics Now Active!
+                  </h2>
+                  <Sparkles className="w-8 h-8 text-green-600" />
+                </div>
                 <p className="text-lg text-gray-600 mb-8">
                   Watch live events flowing into your analytics in real-time
                 </p>

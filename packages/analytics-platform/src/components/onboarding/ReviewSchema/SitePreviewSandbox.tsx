@@ -230,17 +230,33 @@ export function SitePreviewSandbox({ selectedRepo, previewDevice, schema }: Site
               
               <div class="info-grid">
                 <div class="info-item">
-                  <div class="info-icon">📊</div>
+                  <div class="info-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="18" y1="20" x2="18" y2="10"></line>
+                      <line x1="12" y1="20" x2="12" y2="4"></line>
+                      <line x1="6" y1="20" x2="6" y2="14"></line>
+                    </svg>
+                  </div>
                   <div class="info-title">Smart Tracking</div>
                   <div class="info-desc">Automatic event detection</div>
                 </div>
                 <div class="info-item">
-                  <div class="info-icon">🎯</div>
+                  <div class="info-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <circle cx="12" cy="12" r="6"></circle>
+                      <circle cx="12" cy="12" r="2"></circle>
+                    </svg>
+                  </div>
                   <div class="info-title">Zero Config</div>
                   <div class="info-desc">Works out of the box</div>
                 </div>
                 <div class="info-item">
-                  <div class="info-icon">⚡</div>
+                  <div class="info-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                    </svg>
+                  </div>
                   <div class="info-title">Real-time</div>
                   <div class="info-desc">Instant analytics data</div>
                 </div>

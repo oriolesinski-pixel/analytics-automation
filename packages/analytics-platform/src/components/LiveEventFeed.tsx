@@ -27,10 +27,20 @@ export default function LiveEventFeed({ appKey }: LiveEventFeedProps) {
   useEffect(() => {
     if (!appKey || isPaused) return;
 
+    // Clear events when filter changes to avoid mixing different event types
+    setEvents([]);
+    
     // Connect to SSE endpoint
     const serviceUrl = process.env.NEXT_PUBLIC_ANALYTICS_SERVICE_URL || 'http://localhost:8082';
     const jitter = Math.floor(Math.random() * 1000);
-    const eventSource = new EventSource(`${serviceUrl}/events/stream?app_key=${appKey}&_=${Date.now()}-${jitter}`);
+    let url = `${serviceUrl}/events/stream?app_key=${appKey}&_=${Date.now()}-${jitter}`;
+    
+    // Add event_type filter if not 'all'
+    if (filterEventType !== 'all') {
+      url += `&event_type=${encodeURIComponent(filterEventType)}`;
+    }
+    
+    const eventSource = new EventSource(url);
     
     eventSource.onopen = () => {
       console.log('✅ SSE connection opened');
@@ -55,7 +65,7 @@ export default function LiveEventFeed({ appKey }: LiveEventFeedProps) {
             return next.slice(0, 100);
           });
           // Track unique event types for filter
-          setEventTypes((prev) => new Set([...prev, data.event.event_type]));
+          setEventTypes((prev) => new Set([...Array.from(prev), data.event.event_type]));
         } else if (data.type === 'connected') {
           console.log('🔗 Connection confirmed:', data.app_key);
         }
@@ -77,7 +87,7 @@ export default function LiveEventFeed({ appKey }: LiveEventFeedProps) {
       eventSource.close();
       setIsConnected(false);
     };
-  }, [appKey, isPaused]);
+  }, [appKey, isPaused, filterEventType]);
 
   const handlePauseResume = () => {
     setIsPaused(!isPaused);

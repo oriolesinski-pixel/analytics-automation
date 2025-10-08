@@ -163,6 +163,8 @@ export async function POST(request: NextRequest) {
                     app_key: appKey,
                     name: repoName,
                     domain: siteUrl || `${repoName}.vercel.app`,
+                    repo_id: repoId,
+                    github_repo: `${repoOwner}/${repoName}`,
                     repo_owner: repoOwner,
                     repo_name: repoName
                 })

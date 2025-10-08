@@ -24,7 +24,7 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    const { app_key, session_id } = queryValidation.data;
+    const { app_key, session_id, event_type } = queryValidation.data;
 
     // Hijack the reply to prevent Fastify from auto-closing the connection
     reply.hijack();
@@ -42,7 +42,7 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
     reply.raw.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
 
     // Send initial connection confirmation
-    reply.raw.write(`data: ${JSON.stringify({ type: 'connected', app_key, session_id })}\n\n`);
+    reply.raw.write(`data: ${JSON.stringify({ type: 'connected', app_key, session_id, event_type })}\n\n`);
 
     // Send recent historical events (last 50 events)
     try {
@@ -55,6 +55,10 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (session_id) {
         query = query.eq('session_id', session_id);
+      }
+
+      if (event_type) {
+        query = query.eq('event_type', event_type);
       }
 
       const { data: historicalEvents, error: histError } = await query;
@@ -86,6 +90,11 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
     // Subscribe to events
     const unsubscribe = subscribe(app_key, (event) => {
       try {
+        // Filter by event_type if specified
+        if (event_type && event.event_type !== event_type) {
+          return; // Skip events that don't match the filter
+        }
+        
         // Write event to stream - wrap in expected format
         const message = { type: 'event', event };
         reply.raw.write(`data: ${JSON.stringify(message)}\n\n`);
@@ -108,11 +117,11 @@ const eventsRoutes: FastifyPluginAsync = async (fastify) => {
     request.raw.on('close', () => {
       clearInterval(heartbeatInterval);
       unsubscribe();
-      console.log(`SSE client disconnected: app_key=${app_key}, session_id=${session_id || 'all'}`);
+      console.log(`SSE client disconnected: app_key=${app_key}, session_id=${session_id || 'all'}, event_type=${event_type || 'all'}`);
     });
 
     // Log connection
-    console.log(`SSE client connected: app_key=${app_key}, session_id=${session_id || 'all'}`);
+    console.log(`SSE client connected: app_key=${app_key}, session_id=${session_id || 'all'}, event_type=${event_type || 'all'}`);
   });
 };
 

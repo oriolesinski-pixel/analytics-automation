@@ -54,6 +54,7 @@ export function validateIngestRequest(data: unknown): {
 export const StreamQuerySchema = z.object({
   app_key: z.string().min(1, 'app_key is required'),
   session_id: z.string().optional(),
+  event_type: z.string().optional(),
 });
 
 export type StreamQuery = z.infer<typeof StreamQuerySchema>;

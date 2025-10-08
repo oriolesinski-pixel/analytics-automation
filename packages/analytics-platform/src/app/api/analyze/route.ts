@@ -174,6 +174,8 @@ export async function POST(request: NextRequest) {
           app_key: analysisResult.appKey,
           name: repoName,
           domain: `${repoName}.example.com`,
+          repo_id: dbRepoId,
+          github_repo: `${repoOwner}/${repoName}`,
           repo_owner: repoOwner,
           repo_name: repoName
         })

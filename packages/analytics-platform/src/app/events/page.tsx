@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { Sparkles } from 'lucide-react';
 import LiveEventFeed from '@/components/LiveEventFeed';
 
 export default function EventsPage() {
@@ -97,7 +98,10 @@ export default function EventsPage() {
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto space-y-8">
         <header className="space-y-2">
-          <h1 className="text-3xl font-bold text-gray-900">🎉 Your Analytics Are Live!</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold text-gray-900">Your Analytics Are Live!</h1>
+            <Sparkles className="w-8 h-8 text-green-600" />
+          </div>
           <p className="text-gray-600">
             Watch events flow in real-time as users interact with your application.
           </p>
