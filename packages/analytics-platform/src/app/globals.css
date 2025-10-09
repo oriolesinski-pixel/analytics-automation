@@ -2,3 +2,140 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* React Grid Layout Enhancements */
+.react-grid-item {
+  transition: all 200ms ease;
+  transition-property: left, top, width, height;
+}
+
+.react-grid-item.cssTransforms {
+  transition-property: transform, width, height;
+}
+
+.react-grid-item.resizing {
+  transition: none;
+  z-index: 100;
+  will-change: width, height;
+}
+
+.react-grid-item.react-draggable-dragging {
+  transition: none;
+  z-index: 100;
+  will-change: transform;
+  opacity: 0.9 !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  cursor: grabbing !important;
+}
+
+/* Placeholder styling during drag */
+.react-grid-placeholder {
+  background: rgb(59, 130, 246) !important;
+  opacity: 0.2 !important;
+  transition-duration: 100ms;
+  z-index: 2;
+  border-radius: 0.75rem;
+  border: 2px dashed rgb(37, 99, 235);
+}
+
+/* Resize handle styling */
+.react-resizable-handle {
+  background-image: none !important;
+}
+
+.react-resizable-handle-se {
+  bottom: 4px;
+  right: 4px;
+  cursor: se-resize;
+}
+
+.react-resizable-handle-se::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid rgb(59, 130, 246);
+  border-bottom: 2px solid rgb(59, 130, 246);
+  border-radius: 0 0 4px 0;
+}
+
+/* Custom scrollbar for drag-and-drop panels */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgb(209, 213, 219);
+  border-radius: 3px;
+  transition: background 0.15s ease;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgb(156, 163, 175);
+}
+
+/* Drag and drop animations */
+.draggable-item {
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.draggable-item:hover {
+  transform: translateY(-1px);
+}
+
+.draggable-item:active {
+  cursor: grabbing !important;
+}
+
+/* Drop zone animations */
+.drop-zone {
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+/* Fade in animation for charts */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chart-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Resize handle styling */
+.resize-handle {
+  position: relative;
+  transition: background-color 0.15s ease;
+}
+
+.resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 40px;
+  background: currentColor;
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.resize-handle:hover::before {
+  opacity: 0.3;
+}

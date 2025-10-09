@@ -30,6 +30,7 @@ export default function WorkspacePage() {
   const [showAppDropdown, setShowAppDropdown] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAddToDashboard, setShowAddToDashboard] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
 
   // Fetch apps
   useEffect(() => {
@@ -65,24 +66,30 @@ export default function WorkspacePage() {
   }, [selectedApp]);
 
   const handleDeleteTile = async (tileId: string) => {
-    if (!confirm('Are you sure you want to delete this tile?')) return;
-    
     try {
+      console.log('Deleting tile:', tileId);
       await dashboardStore.deleteTile(tileId);
+      console.log('Tile deleted successfully');
+      setShowDeleteModal(null);
       // Refresh tiles
       if (selectedApp) {
-        dashboardStore.fetchSavedTiles(selectedApp);
+        await dashboardStore.fetchSavedTiles(selectedApp);
       }
     } catch (error: any) {
-      alert(`Failed to delete tile: ${error.message}`);
+      console.error('Failed to delete tile:', error);
+      alert(`Failed to delete tile: ${error.message || 'Unknown error'}`);
     }
   };
 
   const handleAddToDashboard = async (tileId: string, dashboardId: string) => {
     try {
+      console.log('Adding tile to dashboard:', { tileId, dashboardId });
       // Get tile to determine default size
       const tile = dashboardStore.savedTiles.find(t => t.id === tileId);
-      if (!tile) return;
+      if (!tile) {
+        console.error('Tile not found:', tileId);
+        return;
+      }
 
       // Default layout position
       const layout = {
@@ -95,10 +102,14 @@ export default function WorkspacePage() {
       };
 
       await dashboardStore.addTileToDashboard(dashboardId, tileId, layout);
+      console.log('Tile added successfully');
       setShowAddToDashboard(null);
-      alert('Tile added to dashboard!');
+      
+      // Redirect to dashboard in edit mode so user can position the tile
+      router.push(`/dashboards/${dashboardId}?edit=true`);
     } catch (error: any) {
-      alert(`Failed to add tile: ${error.message}`);
+      console.error('Failed to add tile:', error);
+      alert(`Failed to add tile: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -111,19 +122,21 @@ export default function WorkspacePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
-        <div className="px-6 py-4">
+        <div className="px-8 py-6">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Tiles</h1>
+          <p className="text-gray-600 mb-4">View and manage your saved analytics tiles</p>
+          
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <h1 className="text-2xl font-semibold text-gray-900">My Tiles</h1>
 
               {/* App Selector */}
               <div className="relative">
                 <button
                   onClick={() => setShowAppDropdown(!showAppDropdown)}
-                  className="flex items-center space-x-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  className="flex items-center space-x-2 px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors"
                 >
                   <span className="font-medium text-gray-700">
                     {apps.find(a => a.app_key === selectedApp)?.name || 'Select App'}
@@ -156,8 +169,8 @@ export default function WorkspacePage() {
             {/* Actions */}
             <div className="flex items-center space-x-3">
               <button
-                onClick={() => router.push('/dashboard')}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors flex items-center space-x-2"
+                onClick={() => router.push('/analytics')}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center space-x-2 font-medium"
               >
                 <Plus className="w-4 h-4" />
                 <span>Create New Tile</span>
@@ -165,7 +178,7 @@ export default function WorkspacePage() {
               
               <button
                 onClick={() => router.push('/dashboards')}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center space-x-2"
+                className="px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors flex items-center space-x-2 font-medium"
               >
                 <LayoutDashboard className="w-4 h-4" />
                 <span>Dashboards</span>
@@ -214,9 +227,13 @@ export default function WorkspacePage() {
                     <p className="text-sm text-gray-500">{tile.description}</p>
                   )}
                   <div className="flex items-center space-x-2 mt-2 text-xs text-gray-400">
-                    <span>{tile.config.measure.label}</span>
-                    <span>•</span>
-                    <span>{tile.config.chartType}</span>
+                    {tile.config?.measure?.label && (
+                      <>
+                        <span>{tile.config.measure.label}</span>
+                        <span>•</span>
+                      </>
+                    )}
+                    <span>{tile.config.chartType || 'chart'}</span>
                     {tile.config.eventType && (
                       <>
                         <span>•</span>
@@ -239,7 +256,10 @@ export default function WorkspacePage() {
                 <div className="p-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
                   <div className="flex space-x-2">
                     <button
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('Edit tile clicked:', tile.id);
                         // TODO: Load tile in TileBuilder for editing
                         router.push(`/dashboard?tile=${tile.id}`);
                       }}
@@ -250,7 +270,12 @@ export default function WorkspacePage() {
                     </button>
                     
                     <button
-                      onClick={() => setShowAddToDashboard(tile.id)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('Add to dashboard clicked:', tile.id);
+                        setShowAddToDashboard(tile.id);
+                      }}
                       className="p-2 hover:bg-indigo-100 rounded-lg transition-colors"
                       title="Add to dashboard"
                     >
@@ -258,7 +283,12 @@ export default function WorkspacePage() {
                     </button>
                     
                     <button
-                      onClick={() => handleDeleteTile(tile.id)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('Delete tile clicked:', tile.id);
+                        setShowDeleteModal(tile.id);
+                      }}
                       className="p-2 hover:bg-red-100 rounded-lg transition-colors"
                       title="Delete tile"
                     >
@@ -319,6 +349,69 @@ export default function WorkspacePage() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <DeleteConfirmationModal
+          tileName={dashboardStore.savedTiles.find(t => t.id === showDeleteModal)?.name || 'this tile'}
+          onConfirm={() => handleDeleteTile(showDeleteModal)}
+          onCancel={() => setShowDeleteModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Delete Confirmation Modal Component
+function DeleteConfirmationModal({
+  tileName,
+  onConfirm,
+  onCancel,
+}: {
+  tileName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-in fade-in duration-200">
+      <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden animate-in zoom-in-95 duration-200">
+        {/* Header with red accent */}
+        <div className="bg-gradient-to-r from-red-50 to-orange-50 px-6 py-4 border-b border-red-100">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-red-100 rounded-lg">
+              <Trash2 className="w-5 h-5 text-red-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">Delete Tile</h3>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="p-6">
+          <p className="text-gray-700 mb-2">
+            Are you sure you want to delete <span className="font-semibold text-gray-900">{tileName}</span>?
+          </p>
+          <p className="text-sm text-gray-500">
+            This action cannot be undone. The tile will be removed from all dashboards.
+          </p>
+        </div>
+
+        {/* Actions */}
+        <div className="px-6 pb-6 flex space-x-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium flex items-center justify-center space-x-2"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Delete</span>
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -11,7 +11,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082';
 
 interface TileLiveChartProps {
   tileId: string;
-  config: TileConfig;
+  config: TileConfig | any;
   appKey: string;
   showRefresh?: boolean;
   autoRefresh?: boolean; // Auto-refresh every 5 minutes
@@ -38,15 +38,23 @@ export default function TileLiveChart({
     setError(null);
 
     try {
+      // Check if this is a valid chart config
+      const tileConfig = config as TileConfig;
+      if (!tileConfig.measure) {
+        setIsLoading(false);
+        setData([]);
+        return;
+      }
+
       // Merge global filters with tile filters (unless opt-out)
       const effectiveConfig = {
-        ...config,
+        ...tileConfig,
         filters: ignoreGlobalFilters 
-          ? (config as TileConfig).filters || []
-          : [...(globalFilters || []), ...((config as TileConfig).filters || [])],
+          ? tileConfig.filters || []
+          : [...(globalFilters || []), ...(tileConfig.filters || [])],
       };
 
-      const queryRequest = buildTileQueryRequest(effectiveConfig as TileConfig, appKey);
+      const queryRequest = buildTileQueryRequest(effectiveConfig, appKey);
 
       const response = await fetch(`${API_BASE_URL}/query/tile`, {
         method: 'POST',
@@ -128,9 +136,9 @@ export default function TileLiveChart({
       
       <TileChart
         data={data}
-        chartType={config.chartType}
-        dimensions={config.dimensions}
-        measureLabel={config.measure.label}
+        chartType={(config as TileConfig).chartType || 'bar'}
+        dimensions={(config as TileConfig).dimensions || []}
+        measureLabel={(config as TileConfig).measure?.label || 'Value'}
         isLoading={isLoading}
       />
     </div>

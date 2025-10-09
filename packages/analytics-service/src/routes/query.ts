@@ -39,6 +39,112 @@ type TileQuery = z.infer<typeof TileQuerySchema>;
 
 const queryRoutes: FastifyPluginAsync = async (fastify) => {
   
+  // Raw SQL query endpoint for SQL Sandbox
+  fastify.post('/query/sql', async (request, reply) => {
+    const startTime = Date.now();
+
+    try {
+      const body = request.body as any;
+      const { query: sqlQuery, app_key, timeout = 30000 } = body;
+
+      if (!sqlQuery || typeof sqlQuery !== 'string') {
+        return reply.code(400).send({
+          ok: false,
+          error: 'SQL query is required'
+        });
+      }
+
+      if (!app_key) {
+        return reply.code(400).send({
+          ok: false,
+          error: 'app_key is required'
+        });
+      }
+
+      // Security: Strip comments and check for SELECT
+      // Remove single-line comments (--) and multi-line comments (/* */)
+      let cleanQuery = sqlQuery
+        .replace(/--[^\n]*/g, '') // Remove single-line comments
+        .replace(/\/\*[\s\S]*?\*\//g, '') // Remove multi-line comments
+        .trim()
+        .toUpperCase();
+      
+      if (!cleanQuery.startsWith('SELECT')) {
+        return reply.code(400).send({
+          ok: false,
+          error: 'Only SELECT queries are allowed'
+        });
+      }
+
+      // Security: Block dangerous keywords
+      const dangerousKeywords = ['DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'CREATE', 'TRUNCATE', 'GRANT', 'REVOKE'];
+      for (const keyword of dangerousKeywords) {
+        if (cleanQuery.includes(keyword)) {
+          return reply.code(400).send({
+            ok: false,
+            error: `Query contains forbidden keyword: ${keyword}`
+          });
+        }
+      }
+
+      console.log('Executing SQL query:', sqlQuery.substring(0, 100) + '...');
+
+      // Remove trailing semicolons (they cause syntax errors in the function)
+      const cleanSqlQuery = sqlQuery.trim().replace(/;+$/, '');
+
+      // Execute query with timeout
+      const queryPromise = supabase.rpc('execute_raw_sql', {
+        sql_query: cleanSqlQuery
+      });
+
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Query timeout')), timeout);
+      });
+
+      let result;
+      try {
+        result = await Promise.race([queryPromise, timeoutPromise]) as any;
+      } catch (error: any) {
+        if (error.message === 'Query timeout') {
+          return reply.code(408).send({
+            ok: false,
+            error: 'Query execution timed out'
+          });
+        }
+        throw error;
+      }
+
+      const { data, error } = result;
+
+      if (error) {
+        console.error('SQL execution error:', error);
+        return reply.code(500).send({
+          ok: false,
+          error: error.message || 'Query execution failed'
+        });
+      }
+
+      // The function returns a JSONB array directly
+      const resultArray = Array.isArray(data) ? data : [];
+
+      return reply.send({
+        ok: true,
+        data: resultArray,
+        metadata: {
+          total_rows: resultArray.length,
+          query_time_ms: Date.now() - startTime,
+        },
+      });
+
+    } catch (error: any) {
+      console.error('Error executing SQL query:', error);
+      return reply.code(500).send({
+        ok: false,
+        error: error.message || 'Internal server error',
+      });
+    }
+  });
+  
   fastify.post('/query/tile', async (request, reply) => {
     const startTime = Date.now();
 
@@ -494,6 +600,27 @@ function calculateMeasure(rows: any[], measure: TileQuery['measure']): number {
     
     default:
       return rows.length;
+  }
+}
+
+// Helper function to execute raw SQL directly using Supabase client
+async function executeRawSQLDirect(sqlQuery: string) {
+  // Use postgrest-js raw query capability
+  // Note: This is a fallback and should be used carefully
+  try {
+    const { data, error } = await supabase.rpc('query', {
+      query_text: sqlQuery
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    return { data, error: null };
+  } catch (err: any) {
+    // If RPC doesn't exist, we need to parse and execute using Supabase query builder
+    // For now, return error indicating RPC is needed
+    throw new Error('SQL execution requires database RPC function. Please contact administrator to set up execute_raw_sql function.');
   }
 }
 

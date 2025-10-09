@@ -41,8 +41,20 @@ export default function DashboardComposer({ params }: DashboardComposerProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [showAddTileModal, setShowAddTileModal] = useState(false);
   const [showCreateMarkdownModal, setShowCreateMarkdownModal] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [tileFilterAssignments, setTileFilterAssignments] = useState<Record<string, string[]>>({});
 
   const dashboardId = params.id;
+
+  // Check for edit mode URL parameter on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('edit') === 'true') {
+        setIsEditing(true);
+      }
+    }
+  }, []);
 
   // Fetch dashboard and tiles on mount
   useEffect(() => {
@@ -81,6 +93,14 @@ export default function DashboardComposer({ params }: DashboardComposerProps) {
     },
     [isEditing, debouncedSaveLayout]
   );
+
+  const handleDragStart = () => {
+    setIsDragging(true);
+  };
+
+  const handleDragStop = () => {
+    setIsDragging(false);
+  };
 
   const handleRemoveTile = async (tileId: string) => {
     if (!confirm('Remove this tile from the dashboard?')) return;
@@ -204,20 +224,21 @@ export default function DashboardComposer({ params }: DashboardComposerProps) {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
-        <div className="px-6 py-4">
+        <div className="px-8 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => router.push('/dashboards')}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Back to dashboards"
               >
                 <ArrowLeft className="w-5 h-5 text-gray-600" />
               </button>
               
               <div>
-                <h1 className="text-2xl font-semibold text-gray-900">{dashboard.name}</h1>
+                <h1 className="text-3xl font-bold text-gray-900">{dashboard.name}</h1>
                 {dashboard.description && (
-                  <p className="text-sm text-gray-500">{dashboard.description}</p>
+                  <p className="text-gray-600 mt-1">{dashboard.description}</p>
                 )}
               </div>
             </div>
@@ -225,8 +246,8 @@ export default function DashboardComposer({ params }: DashboardComposerProps) {
             {/* Actions */}
             <div className="flex items-center space-x-3">
               <button
-                onClick={() => router.push(`/dashboard?dashboard=${dashboardId}`)}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors flex items-center space-x-2"
+                onClick={() => router.push(`/analytics?dashboard=${dashboardId}`)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center space-x-2 font-medium"
               >
                 <Plus className="w-4 h-4" />
                 <span>Create Chart</span>
@@ -234,26 +255,34 @@ export default function DashboardComposer({ params }: DashboardComposerProps) {
 
               <button
                 onClick={() => setShowCreateMarkdownModal(true)}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors flex items-center space-x-2"
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors flex items-center space-x-2 font-medium"
               >
                 <FileText className="w-4 h-4" />
-                <span>Add Markdown</span>
+                <span>Add Text</span>
               </button>
 
               <button
                 onClick={() => setShowAddTileModal(true)}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center space-x-2"
+                className="px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors flex items-center space-x-2 font-medium"
               >
                 <Plus className="w-4 h-4" />
                 <span>Add Saved Tile</span>
               </button>
 
               <button
-                onClick={() => setIsEditing(!isEditing)}
-                className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
+                onClick={() => {
+                  setIsEditing(!isEditing);
+                  // Clean up URL when exiting edit mode
+                  if (isEditing && typeof window !== 'undefined') {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('edit');
+                    window.history.replaceState({}, '', url.toString());
+                  }
+                }}
+                className={`px-4 py-2 rounded-lg transition-all flex items-center space-x-2 font-medium ${
                   isEditing
-                    ? 'bg-green-600 hover:bg-green-700 text-white'
-                    : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                    ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
                 }`}
               >
                 {isEditing ? (
@@ -277,7 +306,56 @@ export default function DashboardComposer({ params }: DashboardComposerProps) {
       <DashboardFilterBar
         filters={dashboard.global_filters || []}
         onFiltersChange={handleGlobalFiltersChange}
+        tiles={dashboard.tiles.map(t => ({
+          tile_id: t.tile_id,
+          tile_name: t.tile_name,
+          tile_type: t.tile_type
+        }))}
+        tileFilterAssignments={tileFilterAssignments}
+        onTileFilterAssignmentsChange={setTileFilterAssignments}
       />
+
+      {/* Edit Mode Info Banner */}
+      {isEditing && (
+        <div className="mx-6 mt-6 bg-blue-50 border-2 border-blue-300 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <Edit className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="text-sm font-semibold text-blue-900 mb-1">Edit Mode Active</h4>
+              <p className="text-sm text-blue-700">
+                Drag tiles to reposition, resize using corner handles, or click the trash icon to remove. 
+                Click on filter pills above to select which tiles they apply to.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setIsEditing(false);
+                // Clean up URL when exiting edit mode
+                if (typeof window !== 'undefined') {
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete('edit');
+                  window.history.replaceState({}, '', url.toString());
+                }
+              }}
+              className="text-blue-600 hover:text-blue-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Filter Info Banner - Show when filters exist but not in edit mode */}
+      {!isEditing && (dashboard.global_filters?.length || 0) > 0 && (
+        <div className="mx-6 mt-6 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+          <div className="flex items-center gap-2">
+            <FilterIcon className="w-4 h-4 text-indigo-600" />
+            <p className="text-sm text-indigo-700">
+              <span className="font-semibold">{dashboard.global_filters?.length} filter(s) active.</span> Click filter pills to assign them to specific tiles.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Dashboard Content */}
       <div className="p-6">
@@ -292,7 +370,7 @@ export default function DashboardComposer({ params }: DashboardComposerProps) {
               </p>
               <button
                 onClick={() => setShowAddTileModal(true)}
-                className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Add Tiles
@@ -303,74 +381,79 @@ export default function DashboardComposer({ params }: DashboardComposerProps) {
           // Grid Layout
           <ResponsiveGridLayout
             className="layout"
-            layouts={gridLayouts}
+            layouts={gridLayouts as unknown as ReactGridLayout.Layouts}
             breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480 }}
             cols={{ lg: 12, md: 10, sm: 6, xs: 4 }}
             rowHeight={100}
             isDraggable={isEditing}
             isResizable={isEditing}
             onLayoutChange={handleLayoutChange}
+            onDragStart={handleDragStart}
+            onDragStop={handleDragStop}
+            onResizeStart={handleDragStart}
+            onResizeStop={handleDragStop}
             draggableHandle=".drag-handle"
           >
             {dashboard.tiles.map((tile) => (
               <div
                 key={tile.tile_id}
-                className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden"
+                className={`
+                  bg-white rounded-xl overflow-hidden transition-all duration-200
+                  ${isEditing 
+                    ? 'border-2 border-blue-300 shadow-lg hover:shadow-xl' 
+                    : 'border border-gray-200 shadow-sm hover:shadow-md'
+                  }
+                  ${isDragging ? 'opacity-40' : 'opacity-100'}
+                `}
               >
-                {/* Tile Header (Drag Handle) */}
+                {/* Tile Header - Always visible in edit mode */}
                 {isEditing && (
-                  <div className="drag-handle cursor-move bg-gray-100 px-4 py-2 border-b border-gray-200 flex items-center justify-between">
+                  <div className="drag-handle cursor-move bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b-2 border-blue-200 flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                      <GripVertical className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm font-medium text-gray-700">{tile.tile_name}</span>
+                      <GripVertical className="w-5 h-5 text-blue-600" />
+                      <div>
+                        <span className="text-sm font-semibold text-gray-900">{tile.tile_name}</span>
+                        {tile.tile_description && (
+                          <p className="text-xs text-gray-600 mt-0.5">{tile.tile_description}</p>
+                        )}
+                      </div>
                       
-                      {/* Filter Opt-Out for Chart Tiles */}
-                      {tile.tile_type !== 'markdown' && (dashboard.global_filters?.length || 0) > 0 && (
-                        <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!tile.ignore_global_filters}
-                            onChange={async (e) => {
-                              // Toggle filter application
-                              const ignore = !e.target.checked;
-                              try {
-                                await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082'}/dashboards/${dashboardId}/tiles/${tile.tile_id}/settings`, {
-                                  method: 'PUT',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ ignore_global_filters: ignore }),
-                                });
-                                // Refresh dashboard
-                                dashboardStore.fetchDashboard(dashboardId);
-                              } catch (error) {
-                                console.error('Failed to update filter setting:', error);
-                              }
-                            }}
-                            className="rounded border-gray-300"
-                          />
-                          <span>Apply filters</span>
-                        </label>
+                      {/* Filter count badge */}
+                      {tile.tile_type !== 'markdown' && (tileFilterAssignments[tile.tile_id] || []).length > 0 && (
+                        <span className="flex items-center gap-1.5 text-xs text-blue-700 bg-blue-100 px-2 py-1 rounded">
+                          <FilterIcon className="w-3 h-3" />
+                          <span className="font-medium">{(tileFilterAssignments[tile.tile_id] || []).length} filter(s)</span>
+                        </span>
                       )}
                     </div>
                     <button
                       onClick={() => handleRemoveTile(tile.tile_id)}
-                      className="p-1 hover:bg-red-100 rounded transition-colors"
+                      className="p-2 hover:bg-red-100 rounded-lg transition-colors"
+                      title="Remove tile"
                     >
                       <Trash2 className="w-4 h-4 text-red-600" />
                     </button>
                   </div>
                 )}
 
+                {/* Tile Name Badge - Shown at top-left when NOT editing */}
+                {!isEditing && (
+                  <div className="absolute top-3 left-3 z-10">
+                    <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg px-3 py-1.5 shadow-sm">
+                      <span className="text-xs font-semibold text-gray-900">{tile.tile_name}</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Tile Content */}
-                <div className={`${isEditing ? 'p-4' : 'p-6'}`}>
-                  {!isEditing && (
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-semibold text-gray-900">{tile.tile_name}</h3>
-                      {tile.tile_type !== 'markdown' && (dashboard.global_filters?.length || 0) > 0 && !tile.ignore_global_filters && (
-                        <span className="text-xs text-blue-600 flex items-center gap-1">
-                          <FilterIcon className="w-3 h-3" />
-                          Filtered
-                        </span>
-                      )}
+                <div className={`${isEditing ? 'p-4' : 'p-6'} relative`}>
+                  {/* Filter indicator badge for non-edit mode */}
+                  {!isEditing && tile.tile_type !== 'markdown' && (tileFilterAssignments[tile.tile_id] || []).length > 0 && (
+                    <div className="absolute top-3 right-3 z-10">
+                      <span className="text-xs text-blue-600 flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-full border border-blue-200">
+                        <FilterIcon className="w-3 h-3" />
+                        <span className="font-medium">{(tileFilterAssignments[tile.tile_id] || []).length} filter(s)</span>
+                      </span>
                     </div>
                   )}
                   <div className="h-full">
@@ -382,14 +465,16 @@ export default function DashboardComposer({ params }: DashboardComposerProps) {
                       />
                     ) : (
                       <TileLiveChart
-                        key={`${tile.tile_id}-${JSON.stringify(dashboard.global_filters || [])}`}
+                        key={`${tile.tile_id}-${JSON.stringify(tileFilterAssignments[tile.tile_id] || [])}`}
                         tileId={tile.tile_id}
                         config={tile.tile_config as any}
                         appKey={dashboard.app_key}
                         showRefresh={!isEditing}
                         autoRefresh={false}
-                        globalFilters={dashboard.global_filters || []}
-                        ignoreGlobalFilters={tile.ignore_global_filters || false}
+                        globalFilters={(dashboard.global_filters || []).filter(f => 
+                          (tileFilterAssignments[tile.tile_id] || []).includes(f.id)
+                        )}
+                        ignoreGlobalFilters={false}
                       />
                     )}
                   </div>
@@ -628,7 +713,7 @@ function CreateMarkdownModal({
           </button>
           <button
             onClick={handleSave}
-            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors disabled:opacity-50"
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors disabled:opacity-50 font-medium"
             disabled={isSaving}
           >
             {isSaving ? 'Saving...' : 'Save & Add to Dashboard'}

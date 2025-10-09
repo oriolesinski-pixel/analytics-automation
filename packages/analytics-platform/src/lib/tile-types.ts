@@ -4,7 +4,8 @@
 export type AggregationType = 'count' | 'count_distinct' | 'sum' | 'avg' | 'min' | 'max' | 'custom';
 export type DimensionType = 'categorical' | 'temporal' | 'numerical';
 export type FilterOperator = 'equals' | 'not_equals' | 'contains' | 'gt' | 'lt' | 'gte' | 'lte' | 'in';
-export type ChartType = 'line' | 'bar' | 'pie' | 'table' | 'number';
+export type ChartType = 'line' | 'bar' | 'pie' | 'table' | 'number' | 'funnel' | 'scatter' | 'sankey';
+export type SortDirection = 'asc' | 'desc' | 'none';
 
 export interface Measure {
   id: string;
@@ -46,6 +47,16 @@ export interface TileConfig {
   filters: Filter[];
   dateRange: DateRange;
   chartType: ChartType;
+  pivotAxis?: boolean; // Swap X and Y axis for bar/line charts
+  sortDirection?: SortDirection; // Sort data by value
+  flowSteps?: FlowStep[]; // For Sankey/flow diagrams
+}
+
+export interface FlowStep {
+  id: string;
+  label: string;
+  field: string; // e.g., 'event_type', 'data->path'
+  eventType?: string; // Optional filter for this step
 }
 
 export interface QueryResult {

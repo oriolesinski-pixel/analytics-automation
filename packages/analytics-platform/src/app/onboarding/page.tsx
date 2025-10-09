@@ -218,8 +218,31 @@ function OnboardingFlow() {
   }, [githubUser, isHydrated]);
 
   useEffect(() => {
-    if (!isHydrated) return;
-    sessionStorage.setItem(STORAGE_KEYS.SCHEMA, JSON.stringify(schema));
+    if (!isHydrated || !schema) return;
+    
+    try {
+      const schemaString = JSON.stringify(schema);
+      sessionStorage.setItem(STORAGE_KEYS.SCHEMA, schemaString);
+      localStorage.setItem(STORAGE_KEYS.SCHEMA, schemaString); // Also save to localStorage
+      
+      console.log('🔄 AUTO-SAVED SCHEMA (React effect)');
+      console.log('   - Pages:', Object.keys(schema.uiGraph?.pages || {}).length);
+      console.log('   - Components:', schema.totalComponents);
+    } catch (error: any) {
+      console.error('❌ Auto-save failed:', error);
+      
+      // If quota exceeded, try without deploymentPlan
+      if (error.name === 'QuotaExceededError') {
+        try {
+          const smallerSchema = { ...schema, deploymentPlan: undefined };
+          sessionStorage.setItem(STORAGE_KEYS.SCHEMA, JSON.stringify(smallerSchema));
+          localStorage.setItem(STORAGE_KEYS.SCHEMA, JSON.stringify(smallerSchema));
+          console.log('✅ AUTO-SAVED SCHEMA (without deployment plan)');
+        } catch (e2) {
+          console.error('❌ Even smaller schema failed:', e2);
+        }
+      }
+    }
   }, [schema, isHydrated]);
 
   useEffect(() => {
@@ -296,6 +319,47 @@ function OnboardingFlow() {
       setTimeout(() => setCopiedField(null), 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
+    }
+  };
+
+  // Manual save function - saves schema immediately to storage
+  const saveSchemaToStorage = () => {
+    if (!schema) {
+      console.warn('⚠️ No schema to save');
+      return;
+    }
+
+    try {
+      const schemaString = JSON.stringify(schema);
+      sessionStorage.setItem(STORAGE_KEYS.SCHEMA, schemaString);
+      localStorage.setItem(STORAGE_KEYS.SCHEMA, schemaString);
+      
+      console.log('✅ MANUALLY SAVED SCHEMA TO STORAGE');
+      console.log('   - Size:', Math.round(schemaString.length / 1024), 'KB');
+      console.log('   - Pages:', Object.keys(schema.uiGraph?.pages || {}).length);
+      console.log('   - Components:', schema.totalComponents);
+      console.log('   - To sessionStorage:', STORAGE_KEYS.SCHEMA);
+      console.log('   - To localStorage: onboarding_schema');
+      
+      alert('✅ Schema saved successfully!');
+    } catch (error: any) {
+      console.error('❌ FAILED TO SAVE SCHEMA:', error);
+      
+      // Try without deployment plan if quota exceeded
+      if (error.name === 'QuotaExceededError') {
+        try {
+          const smallerSchema = { ...schema, deploymentPlan: undefined };
+          sessionStorage.setItem(STORAGE_KEYS.SCHEMA, JSON.stringify(smallerSchema));
+          localStorage.setItem(STORAGE_KEYS.SCHEMA, JSON.stringify(smallerSchema));
+          console.log('✅ SAVED SCHEMA (without deployment plan)');
+          alert('✅ Schema saved (deployment plan removed due to size)');
+        } catch (e2) {
+          console.error('❌ SMALLER SCHEMA ALSO FAILED:', e2);
+          alert('❌ Failed to save schema - storage quota exceeded');
+        }
+      } else {
+        alert('❌ Failed to save schema: ' + error.message);
+      }
     }
   };
 
@@ -619,14 +683,16 @@ const analyzeRepository = async () => {
     console.log('   Has files array:', !!data.deploymentPlan?.files);
     console.log('   Files array length:', data.deploymentPlan?.files?.length || 0);
     console.log('   Framework:', data.deploymentPlan?.framework || 'none');
+    console.log('   Total Pages:', data.totalPages);
+    console.log('   Total Components:', data.totalComponents);
+    console.log('   uiGraph.pages:', Object.keys(data.uiGraph?.pages || {}).length);
     if (data.deploymentPlan?.files) {
       console.log('   Files:', data.deploymentPlan.files.map((f: any) => `${f.action} ${f.path}`).join(', '));
     }
     console.log('==========================================\n');
 
-    // Progress is already tracked via polling - don't override it
-
-    setSchema({
+    // Build the complete schema object
+    const completeSchema = {
       events: data.events || [],
       routes: data.routes || [],
       uiGraph: data.uiGraph || {},
@@ -639,14 +705,41 @@ const analyzeRepository = async () => {
       appKey: data.appKey || '',
       siteUrl: siteUrl || data.siteUrl,
       deploymentPlan: data.deploymentPlan
-    });
+    };
 
+    // ✅ IMMEDIATELY save to sessionStorage (don't wait for React effect)
+    try {
+      const schemaString = JSON.stringify(completeSchema);
+      sessionStorage.setItem(STORAGE_KEYS.SCHEMA, schemaString);
+      localStorage.setItem(STORAGE_KEYS.SCHEMA, schemaString); // Backup to localStorage
+      console.log('✅ SAVED SCHEMA TO STORAGE');
+      console.log('   - Size:', Math.round(schemaString.length / 1024), 'KB');
+      console.log('   - Pages in uiGraph:', Object.keys(completeSchema.uiGraph?.pages || {}).length);
+      console.log('   - Components:', completeSchema.totalComponents);
+    } catch (error) {
+      console.error('❌ FAILED TO SAVE SCHEMA:', error);
+      // Try without deployment plan if too large
+      try {
+        const smallerSchema = { ...completeSchema, deploymentPlan: undefined };
+        sessionStorage.setItem(STORAGE_KEYS.SCHEMA, JSON.stringify(smallerSchema));
+        localStorage.setItem(STORAGE_KEYS.SCHEMA, JSON.stringify(smallerSchema));
+        console.log('✅ SAVED SCHEMA (without deployment plan) TO STORAGE');
+      } catch (e2) {
+        console.error('❌ EVEN SMALLER SCHEMA FAILED:', e2);
+      }
+    }
+
+    // Now update React state (after storage save)
+    setSchema(completeSchema);
     setAppKey(data.appKey || '');
 
-    // Store app_key seamlessly for events dashboard
+    // Store app_key seamlessly for events dashboard (with multiple locations)
     if (data.appKey) {
       sessionStorage.setItem('app_key', data.appKey);
+      sessionStorage.setItem(STORAGE_KEYS.APP_KEY, data.appKey);
       localStorage.setItem('app_key', data.appKey);
+      localStorage.setItem(STORAGE_KEYS.APP_KEY, data.appKey);
+      console.log('✅ SAVED APP KEY:', data.appKey);
     }
 
     setTimeout(() => {
@@ -1491,9 +1584,19 @@ const analyzeRepository = async () => {
                       Customize your tracking configuration for {selectedPath?.item.path ? `${selectedPath.repo.name}/${selectedPath.item.name}` : selectedPath?.repo.name}
                     </p>
                   </div>
-                  <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-medium rounded-full">
-                    Ready to Deploy
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={saveSchemaToStorage}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                      title="Save schema to storage for use in overview"
+                    >
+                      <Settings className="w-4 h-4" />
+                      Save Progress
+                    </button>
+                    <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-medium rounded-full">
+                      Ready to Deploy
+                    </span>
+                  </div>
                 </div>
 
                 {/* Tab Navigation */}

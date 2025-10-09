@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Filter out invalid files
-    const validFiles = executionPlan.files.filter(f => f.content && f.content.trim().length > 0);
+    const validFiles = executionPlan.files.filter((f: any) => f.content && f.content.trim().length > 0);
     if (validFiles.length < executionPlan.files.length) {
       console.warn(`Filtered ${executionPlan.files.length - validFiles.length} empty files`);
       executionPlan.files = validFiles;
@@ -111,8 +111,8 @@ export async function POST(request: NextRequest) {
     // Execute file operations
     let filesCreated = 0;
     let filesModified = 0;
-    const fileResults = [];
-    const errors = [];
+    const fileResults: any[] = [];
+    const errors: string[] = [];
 
     for (const fileOp of executionPlan.files) {
       const filePath = getFilePath(fileOp.path);
@@ -172,9 +172,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Create PR
-    const fileList = executionPlan.files.map((f, idx) => {
+    const fileList = executionPlan.files.map((f: any, idx: number) => {
       const fullPath = getFilePath(f.path);
-      const result = fileResults.find(r => r.path === fullPath);
+      const result = fileResults.find((r: any) => r.path === fullPath);
       const icon = f.action === 'create' ? '➕' : '✏️';
       const status = result?.status === 'success' ? '✅' : '❌';
       const size = result?.size ? ` (${(result.size / 1024).toFixed(1)} KB)` : '';
@@ -199,7 +199,7 @@ ${fileList}
 
 ${errors.length > 0 ? `### ⚠️ Errors:\n\`\`\`\n${errors.join('\n')}\n\`\`\`\n\n` : ''}### 🔑 App Key: \`${appKey}\`
 
-${executionPlan.instructions?.length ? `### 📝 ${executionPlan.framework === 'unknown-fallback' ? 'Manual Setup Required' : 'Notes'}:\n${executionPlan.instructions.map(i => i).join('\n')}\n\n` : '### ✅ Fully Automated\nAnalytics integrated automatically!\n\n'}### 🎯 Features:
+${executionPlan.instructions?.length ? `### 📝 ${executionPlan.framework === 'unknown-fallback' ? 'Manual Setup Required' : 'Notes'}:\n${executionPlan.instructions.map((i: string) => i).join('\n')}\n\n` : '### ✅ Fully Automated\nAnalytics integrated automatically!\n\n'}### 🎯 Features:
 - 🤖 AI-powered event detection
 - 🔑 8-10 digit persistent user IDs
 - 📊 5 event types

@@ -11,6 +11,8 @@ import {
   ChartType,
   DATE_RANGES,
   MEASURES,
+  SortDirection,
+  FlowStep,
 } from './tile-types';
 import { buildTileQueryRequest } from './queryBuilder';
 
@@ -32,6 +34,11 @@ interface TileStore {
   updateFilter: (filterId: string, updates: Partial<Filter>) => void;
   setDateRange: (rangeKey: string) => void;
   setChartType: (chartType: ChartType) => void;
+  setPivotAxis: (pivot: boolean) => void;
+  toggleSort: () => void;
+  addFlowStep: (step: FlowStep) => void;
+  removeFlowStep: (stepId: string) => void;
+  updateFlowStep: (stepId: string, updates: Partial<FlowStep>) => void;
   executeQuery: () => Promise<void>;
   reset: () => void;
 }
@@ -78,8 +85,8 @@ export const useTileStore = create<TileStore>((set, get) => ({
 
   addDimension: (dimension: Dimension) => {
     set((state) => {
-      // Limit to 2 dimensions for now
-      if (state.config.dimensions.length >= 2) {
+      // Limit to 3 dimensions
+      if (state.config.dimensions.length >= 3) {
         return state;
       }
 
@@ -156,6 +163,67 @@ export const useTileStore = create<TileStore>((set, get) => ({
     }));
   },
 
+  setPivotAxis: (pivot: boolean) => {
+    set((state) => ({
+      config: {
+        ...state.config,
+        pivotAxis: pivot,
+      },
+    }));
+  },
+
+  toggleSort: () => {
+    set((state) => {
+      const currentSort = state.config.sortDirection || 'none';
+      let newSort: SortDirection;
+      
+      // Cycle: none -> desc -> asc -> none
+      if (currentSort === 'none') {
+        newSort = 'desc';
+      } else if (currentSort === 'desc') {
+        newSort = 'asc';
+      } else {
+        newSort = 'none';
+      }
+
+      return {
+        config: {
+          ...state.config,
+          sortDirection: newSort,
+        },
+      };
+    });
+  },
+
+  addFlowStep: (step: FlowStep) => {
+    set((state) => ({
+      config: {
+        ...state.config,
+        flowSteps: [...(state.config.flowSteps || []), step],
+      },
+    }));
+  },
+
+  removeFlowStep: (stepId: string) => {
+    set((state) => ({
+      config: {
+        ...state.config,
+        flowSteps: (state.config.flowSteps || []).filter(s => s.id !== stepId),
+      },
+    }));
+  },
+
+  updateFlowStep: (stepId: string, updates: Partial<FlowStep>) => {
+    set((state) => ({
+      config: {
+        ...state.config,
+        flowSteps: (state.config.flowSteps || []).map(s =>
+          s.id === stepId ? { ...s, ...updates } : s
+        ),
+      },
+    }));
+  },
+
   executeQuery: async () => {
     const { config, appKey } = get();
 
@@ -188,7 +256,16 @@ export const useTileStore = create<TileStore>((set, get) => ({
       }
 
       // Transform data for chart rendering
-      const transformedData = transformQueryResult(result.data, config.dimensions);
+      let transformedData = transformQueryResult(result.data, config.dimensions);
+      
+      // Apply sorting if specified
+      if (config.sortDirection && config.sortDirection !== 'none') {
+        transformedData = transformedData.sort((a, b) => {
+          const aVal = a.value || 0;
+          const bVal = b.value || 0;
+          return config.sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+        });
+      }
 
       set({
         queryResult: {

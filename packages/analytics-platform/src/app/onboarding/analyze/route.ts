@@ -130,27 +130,43 @@ export async function POST(request: NextRequest) {
         const behaviorCount = schema.ai_patterns?.length || 0;
         const pageCount = Object.keys(uiGraph.pages || {}).length || 0;
         const routeCount = Object.keys(uiGraph.pages || {}).length || 0;
+        
+        // Count unique widgets across all pages
+        const allWidgets = new Set<string>();
+        if (uiGraph.pages) {
+            Object.values(uiGraph.pages).forEach((page: any) => {
+                if (page.widgets && Array.isArray(page.widgets)) {
+                    page.widgets.forEach((widget: string) => allWidgets.add(widget));
+                }
+            });
+        }
+        const widgetCount = allWidgets.size;
+        const totalComponentCount = Math.max(componentCount, widgetCount);
+
+        console.log('=================================');
+        console.log('ANALYSIS RESULTS:');
+        console.log(`  Pages: ${pageCount}`);
+        console.log(`  AI Components: ${componentCount}`);
+        console.log(`  Widgets: ${widgetCount}`);
+        console.log(`  Total Components: ${totalComponentCount}`);
+        console.log(`  Events: ${schema.events?.length || 0}`);
+        console.log('=================================');
 
         if (componentCount > 0) {
-            console.log(`Found ${componentCount} AI-discovered components`);
-            addLog(repoId, `📊 Discovered ${componentCount} interactive components`);
+            addLog(repoId, `📊 Discovered ${componentCount} AI components`);
+        }
+        
+        if (widgetCount > 0) {
+            addLog(repoId, `🎨 Found ${widgetCount} unique widgets`);
         }
 
         if (pageCount > 0) {
-            console.log(`Found ${pageCount} pages`);
             addLog(repoId, `🔍 Analyzed ${pageCount} pages`);
         }
 
         if (schema.events?.length > 0) {
-            console.log(`Found ${schema.events.length} event types`);
-            addLog(repoId, `🔍 Analyzed ${behaviorCount} behavior patterns`);
+            addLog(repoId, `📋 Generated ${schema.events.length} event types`);
         }
-
-        if (routeCount > 0) {
-            console.log(`Found ${routeCount} routes`);
-        }
-
-        console.log('=================================');
 
         addLog(repoId, '📝 Creating integration files');
 
@@ -198,7 +214,7 @@ export async function POST(request: NextRequest) {
             events: schema.events || [],
             routes: schema.routes || [],
             totalPages: pageCount || metadata.total_pages || metadata.pages || 0,
-            totalComponents: componentCount || metadata.total_components || metadata.components || 0,
+            totalComponents: totalComponentCount || metadata.total_components || metadata.components || 0,
             estimatedEvents: metadata.estimated_events_per_day || '10K/day',
             siteUrl: siteUrl
         });

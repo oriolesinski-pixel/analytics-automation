@@ -1,22 +1,30 @@
 // components/DashboardFilterBar.tsx
 'use client';
 
-import React, { useState } from 'react';
-import { Filter as FilterIcon, Plus, X } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Filter as FilterIcon, Plus, X, Check, Edit2 } from 'lucide-react';
 import { Filter, DIMENSIONS } from '../lib/tile-types';
 import CompactFilterBuilder from './CompactFilterBuilder';
+import { v4 as uuidv4 } from 'uuid';
 
 interface DashboardFilterBarProps {
   filters: Filter[];
   onFiltersChange: (filters: Filter[]) => void;
+  tiles?: Array<{ tile_id: string; tile_name: string; tile_type?: string }>;
+  tileFilterAssignments?: Record<string, string[]>; // tile_id -> filter_ids
+  onTileFilterAssignmentsChange?: (assignments: Record<string, string[]>) => void;
 }
 
 export default function DashboardFilterBar({
   filters,
   onFiltersChange,
+  tiles = [],
+  tileFilterAssignments = {},
+  onTileFilterAssignmentsChange,
 }: DashboardFilterBarProps) {
   const [showAddFilter, setShowAddFilter] = useState(false);
-  const [editingFilter, setEditingFilter] = useState<Filter | null>(null);
+  const [editingFilterId, setEditingFilterId] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const handleRemoveFilter = (filterId: string) => {
     onFiltersChange(filters.filter(f => f.id !== filterId));
@@ -27,44 +35,106 @@ export default function DashboardFilterBar({
     setShowAddFilter(false);
   };
 
-  const handleEditFilter = (updatedFilter: Filter) => {
-    onFiltersChange(filters.map(f => f.id === updatedFilter.id ? updatedFilter : f));
-    setEditingFilter(null);
+  const handleUpdateFilter = (filterId: string, field: string, operator: Filter['operator'], value: string) => {
+    onFiltersChange(filters.map(f => 
+      f.id === filterId ? { ...f, field, operator, value } : f
+    ));
   };
 
+  const toggleTileFilter = (filterId: string, tileId: string) => {
+    if (!onTileFilterAssignmentsChange) return;
+    
+    const currentAssignments = tileFilterAssignments[tileId] || [];
+    const newAssignments = currentAssignments.includes(filterId)
+      ? currentAssignments.filter(id => id !== filterId)
+      : [...currentAssignments, filterId];
+    
+    onTileFilterAssignmentsChange({
+      ...tileFilterAssignments,
+      [tileId]: newAssignments
+    });
+  };
+
+  const getAppliedTileCount = (filterId: string) => {
+    return Object.values(tileFilterAssignments).filter(assignments => 
+      assignments.includes(filterId)
+    ).length;
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setEditingFilterId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   return (
-    <div className="bg-blue-50 border-b border-blue-200 px-6 py-3">
+    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b-2 border-blue-200 px-8 py-4">
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2">
-          <FilterIcon className="w-4 h-4 text-blue-600" />
-          <span className="text-sm font-semibold text-blue-900">Dashboard Filters:</span>
+          <div className="p-1.5 bg-blue-100 rounded-lg">
+            <FilterIcon className="w-4 h-4 text-blue-600" />
+          </div>
+          <span className="text-sm font-bold text-blue-900">Dashboard Filters:</span>
         </div>
 
         {filters.length === 0 && !showAddFilter && (
-          <span className="text-sm text-blue-600 italic">No filters applied</span>
+          <span className="text-sm text-blue-700">No filters applied - all data shown</span>
         )}
 
-        {filters.map(filter => (
-          <button
-            key={filter.id}
-            onClick={() => setEditingFilter(filter)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-blue-100 border border-blue-300 rounded-lg text-sm hover:bg-blue-200 transition-colors cursor-pointer"
-            title="Click to edit"
-          >
-            <span className="font-medium text-blue-900">{filter.field}</span>
-            <span className="text-blue-700">{filter.operator}</span>
-            <span className="text-blue-900 font-medium">{String(filter.value)}</span>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleRemoveFilter(filter.id);
-              }}
-              className="ml-1 p-0.5 hover:bg-blue-300 rounded transition-colors"
-            >
-              <X className="w-3 h-3 text-blue-700" />
-            </button>
-          </button>
-        ))}
+        {filters.map(filter => {
+          const appliedCount = getAppliedTileCount(filter.id);
+          const isEditing = editingFilterId === filter.id;
+          
+          return (
+            <div key={filter.id} className="relative">
+              <button
+                onClick={() => setEditingFilterId(isEditing ? null : filter.id)}
+                className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border-2 border-blue-300 rounded-lg text-sm hover:border-blue-400 hover:shadow-md transition-all"
+                title="Click to configure"
+              >
+                <span className="font-semibold text-blue-900">{filter.field}</span>
+                <span className="text-blue-600 font-medium">{filter.operator}</span>
+                <span className="text-gray-900 font-medium">{String(filter.value)}</span>
+                
+                {appliedCount > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-bold">
+                    {appliedCount}
+                  </span>
+                )}
+                
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRemoveFilter(filter.id);
+                  }}
+                  className="ml-1 hover:bg-red-100 rounded-full p-1"
+                  title="Remove filter"
+                >
+                  <X className="w-3 h-3 text-red-600" />
+                </button>
+              </button>
+
+              {/* Filter Configuration Dropdown */}
+              {isEditing && (
+                <FilterConfigDropdown
+                  ref={dropdownRef}
+                  filter={filter}
+                  tiles={tiles}
+                  tileFilterAssignments={tileFilterAssignments}
+                  onUpdateFilter={handleUpdateFilter}
+                  onToggleTile={toggleTileFilter}
+                  onClose={() => setEditingFilterId(null)}
+                />
+              )}
+            </div>
+          );
+        })}
 
         {showAddFilter ? (
           <CompactFilterBuilder
@@ -74,42 +144,35 @@ export default function DashboardFilterBar({
         ) : (
           <button
             onClick={() => setShowAddFilter(true)}
-            className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
+            className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors font-medium shadow-sm hover:shadow-md"
           >
-            <Plus className="w-3 h-3" />
-            Add Filter
+            <Plus className="w-4 h-4" />
+            <span>Add Filter</span>
           </button>
         )}
       </div>
 
-      {/* Edit Filter Modal */}
-      {editingFilter && (
-        <EditFilterModal
-          filter={editingFilter}
-          onSave={handleEditFilter}
-          onCancel={() => setEditingFilter(null)}
-        />
-      )}
     </div>
   );
 }
 
-// Edit Filter Modal - 100% Editable
-function EditFilterModal({
-  filter,
-  onSave,
-  onCancel,
-}: {
-  filter: Filter;
-  onSave: (filter: Filter) => void;
-  onCancel: () => void;
-}) {
+// Filter Configuration Dropdown Component
+const FilterConfigDropdown = React.forwardRef<
+  HTMLDivElement,
+  {
+    filter: Filter;
+    tiles: Array<{ tile_id: string; tile_name: string; tile_type?: string }>;
+    tileFilterAssignments: Record<string, string[]>;
+    onUpdateFilter: (filterId: string, field: string, operator: Filter['operator'], value: string) => void;
+    onToggleTile: (filterId: string, tileId: string) => void;
+    onClose: () => void;
+  }
+>(({ filter, tiles, tileFilterAssignments, onUpdateFilter, onToggleTile, onClose }, ref) => {
   const [selectedDimension, setSelectedDimension] = useState(
-    DIMENSIONS.find(d => d.field === filter.field) || null
+    DIMENSIONS.find(d => d.field === filter.field) || DIMENSIONS[0]
   );
   const [operator, setOperator] = useState<Filter['operator']>(filter.operator);
   const [value, setValue] = useState(String(filter.value));
-  const [dateValue, setDateValue] = useState('');
 
   const getOperatorsForType = (type: string) => {
     switch (type) {
@@ -129,65 +192,80 @@ function EditFilterModal({
         return [
           { value: 'equals', label: 'Equals (=)' },
           { value: 'not_equals', label: 'Not Equals (≠)' },
+          { value: 'gt', label: 'Greater Than (>)' },
+          { value: 'lt', label: 'Less Than (<)' },
         ];
     }
   };
 
-  const availableOperators = selectedDimension 
-    ? getOperatorsForType(selectedDimension.type)
-    : [];
+  const availableOperators = selectedDimension ? getOperatorsForType(selectedDimension.type) : [];
+  
+  const appliedCount = Object.values(tileFilterAssignments).filter(assignments => 
+    assignments.includes(filter.id)
+  ).length;
 
   const handleSave = () => {
     if (!selectedDimension) return;
-
-    let finalValue = value.trim();
-    if (selectedDimension.type === 'temporal' && dateValue) {
-      finalValue = String(new Date(dateValue).getTime());
-    }
-
-    onSave({
-      ...filter,
-      field: selectedDimension.field,
-      operator,
-      value: finalValue,
-    });
+    onUpdateFilter(filter.id, selectedDimension.field, operator, value);
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Filter</h3>
-        
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Field/Dimension</label>
-            <select
-              value={selectedDimension?.id || ''}
-              onChange={(e) => {
-                const dim = DIMENSIONS.find(d => d.id === e.target.value);
-                setSelectedDimension(dim || null);
-                if (dim) {
-                  const ops = getOperatorsForType(dim.type);
-                  setOperator(ops[0].value as Filter['operator']);
-                }
-              }}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Select dimension...</option>
-              {DIMENSIONS.map((dim) => (
-                <option key={dim.id} value={dim.id}>
-                  {dim.label}
-                </option>
-              ))}
-            </select>
+    <div 
+      ref={ref}
+      className="absolute top-full left-0 mt-2 w-96 bg-white rounded-xl shadow-2xl border-2 border-blue-300 z-50"
+    >
+      {/* Header */}
+      <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Edit2 className="w-4 h-4 text-blue-600" />
+            <h4 className="text-sm font-bold text-gray-900">Configure Filter</h4>
           </div>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-blue-100 rounded transition-colors"
+          >
+            <X className="w-4 h-4 text-gray-600" />
+          </button>
+        </div>
+      </div>
 
+      {/* Filter Configuration */}
+      <div className="p-4 space-y-3 border-b border-gray-200">
+        <div>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">Field</label>
+          <select
+            value={selectedDimension?.id || ''}
+            onChange={(e) => {
+              const dim = DIMENSIONS.find(d => d.id === e.target.value);
+              if (dim) {
+                setSelectedDimension(dim);
+                const ops = getOperatorsForType(dim.type);
+                setOperator(ops[0].value as Filter['operator']);
+                handleSave();
+              }
+            }}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          >
+            {DIMENSIONS.map((dim) => (
+              <option key={dim.id} value={dim.id}>
+                {dim.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Operator</label>
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5">Operator</label>
             <select
               value={operator}
-              onChange={(e) => setOperator(e.target.value as Filter['operator'])}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(e) => {
+                const newOp = e.target.value as Filter['operator'];
+                setOperator(newOp);
+                handleSave();
+              }}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
               {availableOperators.map((op) => (
                 <option key={op.value} value={op.value}>
@@ -198,21 +276,16 @@ function EditFilterModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Value</label>
-            {selectedDimension?.type === 'temporal' ? (
-              <input
-                type="datetime-local"
-                value={dateValue}
-                onChange={(e) => setDateValue(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            ) : selectedDimension?.options ? (
+            <label className="block text-xs font-semibold text-gray-700 mb-1.5">Value</label>
+            {selectedDimension?.options ? (
               <select
                 value={value}
-                onChange={(e) => setValue(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => {
+                  setValue(e.target.value);
+                  handleSave();
+                }}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
-                <option value="">Select value...</option>
                 {selectedDimension.options.map((option) => (
                   <option key={option} value={option}>
                     {option}
@@ -224,29 +297,61 @@ function EditFilterModal({
                 type="text"
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                autoFocus
+                onBlur={handleSave}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter value"
               />
             )}
           </div>
         </div>
+      </div>
 
-        <div className="flex gap-3 mt-6">
-          <button
-            onClick={onCancel}
-            className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-          >
-            Save Changes
-          </button>
+      {/* Apply to Tiles */}
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h5 className="text-xs font-bold text-gray-900">Apply to Tiles</h5>
+          <span className="text-xs text-gray-500">{appliedCount > 0 ? `${appliedCount} selected` : 'None'}</span>
         </div>
+        
+        <div className="space-y-1 max-h-64 overflow-y-auto">
+          {tiles
+            .filter(t => t.tile_type !== 'markdown')
+            .map(tile => {
+              const isApplied = (tileFilterAssignments[tile.tile_id] || []).includes(filter.id);
+              
+              return (
+                <button
+                  key={tile.tile_id}
+                  onClick={() => onToggleTile(filter.id, tile.tile_id)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors ${
+                    isApplied ? 'bg-blue-50 hover:bg-blue-100 border border-blue-200' : 'hover:bg-gray-50 border border-transparent'
+                  }`}
+                >
+                  <span className={`text-sm ${isApplied ? 'text-blue-900 font-medium' : 'text-gray-700'}`}>
+                    {tile.tile_name}
+                  </span>
+                  {isApplied && (
+                    <Check className="w-4 h-4 text-blue-600" />
+                  )}
+                </button>
+              );
+            })}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="p-3 border-t border-gray-200 bg-gray-50">
+        <button
+          onClick={onClose}
+          className="w-full px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          Done
+        </button>
       </div>
     </div>
   );
-}
+});
+
+FilterConfigDropdown.displayName = 'FilterConfigDropdown';
+
 

@@ -3,13 +3,17 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Sparkles } from 'lucide-react';
+import { Activity, Database } from 'lucide-react';
 import LiveEventFeed from '@/components/LiveEventFeed';
+import SQLSandbox from '@/components/SQLSandbox';
+
+type Tab = 'live' | 'sql';
 
 export default function EventsPage() {
   const searchParams = useSearchParams();
   const [appKey, setAppKey] = useState<string>('');
   const [isHydrated, setIsHydrated] = useState(false);
+  const [activeTab, setActiveTab] = useState<Tab>('live');
 
   useEffect(() => {
     const hydrateFromStorage = () => {
@@ -33,15 +37,6 @@ export default function EventsPage() {
           sessionStorage.getItem('onboarding_app_key') ||
           localStorage.getItem('app_key') ||
           localStorage.getItem('onboarding_app_key');
-
-        // Debug logging to help troubleshoot storage issues
-        console.log('App key storage debug:', {
-          sessionAppKey: sessionStorage.getItem('app_key'),
-          sessionOnboardingKey: sessionStorage.getItem('onboarding_app_key'),
-          localAppKey: localStorage.getItem('app_key'),
-          localOnboardingKey: localStorage.getItem('onboarding_app_key'),
-          finalStoredKey: storedAppKey
-        });
 
         if (storedAppKey) {
           let cleanKey = storedAppKey;
@@ -95,43 +90,118 @@ export default function EventsPage() {
   }, [searchParams]);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto space-y-8">
-        <header className="space-y-2">
-          <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold text-gray-900">Your Analytics Are Live!</h1>
-            <Sparkles className="w-8 h-8 text-green-600" />
-          </div>
-          <p className="text-gray-600">
-            Watch events flow in real-time as users interact with your application.
-          </p>
-        </header>
+    <div className="min-h-screen">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="px-8 py-6">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Events & SQL</h1>
+          <p className="text-gray-600">Monitor live events and query your data</p>
+        </div>
 
-        {!isHydrated ? (
-          <div className="bg-white border border-gray-200 rounded-lg p-6 text-center text-gray-600">
-            Hydrating event stream...
-          </div>
-        ) : appKey ? (
-          <LiveEventFeed appKey={appKey} />
-        ) : (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 space-y-3">
-            <h3 className="text-lg font-medium text-blue-900">Complete Onboarding First</h3>
-            <p className="text-blue-700">
-              We couldn't locate your app key in this session. Please finish the onboarding flow or rerun it to generate your analytics configuration.
-            </p>
-            <p className="text-sm text-blue-600">
-              Tip: After completing onboarding, the "View Live Events" button will take you directly here with your app ready.
-            </p>
-            <Link
-              href="/onboarding"
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+        {/* Sub-navigation Tabs */}
+        <div className="px-8">
+          <div className="flex gap-6 border-b border-gray-200">
+            <TabButton
+              active={activeTab === 'live'}
+              onClick={() => setActiveTab('live')}
+              icon={Activity}
             >
-              Start Onboarding →
-            </Link>
+              Live Events
+            </TabButton>
+            <TabButton
+              active={activeTab === 'sql'}
+              onClick={() => setActiveTab('sql')}
+              icon={Database}
+            >
+              SQL Sandbox
+            </TabButton>
           </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="p-8">
+        {activeTab === 'live' && (
+          <div>
+            {!isHydrated ? (
+              <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-600 shadow-sm">
+                <div className="inline-block w-8 h-8 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin mb-3"></div>
+                <p>Loading event stream...</p>
+              </div>
+            ) : appKey ? (
+              <LiveEventFeed appKey={appKey} />
+            ) : (
+              <div className="bg-blue-50 rounded-xl border border-blue-200 p-8 space-y-4 max-w-2xl mx-auto shadow-sm">
+                <div className="text-4xl mb-2">ℹ️</div>
+                <h3 className="text-xl font-semibold text-blue-900">Complete Onboarding First</h3>
+                <p className="text-blue-700">
+                  We couldn't locate your app key in this session. Please finish the onboarding flow or rerun it to generate your analytics configuration.
+                </p>
+                <p className="text-sm text-blue-600">
+                  Tip: After completing onboarding, the "View Live Events" button will take you directly here with your app ready.
+                </p>
+                <Link
+                  href="/onboarding"
+                  className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+                >
+                  Start Onboarding →
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {activeTab === 'sql' && (
+          <>
+            {!isHydrated ? (
+              <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-600 shadow-sm">
+                <div className="inline-block w-8 h-8 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin mb-3"></div>
+                <p>Loading SQL Sandbox...</p>
+              </div>
+            ) : appKey ? (
+              <div className="h-[800px]">
+                <SQLSandbox appKey={appKey} />
+              </div>
+            ) : (
+              <div className="bg-blue-50 rounded-xl border border-blue-200 p-8 space-y-4 max-w-2xl mx-auto shadow-sm">
+                <div className="text-4xl mb-2">ℹ️</div>
+                <h3 className="text-xl font-semibold text-blue-900">Complete Onboarding First</h3>
+                <p className="text-blue-700">
+                  We couldn't locate your app key in this session. Please finish the onboarding flow or rerun it to generate your analytics configuration.
+                </p>
+                <p className="text-sm text-blue-600">
+                  Tip: After completing onboarding, you'll be able to query your analytics data using the SQL Sandbox.
+                </p>
+                <Link
+                  href="/onboarding"
+                  className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+                >
+                  Start Onboarding →
+                </Link>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
+  );
+}
+
+function TabButton({ active, onClick, children, icon: Icon }: { active: boolean; onClick: () => void; children: React.ReactNode; icon: any }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`
+        pb-3 px-1 text-sm font-medium transition-colors relative flex items-center gap-2
+        ${active ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'}
+      `}
+    >
+      <Icon className="w-4 h-4" />
+      {children}
+      {active && (
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />
+      )}
+    </button>
   );
 }
 

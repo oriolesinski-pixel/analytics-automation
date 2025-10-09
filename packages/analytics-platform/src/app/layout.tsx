@@ -23,11 +23,13 @@
 // }
 
 import type { Metadata } from 'next';
+import { Sidebar } from '@/components/Sidebar';
+import { GlobalHeader } from '@/components/GlobalHeader';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Analytics Platform',
-  description: 'Analytics Dashboard',
+  title: 'Analytics E2E Automation',
+  description: 'End-to-end analytics automation platform with real-time insights',
 };
 
 export default function RootLayout({
@@ -37,7 +39,17 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="antialiased">
+        <div className="flex min-h-screen bg-gray-50">
+          <Sidebar />
+          <div className="flex-1 transition-all duration-300" style={{ marginLeft: 'var(--sidebar-width, 16rem)' }}>
+            <GlobalHeader />
+            <main className="pt-16">
+              {children}
+            </main>
+          </div>
+        </div>
+      </body>
     </html>
   );
 }
