@@ -32,6 +32,13 @@ interface TileChartProps {
   isLoading?: boolean;
   pivotAxis?: boolean;
   showLabels?: boolean;
+  flowSteps?: Array<{
+    id: string;
+    label: string;
+    conditions?: Array<{ id: string; field: string; value: string }>;
+    field?: string;
+    eventType?: string;
+  }>;
 }
 
 // Custom label formatter to avoid overlap
@@ -117,6 +124,7 @@ export default function TileChart({
   isLoading = false,
   pivotAxis = false,
   showLabels = false,
+  flowSteps = [],
 }: TileChartProps) {
   if (isLoading) {
     return (
@@ -161,6 +169,8 @@ export default function TileChart({
       return <ScatterChartComponent data={data} dimensions={dimensions} measureLabel={measureLabel} />;
     case 'sankey':
       return <SankeyChartComponent />;
+    case 'flow':
+      return <FlowChartComponent flowSteps={flowSteps} data={data} />;
     case 'table':
       return <TableComponent data={data} dimensions={dimensions} measureLabel={measureLabel} />;
     default:
@@ -170,7 +180,8 @@ export default function TileChart({
 
 // Big Number Display (for no dimensions)
 function BigNumber({ data, label }: { data: Array<Record<string, any>>; label: string }) {
-  const value = data[0]?.value || 0;
+  // Safe access with proper null/undefined checks
+  const value = (data && Array.isArray(data) && data.length > 0) ? (data[0]?.value || 0) : 0;
   
   // Format value based on size
   let formattedValue: string;
@@ -273,11 +284,9 @@ function LineChartComponent({
           labelStyle={{ fontWeight: 600, marginBottom: '4px' }}
           formatter={(value: any) => [typeof value === 'number' ? value.toLocaleString() : value, '']}
         />
-        <Legend wrapperStyle={{ paddingTop: '20px' }} />
         <Line
           type="monotone"
           dataKey="value"
-          name=""
           stroke="#6366f1"
           strokeWidth={3}
           dot={{ r: 5, fill: '#6366f1', strokeWidth: 2, stroke: '#fff' }}
@@ -334,20 +343,18 @@ function BarChartComponent({
             }}
           />
           <Tooltip
-            contentStyle={{
-              backgroundColor: 'white',
-              border: '1px solid #e5e7eb',
-              borderRadius: '8px',
-              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-              padding: '12px',
-            }}
+          contentStyle={{
+            backgroundColor: 'white',
+            border: '1px solid #e5e7eb',
+            borderRadius: '8px',
+            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+            padding: '12px',
+          }}
           labelStyle={{ fontWeight: 600, marginBottom: '4px' }}
           formatter={(value: any) => [typeof value === 'number' ? value.toLocaleString() : value, '']}
         />
-        <Legend wrapperStyle={{ paddingTop: '10px' }} />
         <Bar
           dataKey="value"
-          name=""
           fill="#6366f1"
           radius={[0, 8, 8, 0]}
         >
@@ -413,10 +420,8 @@ function BarChartComponent({
           labelStyle={{ fontWeight: 600, marginBottom: '4px' }}
           formatter={(value: any) => [typeof value === 'number' ? value.toLocaleString() : value, '']}
         />
-        <Legend wrapperStyle={{ paddingTop: '10px' }} />
         <Bar
           dataKey="value"
-          name=""
           fill="#6366f1"
           radius={[8, 8, 0, 0]}
         >
@@ -549,7 +554,7 @@ function FunnelChartComponent({
   );
 }
 
-// Sankey/Flow Diagram
+// Sankey/Flow Diagram (deprecated - use FlowChartComponent instead)
 function SankeyChartComponent() {
   return (
     <div className="flex flex-col items-center justify-center h-96 px-8">
@@ -598,6 +603,360 @@ function SankeyChartComponent() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Flow Chart Component - Actual working implementation
+function FlowChartComponent({
+  flowSteps,
+  data,
+}: {
+  flowSteps: Array<{ 
+    id: string; 
+    label: string; 
+    conditions?: Array<{ id: string; field: string; value: string }>;
+    field?: string; 
+    eventType?: string;
+  }>;
+  data: Array<Record<string, any>>;
+}) {
+  const [displayMode, setDisplayMode] = React.useState<'funnel' | 'sankey'>('sankey');
+
+  if (!flowSteps || flowSteps.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 px-8">
+        <div className="w-full max-w-3xl bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-8 border-2 border-indigo-200">
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-100 rounded-full mb-4">
+              <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Flow Visualization</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              Track user journeys through multiple steps and events
+            </p>
+          </div>
+
+          <div className="bg-white rounded-lg p-6 mb-4">
+            <h4 className="text-sm font-semibold text-gray-900 mb-3">How it works:</h4>
+            <ul className="space-y-2 text-sm text-gray-700">
+              <li className="flex items-start">
+                <span className="inline-block w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full text-center font-bold mr-3 flex-shrink-0">1</span>
+                <span>Define multiple steps (e.g., Landing → Product View → Cart → Checkout)</span>
+              </li>
+              <li className="flex items-start">
+                <span className="inline-block w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full text-center font-bold mr-3 flex-shrink-0">2</span>
+                <span>Select event types or field values for each step</span>
+              </li>
+              <li className="flex items-start">
+                <span className="inline-block w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full text-center font-bold mr-3 flex-shrink-0">3</span>
+                <span>Visualize user transitions and drop-off between steps</span>
+              </li>
+            </ul>
+          </div>
+
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-yellow-900">Configuration Required</p>
+                <p className="text-xs text-yellow-700 mt-1">
+                  Add flow steps in the middle panel to track your user journey.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Use actual data from the measure - data should be array with step results
+  // Map each flow step with its corresponding data
+  const flowData = flowSteps.map((step, index) => {
+    // If we have data, try to find matching data for this step index
+    const stepData = data && data.length > index ? data[index] : null;
+    return {
+      ...step,
+      users: stepData?.value || 0,
+      percentage: 0, // Will calculate below
+    };
+  });
+
+  // Calculate percentages
+  const maxValue = flowData[0]?.users || 1;
+  flowData.forEach((step, index) => {
+    step.percentage = maxValue > 0 ? (step.users / maxValue) * 100 : 0;
+  });
+
+  const hasData = data && data.length > 0;
+
+  return (
+    <div className="flex flex-col min-h-[500px] px-8 py-6">
+      <div className="w-full max-w-5xl mx-auto">
+        {/* Header with view toggle */}
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">User Flow Analysis</h3>
+            {hasData && (
+              <p className="text-sm text-gray-600 mt-1">
+                {flowData[0]?.users.toLocaleString()} users in flow • {((flowData[flowData.length - 1]?.users / flowData[0]?.users) * 100).toFixed(1)}% completion
+              </p>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setDisplayMode('sankey')}
+              className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+                displayMode === 'sankey'
+                  ? 'bg-white text-indigo-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Transition View
+            </button>
+            <button
+              onClick={() => setDisplayMode('funnel')}
+              className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+                displayMode === 'funnel'
+                  ? 'bg-white text-indigo-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Funnel View
+            </button>
+          </div>
+        </div>
+
+        {!hasData && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-blue-900">Run Query to See Data</p>
+                <p className="text-xs text-blue-700 mt-1">
+                  Click "Run" to execute the query and visualize your flow with real data. The diagram below shows your configured steps.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {displayMode === 'sankey' ? (
+          <SankeyFlowView flowData={flowData} hasData={hasData} />
+        ) : (
+          <FunnelFlowView flowData={flowData} hasData={hasData} maxValue={maxValue} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Sankey/Transition View Component
+function SankeyFlowView({
+  flowData,
+  hasData,
+}: {
+  flowData: Array<any>;
+  hasData: boolean;
+}) {
+  return (
+    <div className="space-y-6">
+      {flowData.map((step, index) => {
+        const nextStep = flowData[index + 1];
+        const dropOff = nextStep ? step.users - nextStep.users : 0;
+        const dropOffPercentage = nextStep && step.users > 0 
+          ? ((dropOff / step.users) * 100).toFixed(1) 
+          : '0';
+        const continuePercentage = nextStep && step.users > 0
+          ? (((step.users - dropOff) / step.users) * 100).toFixed(1)
+          : '0';
+        
+        // Support both old and new format
+        const conditions = step.conditions || (step.field && step.eventType ? [{
+          id: '1',
+          field: step.field,
+          value: step.eventType
+        }] : []);
+        
+        return (
+          <div key={step.id} className="relative">
+            {/* Step Rectangle */}
+            <div className="flex items-center gap-4">
+              {/* Step Number */}
+              <div className="flex-shrink-0 w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm">{index + 1}</span>
+              </div>
+              
+              {/* Step Box */}
+              <div className="flex-1 bg-white border-2 border-gray-300 rounded-lg p-4 hover:border-indigo-400 hover:shadow-md transition-all">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-gray-900 text-base mb-1">{step.label}</h4>
+                    <div className="space-y-0.5">
+                      {conditions.map((condition: any, idx: number) => (
+                        <div key={idx} className="flex items-center gap-1.5 text-xs text-gray-500">
+                          {idx > 0 && <span className="font-semibold text-indigo-500 text-[10px]">AND</span>}
+                          <span>
+                            {condition.field} = <span className="font-medium text-indigo-600">{condition.value}</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="text-right ml-6">
+                    <div className="text-2xl font-bold text-gray-900">
+                      {hasData ? step.users.toLocaleString() : '—'}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {hasData && step.percentage > 0 ? `${step.percentage.toFixed(1)}%` : 'users'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Transition Arrows */}
+            {index < flowData.length - 1 && (
+              <div className="ml-14 my-2 pl-6 relative">
+                <div className="flex items-center gap-8">
+                  {/* Continue Arrow */}
+                  <div className="flex items-center gap-3 flex-1">
+                    <svg className="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                    </svg>
+                    <div className="flex-1 bg-green-50 border border-green-200 rounded px-3 py-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-medium text-green-900">Continued</span>
+                        {hasData && (
+                          <span className="font-bold text-green-700">
+                            {nextStep?.users.toLocaleString()} ({continuePercentage}%)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Drop-off */}
+                  {hasData && dropOff > 0 && (
+                    <div className="flex items-center gap-3">
+                      <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                      </svg>
+                      <div className="bg-red-50 border border-red-200 rounded px-3 py-2">
+                        <div className="text-xs">
+                          <span className="font-medium text-red-900">
+                            {dropOff.toLocaleString()} dropped ({dropOffPercentage}%)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Funnel View Component
+function FunnelFlowView({
+  flowData,
+  hasData,
+  maxValue,
+}: {
+  flowData: Array<any>;
+  hasData: boolean;
+  maxValue: number;
+}) {
+  return (
+    <div className="space-y-4">
+      {flowData.map((step, index) => {
+        const percentage = maxValue > 0 ? (step.users / maxValue) * 100 : 50;
+        const prevUsers = index > 0 ? flowData[index - 1].users : step.users;
+        const dropOff = prevUsers - step.users;
+        const dropOffPercentage = index > 0 && prevUsers > 0 ? ((dropOff / prevUsers) * 100).toFixed(1) : '0';
+        
+        // Support both old and new format
+        const conditions = step.conditions || (step.field && step.eventType ? [{
+          id: '1',
+          field: step.field,
+          value: step.eventType
+        }] : []);
+        
+        return (
+          <div key={step.id}>
+            {/* Step Box */}
+            <div className="relative">
+              <div 
+                className="relative rounded-lg transition-all hover:shadow-lg"
+                style={{ 
+                  width: `${Math.max(percentage, 30)}%`,
+                  margin: '0 auto',
+                  background: `linear-gradient(135deg, ${COLORS[index % COLORS.length]}, ${COLORS[(index + 1) % COLORS.length]})`,
+                }}
+              >
+                <div className="p-5">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center w-7 h-7 bg-white/30 text-white text-sm font-bold rounded-full flex-shrink-0">
+                        {index + 1}
+                      </span>
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-white text-base">{step.label}</h4>
+                        <div className="space-y-0.5 mt-1">
+                          {conditions.map((condition: any, idx: number) => (
+                            <div key={idx} className="flex items-center gap-1 text-xs text-white/80">
+                              {idx > 0 && <span className="font-semibold text-white/60 text-[10px]">AND</span>}
+                              <span>{condition.field} = {condition.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-xl font-bold text-white">
+                        {hasData ? step.users.toLocaleString() : '—'}
+                      </div>
+                      <div className="text-xs text-white/80">
+                        {hasData && percentage > 0 ? `${percentage.toFixed(1)}%` : 'users'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Connection/Drop-off visualization */}
+            {index < flowData.length - 1 && hasData && (
+              <div className="flex items-center justify-center py-2">
+                <div className="bg-gray-100 rounded-lg px-4 py-2 border border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                    </svg>
+                    {dropOff > 0 && (
+                      <span className="text-xs font-medium text-gray-700">
+                        {dropOff.toLocaleString()} dropped ({dropOffPercentage}%)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -667,9 +1026,7 @@ function ScatterChartComponent({
             return label;
           }}
         />
-        <Legend />
         <Scatter
-          name=""
           data={scatterData}
           fill="#6366f1"
           shape="circle"

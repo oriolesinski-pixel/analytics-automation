@@ -26,7 +26,8 @@ interface TileStore {
   // Actions
   setAppKey: (appKey: string) => void;
   setEventType: (eventType?: string) => void;
-  setMeasure: (measure: Measure) => void;
+  addMeasure: (measure: Measure) => void;
+  removeMeasure: (measureId: string) => void;
   addDimension: (dimension: Dimension) => void;
   removeDimension: (dimensionId: string) => void;
   addFilter: (filter: Filter) => void;
@@ -39,6 +40,7 @@ interface TileStore {
   addFlowStep: (step: FlowStep) => void;
   removeFlowStep: (stepId: string) => void;
   updateFlowStep: (stepId: string, updates: Partial<FlowStep>) => void;
+  setFlowSteps: (steps: FlowStep[]) => void;
   executeQuery: () => Promise<void>;
   reset: () => void;
 }
@@ -47,7 +49,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082';
 
 // Default config
 const getDefaultConfig = (): TileConfig => ({
-  measure: MEASURES[0], // Total Events
+  measures: [MEASURES[0]], // Total Events by default
   dimensions: [],
   filters: [],
   dateRange: DATE_RANGES[2].getRange(), // Last 7 days
@@ -74,11 +76,27 @@ export const useTileStore = create<TileStore>((set, get) => ({
     }));
   },
 
-  setMeasure: (measure: Measure) => {
+  addMeasure: (measure: Measure) => {
+    set((state) => {
+      // Don't add duplicate measures
+      if (state.config.measures.some(m => m.id === measure.id)) {
+        return state;
+      }
+
+      return {
+        config: {
+          ...state.config,
+          measures: [...state.config.measures, measure],
+        },
+      };
+    });
+  },
+
+  removeMeasure: (measureId: string) => {
     set((state) => ({
       config: {
         ...state.config,
-        measure,
+        measures: state.config.measures.filter(m => m.id !== measureId),
       },
     }));
   },
@@ -224,6 +242,15 @@ export const useTileStore = create<TileStore>((set, get) => ({
     }));
   },
 
+  setFlowSteps: (steps: FlowStep[]) => {
+    set((state) => ({
+      config: {
+        ...state.config,
+        flowSteps: steps,
+      },
+    }));
+  },
+
   executeQuery: async () => {
     const { config, appKey } = get();
 
@@ -232,9 +259,71 @@ export const useTileStore = create<TileStore>((set, get) => ({
       return;
     }
 
+    if (config.measures.length === 0) {
+      set({ error: 'Please select at least one measure' });
+      return;
+    }
+
     set({ isLoading: true, error: null });
 
     try {
+      // Use flow query endpoint for flow chart type
+      if (config.chartType === 'flow') {
+        if (!config.flowSteps || config.flowSteps.length === 0) {
+          set({ 
+            error: 'Please add at least one flow step',
+            isLoading: false,
+          });
+          return;
+        }
+
+        const flowQueryRequest = {
+          app_key: appKey,
+          flow_steps: config.flowSteps,
+          measure: {
+            aggregation: config.measures[0].aggregation,
+            field: config.measures[0].field,
+          },
+          date_range: {
+            start: config.dateRange.start instanceof Date 
+              ? config.dateRange.start.toISOString()
+              : config.dateRange.start,
+            end: config.dateRange.end instanceof Date
+              ? config.dateRange.end.toISOString()
+              : config.dateRange.end,
+          },
+        };
+
+        const response = await fetch(`${API_BASE_URL}/query/flow`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(flowQueryRequest),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Flow query failed: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+
+        if (!result.ok) {
+          throw new Error(result.error || 'Flow query failed');
+        }
+
+        set({
+          queryResult: {
+            data: result.data,
+            metadata: result.metadata,
+          },
+          isLoading: false,
+          error: null,
+        });
+        return;
+      }
+
+      // Regular tile query
       const queryRequest = buildTileQueryRequest(config, appKey);
 
       const response = await fetch(`${API_BASE_URL}/query/tile`, {

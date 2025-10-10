@@ -105,18 +105,18 @@ export default function LiveEventFeed({ appKey }: LiveEventFeedProps) {
     : events.filter(e => e.event_type === filterEventType);
 
   return (
-    <div className="bg-white rounded-lg shadow-lg">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg">
       {/* Header with controls */}
-      <div className="border-b border-gray-200 p-4">
+      <div className="border-b border-gray-200 dark:border-gray-700 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <div className={`h-3 w-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-              <span className="text-sm font-medium text-gray-700">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                 {isConnected ? 'Connected' : 'Disconnected'}
               </span>
             </div>
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
               {events.length} events
             </div>
           </div>
@@ -125,7 +125,7 @@ export default function LiveEventFeed({ appKey }: LiveEventFeedProps) {
             <select
               value={filterEventType}
               onChange={(e) => setFilterEventType(e.target.value)}
-              className="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
             >
               <option value="all">All Events ({events.length})</option>
               {Array.from(eventTypes).sort().map((type) => (
@@ -137,13 +137,13 @@ export default function LiveEventFeed({ appKey }: LiveEventFeedProps) {
             
             <button
               onClick={handlePauseResume}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
             >
               {isPaused ? 'Resume' : 'Pause'}
             </button>
             <button
               onClick={handleClear}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
             >
               Clear
             </button>
@@ -154,7 +154,7 @@ export default function LiveEventFeed({ appKey }: LiveEventFeedProps) {
       {/* Events list */}
       <div className="p-4 max-h-[600px] overflow-y-auto">
         {filteredEvents.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-gray-500 dark:text-gray-400">
             {events.length === 0 ? (
               <>
                 <p>No events yet. Waiting for incoming events...</p>
@@ -164,7 +164,7 @@ export default function LiveEventFeed({ appKey }: LiveEventFeedProps) {
                     setFilterEventType('all');
                     setEvents([]);
                   }}
-                  className="mt-4 px-4 py-2 text-sm text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50"
+                  className="mt-4 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30 rounded-md hover:bg-blue-50 dark:hover:bg-blue-500/10"
                 >
                   Refresh
                 </button>
@@ -174,7 +174,7 @@ export default function LiveEventFeed({ appKey }: LiveEventFeedProps) {
                 <p>No events match the selected filter.</p>
                 <button
                   onClick={() => setFilterEventType('all')}
-                  className="mt-4 px-4 py-2 text-sm text-blue-600 border border-blue-200 rounded-md hover:bg-blue-50"
+                  className="mt-4 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30 rounded-md hover:bg-blue-50 dark:hover:bg-blue-500/10"
                 >
                   Clear filter
                 </button>
@@ -184,21 +184,21 @@ export default function LiveEventFeed({ appKey }: LiveEventFeedProps) {
         ) : (
           <div className="space-y-3">
             {filteredEvents.map((event) => (
-              <div key={event.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors">
+              <div key={event.id} className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 transition-colors">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     {/* Event Type Badge */}
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-800 dark:text-blue-300">
                         {event.event_type}
                       </span>
-                      <span className="text-xs text-gray-500 font-mono">
+                      <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">
                         {new Date(event.ts).toLocaleString()}
                       </span>
                     </div>
 
                     {/* User and Session Info */}
-                    <div className="flex items-center gap-4 text-xs text-gray-600 mb-2">
+                    <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400 mb-2">
                       {event.user_id && (
                         <span>
                           <span className="font-medium">User:</span> {event.user_id}
@@ -212,10 +212,10 @@ export default function LiveEventFeed({ appKey }: LiveEventFeedProps) {
                     {/* Event Data */}
                     {Object.keys(event.data).length > 0 && (
                       <details className="mt-2">
-                        <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+                        <summary className="text-xs text-gray-500 dark:text-gray-400 cursor-pointer hover:text-gray-700 dark:hover:text-gray-300">
                           View data ({Object.keys(event.data).length} fields)
                         </summary>
-                        <pre className="mt-2 p-2 bg-gray-100 rounded text-xs overflow-x-auto">
+                        <pre className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs overflow-x-auto text-gray-900 dark:text-gray-100">
                           {JSON.stringify(event.data, null, 2)}
                         </pre>
                       </details>
@@ -223,7 +223,7 @@ export default function LiveEventFeed({ appKey }: LiveEventFeedProps) {
                   </div>
 
                   {/* Event ID */}
-                  <div className="text-xs text-gray-400 font-mono ml-4">
+                  <div className="text-xs text-gray-400 dark:text-gray-500 font-mono ml-4">
                     #{event.id.slice(0, 8)}
                   </div>
                 </div>

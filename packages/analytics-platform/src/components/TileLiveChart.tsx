@@ -40,21 +40,25 @@ export default function TileLiveChart({
     try {
       // Check if this is a valid chart config
       const tileConfig = config as TileConfig;
-      if (!tileConfig.measure) {
+      
+      // Handle both old (singular 'measure') and new (plural 'measures') format
+      const measures = tileConfig.measures || [(tileConfig as any).measure];
+      if (!measures || !measures[0]) {
         setIsLoading(false);
         setData([]);
         return;
       }
 
-      // Merge global filters with tile filters (unless opt-out)
-      const effectiveConfig = {
+      // Normalize config to use 'measures' (plural)
+      const normalizedConfig = {
         ...tileConfig,
+        measures: measures,
         filters: ignoreGlobalFilters 
           ? tileConfig.filters || []
           : [...(globalFilters || []), ...(tileConfig.filters || [])],
       };
 
-      const queryRequest = buildTileQueryRequest(effectiveConfig, appKey);
+      const queryRequest = buildTileQueryRequest(normalizedConfig, appKey);
 
       const response = await fetch(`${API_BASE_URL}/query/tile`, {
         method: 'POST',
@@ -74,9 +78,9 @@ export default function TileLiveChart({
 
       // Transform data for chart
       const transformedData = transformDataForChart(
-        result.data,
-        config.dimensions,
-        config.measure.id
+        result.data || [],
+        normalizedConfig.dimensions || [],
+        measures[0]?.id || 'total_events'
       );
 
       setData(transformedData);
@@ -119,6 +123,11 @@ export default function TileLiveChart({
     );
   }
 
+  // Handle both old (singular 'measure') and new (plural 'measures') format for display
+  const tileConfig = config as TileConfig;
+  const measures = tileConfig.measures || [(tileConfig as any).measure];
+  const measureLabel = measures?.[0]?.label || 'Value';
+
   return (
     <div className="h-full flex flex-col">
       {showRefresh && (
@@ -136,9 +145,9 @@ export default function TileLiveChart({
       
       <TileChart
         data={data}
-        chartType={(config as TileConfig).chartType || 'bar'}
-        dimensions={(config as TileConfig).dimensions || []}
-        measureLabel={(config as TileConfig).measure?.label || 'Value'}
+        chartType={tileConfig.chartType || 'bar'}
+        dimensions={tileConfig.dimensions || []}
+        measureLabel={measureLabel}
         isLoading={isLoading}
       />
     </div>

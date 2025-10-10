@@ -283,12 +283,12 @@ export default function OverviewPage() {
   const totalEvents = schema?.events?.length || 0;
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="px-8 py-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Overview</h1>
-          <p className="text-gray-600">High-level metrics and insights across your application</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Overview</h1>
+          <p className="text-gray-600 dark:text-gray-400">High-level metrics and insights across your application</p>
         </div>
       </div>
 
@@ -299,71 +299,71 @@ export default function OverviewPage() {
           {schema && (
             <div className="grid grid-cols-4 gap-4">
               {/* Pages Tracked */}
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200 relative overflow-hidden">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-500/20 dark:to-blue-600/10 rounded-xl p-6 border border-blue-200 dark:border-blue-500/30 relative overflow-hidden">
                 <div className="absolute top-2 right-2 opacity-10">
-                  <FileText className="w-16 h-16 text-blue-900" />
+                  <FileText className="w-16 h-16 text-blue-900 dark:text-blue-400" />
                 </div>
                 <div className="relative">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="p-2 bg-blue-200 rounded-lg">
-                      <FileText className="w-5 h-5 text-blue-900" />
+                    <div className="p-2 bg-blue-200 dark:bg-blue-500/30 rounded-lg">
+                      <FileText className="w-5 h-5 text-blue-900 dark:text-blue-300" />
                     </div>
                   </div>
-                  <p className="text-4xl font-bold text-blue-900">{totalPages}</p>
-                  <p className="text-sm text-blue-700 mt-2 font-medium">Pages Tracked</p>
+                  <p className="text-4xl font-bold text-blue-900 dark:text-blue-100">{totalPages}</p>
+                  <p className="text-sm text-blue-700 dark:text-blue-400 mt-2 font-medium">Pages Tracked</p>
                 </div>
               </div>
 
               {/* Components */}
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200 relative overflow-hidden">
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-500/20 dark:to-purple-600/10 rounded-xl p-6 border border-purple-200 dark:border-purple-500/30 relative overflow-hidden">
                 <div className="absolute top-2 right-2 opacity-10">
-                  <Layers className="w-16 h-16 text-purple-900" />
+                  <Layers className="w-16 h-16 text-purple-900 dark:text-purple-400" />
                 </div>
                 <div className="relative">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="p-2 bg-purple-200 rounded-lg">
-                      <Layers className="w-5 h-5 text-purple-900" />
+                    <div className="p-2 bg-purple-200 dark:bg-purple-500/30 rounded-lg">
+                      <Layers className="w-5 h-5 text-purple-900 dark:text-purple-300" />
                     </div>
                   </div>
-                  <p className="text-4xl font-bold text-purple-900">{totalComponents}</p>
-                  <p className="text-sm text-purple-700 mt-2 font-medium">Components</p>
+                  <p className="text-4xl font-bold text-purple-900 dark:text-purple-100">{totalComponents}</p>
+                  <p className="text-sm text-purple-700 dark:text-purple-400 mt-2 font-medium">Components</p>
                 </div>
               </div>
 
               {/* Event Types */}
-              <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200 relative overflow-hidden">
+              <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-500/20 dark:to-green-600/10 rounded-xl p-6 border border-green-200 dark:border-green-500/30 relative overflow-hidden">
                 <div className="absolute top-2 right-2 opacity-10">
-                  <Zap className="w-16 h-16 text-green-900" />
+                  <Zap className="w-16 h-16 text-green-900 dark:text-green-400" />
                 </div>
                 <div className="relative">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="p-2 bg-green-200 rounded-lg">
-                      <Zap className="w-5 h-5 text-green-900" />
+                    <div className="p-2 bg-green-200 dark:bg-green-500/30 rounded-lg">
+                      <Zap className="w-5 h-5 text-green-900 dark:text-green-300" />
                     </div>
                   </div>
-                  <p className="text-4xl font-bold text-green-900">{totalEvents}</p>
-                  <p className="text-sm text-green-700 mt-2 font-medium">Event Types</p>
+                  <p className="text-4xl font-bold text-green-900 dark:text-green-100">{totalEvents}</p>
+                  <p className="text-sm text-green-700 dark:text-green-400 mt-2 font-medium">Event Types</p>
                 </div>
               </div>
 
               {/* Events (24h) */}
-              <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-6 border border-orange-200 relative overflow-hidden">
+              <div className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-500/20 dark:to-orange-600/10 rounded-xl p-6 border border-orange-200 dark:border-orange-500/30 relative overflow-hidden">
                 <div className="absolute top-2 right-2 opacity-10">
-                  <Activity className="w-16 h-16 text-orange-900" />
+                  <Activity className="w-16 h-16 text-orange-900 dark:text-orange-400" />
                 </div>
                 <div className="relative">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="p-2 bg-orange-200 rounded-lg">
-                      <Activity className="w-5 h-5 text-orange-900" />
+                    <div className="p-2 bg-orange-200 dark:bg-orange-500/30 rounded-lg">
+                      <Activity className="w-5 h-5 text-orange-900 dark:text-orange-300" />
                     </div>
                     {realtimeStats?.totalEvents > 0 && (
-                      <Sparkles className="w-4 h-4 text-orange-600 animate-pulse" />
+                      <Sparkles className="w-4 h-4 text-orange-600 dark:text-orange-400 animate-pulse" />
                     )}
                   </div>
-                  <p className="text-4xl font-bold text-orange-900">
+                  <p className="text-4xl font-bold text-orange-900 dark:text-orange-100">
                     {realtimeStats?.totalEvents?.toLocaleString() || '0'}
                   </p>
-                  <p className="text-sm text-orange-700 mt-2 font-medium">Events (24h)</p>
+                  <p className="text-sm text-orange-700 dark:text-orange-400 mt-2 font-medium">Events (24h)</p>
                 </div>
               </div>
             </div>
@@ -371,26 +371,26 @@ export default function OverviewPage() {
 
           {/* Site Preview - Only if URL exists */}
           {schema?.siteUrl && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-              <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900">Live Site Preview</h2>
-                  <p className="text-sm text-gray-600 mt-1">{schema.siteUrl}</p>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Live Site Preview</h2>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{schema.siteUrl}</p>
                 </div>
-                <div className="flex items-center bg-gray-100 rounded-lg p-1 border border-gray-200">
+                <div className="flex items-center bg-gray-100 dark:bg-gray-700 rounded-lg p-1 border border-gray-200 dark:border-gray-600">
                   <button
                     onClick={() => setPreviewDevice('mobile')}
-                    className={`p-1.5 rounded transition-colors ${previewDevice === 'mobile' ? 'bg-white shadow-sm' : 'hover:bg-gray-50'}`}
+                    className={`p-1.5 rounded transition-colors ${previewDevice === 'mobile' ? 'bg-white dark:bg-gray-600 shadow-sm' : 'hover:bg-gray-50 dark:hover:bg-gray-600'}`}
                     title="Mobile"
                   >
-                    <Smartphone className="w-4 h-4 text-gray-600" />
+                    <Smartphone className={`w-4 h-4 ${previewDevice === 'mobile' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'}`} />
                   </button>
                   <button
                     onClick={() => setPreviewDevice('desktop')}
-                    className={`p-1.5 rounded transition-colors ${previewDevice === 'desktop' ? 'bg-white shadow-sm' : 'hover:bg-gray-50'}`}
+                    className={`p-1.5 rounded transition-colors ${previewDevice === 'desktop' ? 'bg-white dark:bg-gray-600 shadow-sm' : 'hover:bg-gray-50 dark:hover:bg-gray-600'}`}
                     title="Desktop"
                   >
-                    <Monitor className="w-4 h-4 text-gray-600" />
+                    <Monitor className={`w-4 h-4 ${previewDevice === 'desktop' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'}`} />
                   </button>
                 </div>
               </div>
@@ -405,15 +405,15 @@ export default function OverviewPage() {
           )}
 
           {/* UI Graph Visualization - Full Width */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="px-6 py-4 border-b border-gray-200">
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <Activity className="w-5 h-5 text-indigo-600" />
-                    <h2 className="text-xl font-bold text-gray-900">User Journey Flow</h2>
+                    <Activity className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">User Journey Flow</h2>
                   </div>
-                  <p className="text-sm text-gray-600 mt-1">Interactive map with real-time traffic heat maps</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Interactive map with real-time traffic heat maps</p>
                 </div>
               </div>
             </div>
@@ -424,11 +424,11 @@ export default function OverviewPage() {
                 <UIGraphWithTraffic uiGraph={schema.uiGraph} appKey={appKey || 'demo'} />
               ) : (
                 <div className="flex flex-col items-center justify-center h-96 text-center p-6">
-                  <div className="bg-blue-50 rounded-full p-4 mb-4">
-                    <Activity className="w-16 h-16 text-blue-600" />
+                  <div className="bg-blue-50 dark:bg-blue-500/20 rounded-full p-4 mb-4">
+                    <Activity className="w-16 h-16 text-blue-600 dark:text-blue-400" />
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">UI Graph Not Available</h3>
-                  <p className="text-sm text-gray-600 max-w-md mb-6">
+                  <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">UI Graph Not Available</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 max-w-md mb-6">
                     The UI graph is generated during onboarding when we analyze your app's codebase. 
                     Complete the onboarding flow to see your user journey visualization with real-time traffic heat maps.
                   </p>
@@ -490,10 +490,10 @@ export default function OverviewPage() {
 
 function FeatureCard({ icon: Icon, title, description }: { icon: any; title: string; description: string }) {
   return (
-    <div className="bg-white rounded-lg p-4 border border-gray-200">
-      <Icon className="w-8 h-8 text-blue-600 mb-3" />
-      <h3 className="text-sm font-semibold text-gray-900 mb-1">{title}</h3>
-      <p className="text-xs text-gray-500">{description}</p>
+    <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+      <Icon className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-3" />
+      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">{title}</h3>
+      <p className="text-xs text-gray-500 dark:text-gray-400">{description}</p>
     </div>
   );
 }

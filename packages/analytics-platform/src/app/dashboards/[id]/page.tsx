@@ -563,7 +563,7 @@ function AddTileModal({
                     <p className="text-sm text-gray-500 mb-2">{tile.description}</p>
                   )}
                   <div className="flex items-center space-x-2 text-xs text-gray-400">
-                    <span>{tile.config.measure.label}</span>
+                    <span>{tile.config.measures?.[0]?.label || 'No measure'}</span>
                     <span>•</span>
                     <span>{tile.config.chartType}</span>
                   </div>

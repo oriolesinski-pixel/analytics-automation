@@ -4,7 +4,7 @@
 export type AggregationType = 'count' | 'count_distinct' | 'sum' | 'avg' | 'min' | 'max' | 'custom';
 export type DimensionType = 'categorical' | 'temporal' | 'numerical';
 export type FilterOperator = 'equals' | 'not_equals' | 'contains' | 'gt' | 'lt' | 'gte' | 'lte' | 'in';
-export type ChartType = 'line' | 'bar' | 'pie' | 'table' | 'number' | 'funnel' | 'scatter' | 'sankey';
+export type ChartType = 'line' | 'bar' | 'pie' | 'table' | 'number' | 'funnel' | 'scatter' | 'sankey' | 'flow';
 export type SortDirection = 'asc' | 'desc' | 'none';
 
 export interface Measure {
@@ -42,7 +42,7 @@ export interface TileConfig {
   id?: string;
   name?: string;
   eventType?: string; // Filter to specific event type
-  measure: Measure;
+  measures: Measure[]; // Support multiple measures
   dimensions: Dimension[];
   filters: Filter[];
   dateRange: DateRange;
@@ -52,11 +52,18 @@ export interface TileConfig {
   flowSteps?: FlowStep[]; // For Sankey/flow diagrams
 }
 
+export interface FlowStepCondition {
+  id: string;
+  field: string; // e.g., 'event_type', 'data->path'
+  value: string; // The value to match
+}
+
 export interface FlowStep {
   id: string;
   label: string;
-  field: string; // e.g., 'event_type', 'data->path'
-  eventType?: string; // Optional filter for this step
+  conditions: FlowStepCondition[]; // Multiple conditions (AND logic)
+  field?: string; // Deprecated - kept for backward compatibility
+  eventType?: string; // Deprecated - kept for backward compatibility
 }
 
 export interface QueryResult {

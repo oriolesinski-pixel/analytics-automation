@@ -115,19 +115,19 @@ export default function WorkspacePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="px-8 py-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Tiles</h1>
-          <p className="text-gray-600 mb-4">View and manage your saved analytics tiles</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">My Tiles</h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">View and manage your saved analytics tiles</p>
           
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -136,16 +136,16 @@ export default function WorkspacePage() {
               <div className="relative">
                 <button
                   onClick={() => setShowAppDropdown(!showAppDropdown)}
-                  className="flex items-center space-x-2 px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors"
+                  className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 rounded-lg transition-colors"
                 >
-                  <span className="font-medium text-gray-700">
+                  <span className="font-medium text-gray-700 dark:text-gray-200">
                     {apps.find(a => a.app_key === selectedApp)?.name || 'Select App'}
                   </span>
-                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                  <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                 </button>
 
                 {showAppDropdown && (
-                  <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                  <div className="absolute top-full left-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
                     {apps.map(app => (
                       <button
                         key={app.app_key}
@@ -178,7 +178,7 @@ export default function WorkspacePage() {
               
               <button
                 onClick={() => router.push('/dashboards')}
-                className="px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors flex items-center space-x-2 font-medium"
+                className="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg transition-colors flex items-center space-x-2 font-medium"
               >
                 <LayoutDashboard className="w-4 h-4" />
                 <span>Dashboards</span>
@@ -218,18 +218,18 @@ export default function WorkspacePage() {
             {dashboardStore.savedTiles.map((tile) => (
               <div
                 key={tile.id}
-                className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+                className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
               >
                 {/* Tile Header */}
-                <div className="p-4 border-b border-gray-200">
-                  <h3 className="font-semibold text-gray-900 mb-1">{tile.name}</h3>
+                <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">{tile.name}</h3>
                   {tile.description && (
-                    <p className="text-sm text-gray-500">{tile.description}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{tile.description}</p>
                   )}
                   <div className="flex items-center space-x-2 mt-2 text-xs text-gray-400">
-                    {tile.config?.measure?.label && (
+                    {tile.config?.measures?.[0]?.label && (
                       <>
-                        <span>{tile.config.measure.label}</span>
+                        <span>{tile.config.measures[0].label}</span>
                         <span>•</span>
                       </>
                     )}

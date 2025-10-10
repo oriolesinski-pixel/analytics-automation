@@ -90,17 +90,17 @@ export default function EventsPage() {
   }, [searchParams]);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="px-8 py-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Events & SQL</h1>
-          <p className="text-gray-600">Monitor live events and query your data</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Events & SQL</h1>
+          <p className="text-gray-600 dark:text-gray-400">Monitor live events and query your data</p>
         </div>
 
         {/* Sub-navigation Tabs */}
         <div className="px-8">
-          <div className="flex gap-6 border-b border-gray-200">
+          <div className="flex gap-6 border-b border-gray-200 dark:border-gray-700">
             <TabButton
               active={activeTab === 'live'}
               onClick={() => setActiveTab('live')}
@@ -124,20 +124,20 @@ export default function EventsPage() {
         {activeTab === 'live' && (
           <div>
             {!isHydrated ? (
-              <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-600 shadow-sm">
-                <div className="inline-block w-8 h-8 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin mb-3"></div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8 text-center text-gray-600 dark:text-gray-400 shadow-sm">
+                <div className="inline-block w-8 h-8 border-4 border-gray-200 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-500 rounded-full animate-spin mb-3"></div>
                 <p>Loading event stream...</p>
               </div>
             ) : appKey ? (
               <LiveEventFeed appKey={appKey} />
             ) : (
-              <div className="bg-blue-50 rounded-xl border border-blue-200 p-8 space-y-4 max-w-2xl mx-auto shadow-sm">
+              <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl border border-blue-200 dark:border-blue-500/30 p-8 space-y-4 max-w-2xl mx-auto shadow-sm">
                 <div className="text-4xl mb-2">ℹ️</div>
-                <h3 className="text-xl font-semibold text-blue-900">Complete Onboarding First</h3>
-                <p className="text-blue-700">
+                <h3 className="text-xl font-semibold text-blue-900 dark:text-blue-300">Complete Onboarding First</h3>
+                <p className="text-blue-700 dark:text-blue-400">
                   We couldn't locate your app key in this session. Please finish the onboarding flow or rerun it to generate your analytics configuration.
                 </p>
-                <p className="text-sm text-blue-600">
+                <p className="text-sm text-blue-600 dark:text-blue-500">
                   Tip: After completing onboarding, the "View Live Events" button will take you directly here with your app ready.
                 </p>
                 <Link
@@ -154,8 +154,8 @@ export default function EventsPage() {
         {activeTab === 'sql' && (
           <>
             {!isHydrated ? (
-              <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-600 shadow-sm">
-                <div className="inline-block w-8 h-8 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin mb-3"></div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-8 text-center text-gray-600 dark:text-gray-400 shadow-sm">
+                <div className="inline-block w-8 h-8 border-4 border-gray-200 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-500 rounded-full animate-spin mb-3"></div>
                 <p>Loading SQL Sandbox...</p>
               </div>
             ) : appKey ? (
@@ -163,18 +163,18 @@ export default function EventsPage() {
                 <SQLSandbox appKey={appKey} />
               </div>
             ) : (
-              <div className="bg-blue-50 rounded-xl border border-blue-200 p-8 space-y-4 max-w-2xl mx-auto shadow-sm">
+              <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl border border-blue-200 dark:border-blue-500/30 p-8 space-y-4 max-w-2xl mx-auto shadow-sm">
                 <div className="text-4xl mb-2">ℹ️</div>
-                <h3 className="text-xl font-semibold text-blue-900">Complete Onboarding First</h3>
-                <p className="text-blue-700">
+                <h3 className="text-xl font-semibold text-blue-900 dark:text-blue-300">Complete Onboarding First</h3>
+                <p className="text-blue-700 dark:text-blue-400">
                   We couldn't locate your app key in this session. Please finish the onboarding flow or rerun it to generate your analytics configuration.
                 </p>
-                <p className="text-sm text-blue-600">
+                <p className="text-sm text-blue-600 dark:text-blue-500">
                   Tip: After completing onboarding, you'll be able to query your analytics data using the SQL Sandbox.
                 </p>
                 <Link
                   href="/onboarding"
-                  className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+                  className="inline-flex items-center px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium text-sm"
                 >
                   Start Onboarding →
                 </Link>
@@ -193,13 +193,13 @@ function TabButton({ active, onClick, children, icon: Icon }: { active: boolean;
       onClick={onClick}
       className={`
         pb-3 px-1 text-sm font-medium transition-colors relative flex items-center gap-2
-        ${active ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'}
+        ${active ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'}
       `}
     >
       <Icon className="w-4 h-4" />
       {children}
       {active && (
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400" />
       )}
     </button>
   );

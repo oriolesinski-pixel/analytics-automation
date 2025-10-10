@@ -39,6 +39,150 @@ type TileQuery = z.infer<typeof TileQuerySchema>;
 
 const queryRoutes: FastifyPluginAsync = async (fastify) => {
   
+  // Flow query endpoint - queries each step separately
+  fastify.post('/query/flow', async (request, reply) => {
+    const startTime = Date.now();
+
+    try {
+      const body = request.body as any;
+      const { app_key, flow_steps, measure, date_range } = body;
+
+      if (!app_key || !flow_steps || !Array.isArray(flow_steps)) {
+        return reply.code(400).send({
+          ok: false,
+          error: 'app_key and flow_steps are required'
+        });
+      }
+
+      // Query each step
+      const results = [];
+      
+      for (const step of flow_steps) {
+        const conditions = step.conditions || [];
+        
+        console.log(`Processing flow step "${step.label}" with conditions:`, JSON.stringify(conditions));
+        
+        // Build WHERE clause for this step
+        const startTimestamp = new Date(date_range.start).getTime();
+        const endTimestamp = new Date(date_range.end).getTime();
+        
+        const whereParts = [
+          `app_key = '${app_key}'`,
+          `ts >= ${startTimestamp}`,
+          `ts <= ${endTimestamp}`
+        ];
+
+        // Separate SQL conditions from JSON conditions
+        const sqlConditions: any[] = [];
+        const jsonConditions: any[] = [];
+
+        conditions.forEach((condition: any) => {
+          if (condition.field === 'event_type') {
+            sqlConditions.push(condition);
+            whereParts.push(`event_type = '${condition.value}'`);
+          } else if (condition.field.includes('->')) {
+            // JSON field - we'll filter in memory
+            jsonConditions.push(condition);
+          } else {
+            sqlConditions.push(condition);
+            whereParts.push(`${condition.field} = '${condition.value}'`);
+          }
+        });
+
+        // Build measure clause
+        const measureClause = measure?.aggregation === 'count_distinct' && measure?.field
+          ? `COUNT(DISTINCT ${measure.field})`
+          : 'COUNT(*)';
+
+        // If we have JSON conditions, fetch all events and filter in memory
+        if (jsonConditions.length > 0) {
+          console.log(`Step "${step.label}" has JSON conditions, filtering in memory:`, jsonConditions);
+          
+          // Fetch raw events matching SQL conditions
+          let eventsQuery = supabase
+            .from('analytics_product_events')
+            .select('*')
+            .eq('app_key', app_key)
+            .gte('ts', startTimestamp)
+            .lte('ts', endTimestamp);
+
+          // Apply SQL conditions
+          sqlConditions.forEach((condition: any) => {
+            if (condition.field === 'event_type') {
+              eventsQuery = eventsQuery.eq('event_type', condition.value);
+            }
+          });
+
+          const { data: events } = await eventsQuery;
+          
+          // Filter by JSON conditions in memory
+          let filtered = events || [];
+          console.log(`Step "${step.label}": Fetched ${filtered.length} events to filter`);
+          
+          jsonConditions.forEach((condition: any) => {
+            const beforeCount = filtered.length;
+            filtered = filtered.filter(event => {
+              const fieldValue = getFieldValue(event, condition.field);
+              const matches = String(fieldValue) === String(condition.value);
+              if (!matches && beforeCount < 3) {
+                console.log(`  Event data.path="${fieldValue}" doesn't match "${condition.value}"`);
+              }
+              return matches;
+            });
+            console.log(`  After filtering ${condition.field}=${condition.value}: ${filtered.length} events remain`);
+          });
+
+          // Calculate measure on filtered data
+          const filteredValue = measure?.aggregation === 'count_distinct' && measure?.field
+            ? new Set(filtered.map(e => getFieldValue(e, measure.field)).filter(v => v != null)).size
+            : filtered.length;
+
+          console.log(`Step "${step.label}": Found ${filteredValue} matching events after all filters`);
+          results.push({ value: filteredValue });
+        } else {
+          // No JSON conditions - use SQL query
+          const sql = `
+            SELECT ${measureClause} as measure_value
+            FROM analytics_product_events
+            WHERE ${whereParts.join(' AND ')}
+          `;
+
+          console.log(`Flow step "${step.label}" SQL:`, sql);
+
+          const { data, error } = await supabase.rpc('execute_raw_sql', {
+            sql_query: sql
+          });
+
+          if (error) {
+            console.error(`Error querying step "${step.label}":`, error);
+            results.push({ value: 0 });
+          } else {
+            const resultArray = Array.isArray(data) ? data : [];
+            const value = resultArray[0]?.measure_value || 0;
+            console.log(`Step "${step.label}": Found ${value} matching events`);
+            results.push({ value });
+          }
+        }
+      }
+
+      return reply.send({
+        ok: true,
+        data: results,
+        metadata: {
+          total_rows: results.length,
+          query_time_ms: Date.now() - startTime,
+        },
+      });
+
+    } catch (error: any) {
+      console.error('Error executing flow query:', error);
+      return reply.code(500).send({
+        ok: false,
+        error: error.message || 'Internal server error',
+      });
+    }
+  });
+  
   // Raw SQL query endpoint for SQL Sandbox
   fastify.post('/query/sql', async (request, reply) => {
     const startTime = Date.now();
@@ -166,14 +310,14 @@ const queryRoutes: FastifyPluginAsync = async (fastify) => {
       const sql = buildTileSQL(query);
       console.log('Generated SQL:', sql);
 
-      // Execute query
-      const { data, error } = await supabase.rpc('execute_tile_query', {
-        query_sql: sql
+      // Execute query using execute_raw_sql
+      const { data, error } = await supabase.rpc('execute_raw_sql', {
+        sql_query: sql
       });
 
       if (error) {
         console.error('Query execution error:', error);
-        // If the RPC doesn't exist, fall back to direct query
+        // If the RPC fails, fall back to direct query
         const result = await executeDirectQuery(query);
         
         return reply.send({
@@ -186,11 +330,14 @@ const queryRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
 
+      // execute_raw_sql returns data as an array
+      const resultArray = Array.isArray(data) ? data : [];
+      
       return reply.send({
         ok: true,
-        data: data || [],
+        data: resultArray,
         metadata: {
-          total_rows: data?.length || 0,
+          total_rows: resultArray.length,
           query_time_ms: Date.now() - startTime,
         },
       });

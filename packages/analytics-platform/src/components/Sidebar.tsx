@@ -14,7 +14,8 @@ import {
   ChevronDown,
   ChevronRight,
   Menu,
-  X
+  X,
+  BookOpen
 } from 'lucide-react';
 import { AppSelector } from './AppSelector';
 
@@ -41,8 +42,9 @@ const SECTIONS: NavItem[] = [
     ]
   },
   { id: 'events', label: 'Events', icon: Activity, path: '/events', available: true },
-  { id: 'ai-wiz', label: 'AI Wiz', icon: Sparkles, path: '/ai-wiz', available: false },
-  { id: 'settings', label: 'Settings', icon: Settings, path: '/settings', available: false }
+  { id: 'data-contracts', label: 'Data Contracts', icon: BookOpen, path: '/data-contracts', available: true },
+  { id: 'ai-wiz', label: 'AI Wiz', icon: Sparkles, path: '/ai-wiz', available: true },
+  { id: 'settings', label: 'Settings', icon: Settings, path: '/settings', available: true }
 ];
 
 interface App {
@@ -94,18 +96,18 @@ export function Sidebar() {
         />
       )}
 
-      <aside className={`fixed left-0 top-0 h-screen bg-white border-r border-gray-200 flex flex-col z-50 transition-all duration-300 ${
+      <aside className={`fixed left-0 top-0 h-screen bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col z-50 transition-all duration-300 ${
         isCollapsed ? 'w-16' : 'w-64'
       }`}>
         {/* Header */}
-        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
           {!isCollapsed && (
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 dark:from-blue-500 dark:to-indigo-500 rounded-lg flex items-center justify-center">
                 <Activity className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h1 className="text-sm font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent tracking-tight">
+                <h1 className="text-sm font-bold bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent tracking-tight">
                   Analytics E2E Automation
                 </h1>
               </div>
@@ -113,20 +115,20 @@ export function Sidebar() {
           )}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
             title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {isCollapsed ? (
-              <Menu className="w-5 h-5 text-gray-600" />
+              <Menu className="w-5 h-5 text-gray-600 dark:text-gray-400" />
             ) : (
-              <X className="w-5 h-5 text-gray-600" />
+              <X className="w-5 h-5 text-gray-600 dark:text-gray-400" />
             )}
           </button>
         </div>
 
         {/* App Selector */}
         {!isCollapsed && (
-          <div className="p-4 border-b border-gray-200">
+          <div className="p-4 border-b border-gray-200 dark:border-gray-800">
             <AppSelector variant="sidebar" onAppChange={setSelectedApp} />
           </div>
         )}
@@ -150,8 +152,8 @@ export function Sidebar() {
                     className={`
                       w-full flex items-center gap-3 px-4 py-3 mx-2 rounded-lg transition-all relative
                       ${isDisabled
-                        ? 'text-gray-400 cursor-not-allowed'
-                        : 'text-gray-700 hover:bg-gray-50'
+                        ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
                       }
                     `}
                     title={isCollapsed ? section.label : undefined}
@@ -177,10 +179,10 @@ export function Sidebar() {
                     className={`
                       flex items-center gap-3 px-4 py-3 mx-2 rounded-lg transition-all relative
                       ${isActive 
-                        ? 'bg-blue-50 text-blue-700' 
+                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' 
                         : isDisabled
-                        ? 'text-gray-400 cursor-not-allowed'
-                        : 'text-gray-700 hover:bg-gray-50'
+                        ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
                       }
                     `}
                     onClick={(e) => isDisabled && e.preventDefault()}
@@ -215,8 +217,8 @@ export function Sidebar() {
                           className={`
                             flex items-center gap-3 px-4 py-2 mx-2 rounded-lg transition-all relative
                             ${isChildActive 
-                              ? 'bg-blue-50 text-blue-700' 
-                              : 'text-gray-600 hover:bg-gray-50'
+                              ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' 
+                              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
                             }
                           `}
                         >
@@ -237,9 +239,9 @@ export function Sidebar() {
 
         {/* Footer */}
         {!isCollapsed && (
-          <div className="p-4 border-t border-gray-200">
-            <div className="text-xs text-gray-500">
-              App Key: <code className="text-gray-700 bg-gray-100 px-1 py-0.5 rounded text-xs">{selectedApp || 'None'}</code>
+          <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+            <div className="text-xs text-gray-500 dark:text-gray-400">
+              App Key: <code className="text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-xs">{selectedApp || 'None'}</code>
             </div>
           </div>
         )}

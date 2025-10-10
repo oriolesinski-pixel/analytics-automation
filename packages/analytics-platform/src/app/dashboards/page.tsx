@@ -88,19 +88,19 @@ export default function DashboardsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600 dark:text-indigo-400" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="px-8 py-6">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboards</h1>
-          <p className="text-gray-600 mb-4">Organize your analytics tiles into custom dashboards</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Dashboards</h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">Organize your analytics tiles into custom dashboards</p>
           
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -109,16 +109,16 @@ export default function DashboardsPage() {
               <div className="relative">
                 <button
                   onClick={() => setShowAppDropdown(!showAppDropdown)}
-                  className="flex items-center space-x-2 px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors"
+                  className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 rounded-lg transition-colors"
                 >
-                  <span className="font-medium text-gray-700">
+                  <span className="font-medium text-gray-700 dark:text-gray-200">
                     {apps.find(a => a.app_key === selectedApp)?.name || 'Select App'}
                   </span>
-                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                  <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                 </button>
 
                 {showAppDropdown && (
-                  <div className="absolute top-full left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                  <div className="absolute top-full left-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
                     {apps.map(app => (
                       <button
                         key={app.app_key}
@@ -126,11 +126,11 @@ export default function DashboardsPage() {
                           setSelectedApp(app.app_key);
                           setShowAppDropdown(false);
                         }}
-                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                       >
-                        <span className="text-gray-700">{app.name}</span>
+                        <span className="text-gray-700 dark:text-gray-200">{app.name}</span>
                         {app.app_key === selectedApp && (
-                          <div className="w-2 h-2 bg-indigo-600 rounded-full" />
+                          <div className="w-2 h-2 bg-indigo-600 dark:bg-indigo-500 rounded-full" />
                         )}
                       </button>
                     ))}
@@ -163,9 +163,9 @@ export default function DashboardsPage() {
           // Empty State
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
-              <LayoutDashboard className="mx-auto h-16 w-16 text-gray-400 mb-4" />
-              <h3 className="text-xl font-medium text-gray-900 mb-2">No Dashboards</h3>
-              <p className="text-gray-600 mb-6">
+              <LayoutDashboard className="mx-auto h-16 w-16 text-gray-400 dark:text-gray-600 mb-4" />
+              <h3 className="text-xl font-medium text-gray-900 dark:text-gray-100 mb-2">No Dashboards</h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
                 Create your first dashboard to organize your tiles
               </p>
             <button
@@ -183,24 +183,24 @@ export default function DashboardsPage() {
             {dashboardStore.dashboards.map((dashboard) => (
               <div
                 key={dashboard.id}
-                className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+                className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
               >
                 {/* Dashboard Preview Thumbnail */}
-                <div className="h-32 bg-gradient-to-br from-gray-50 to-gray-100 border-b border-gray-200 p-4">
+                <div className="h-32 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-800 border-b border-gray-200 dark:border-gray-700 p-4">
                   <div className="grid grid-cols-3 gap-2 h-full">
                     {/* Simulate tile layout preview */}
                     {dashboard.tiles?.slice(0, 6).map((tile, idx) => (
                       <div
                         key={idx}
-                        className={`bg-white rounded border border-gray-300 flex items-center justify-center ${
+                        className={`bg-white dark:bg-gray-600 rounded border border-gray-300 dark:border-gray-500 flex items-center justify-center ${
                           idx === 0 ? 'col-span-2 row-span-2' : ''
                         }`}
                       >
-                        <LayoutDashboard className="w-4 h-4 text-gray-400" />
+                        <LayoutDashboard className="w-4 h-4 text-gray-400 dark:text-gray-500" />
                       </div>
                     )) || (
                       // Empty state preview
-                      <div className="col-span-3 flex items-center justify-center text-gray-400">
+                      <div className="col-span-3 flex items-center justify-center text-gray-400 dark:text-gray-500">
                         <LayoutDashboard className="w-8 h-8" />
                       </div>
                     )}
@@ -211,14 +211,14 @@ export default function DashboardsPage() {
                 <div className="p-6">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900 mb-1">{dashboard.name}</h3>
+                      <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-1">{dashboard.name}</h3>
                       {dashboard.description && (
-                        <p className="text-sm text-gray-500">{dashboard.description}</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">{dashboard.description}</p>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
+                  <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400 mb-4">
                     <span>{dashboard.tile_count || 0} tiles</span>
                     <span>{new Date(dashboard.created_at).toLocaleDateString()}</span>
                   </div>
@@ -226,7 +226,7 @@ export default function DashboardsPage() {
                   <div className="flex space-x-2">
                     <button
                       onClick={() => router.push(`/dashboards/${dashboard.id}`)}
-                      className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center justify-center space-x-2 font-medium"
+                      className="flex-1 px-4 py-2 bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center justify-center space-x-2 font-medium"
                     >
                       <Eye className="w-4 h-4" />
                       <span>View</span>
@@ -234,7 +234,7 @@ export default function DashboardsPage() {
                     
                     <button
                       onClick={() => handleDeleteDashboard(dashboard.id)}
-                      className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors"
+                      className="px-4 py-2 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 text-red-600 dark:text-red-400 rounded-lg transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -282,18 +282,18 @@ function CreateDashboardModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">Create Dashboard</h2>
-          <button onClick={onCancel} className="p-1 hover:bg-gray-100 rounded-lg">
-            <X className="w-5 h-5 text-gray-500" />
+    <div className="fixed inset-0 bg-black bg-opacity-50 dark:bg-black dark:bg-opacity-70 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full mx-4">
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Create Dashboard</h2>
+          <button onClick={onCancel} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+            <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Dashboard Name <span className="text-red-500">*</span>
             </label>
             <input
@@ -301,14 +301,14 @@ function CreateDashboardModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g., Analytics Overview"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               autoFocus
               maxLength={255}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Description (optional)
             </label>
             <textarea
@@ -316,7 +316,7 @@ function CreateDashboardModal({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe your dashboard..."
               rows={3}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
             />
           </div>
 
@@ -324,14 +324,14 @@ function CreateDashboardModal({
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
               disabled={isSaving}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 font-medium"
+              className="flex-1 px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors disabled:opacity-50 font-medium"
               disabled={isSaving || !name.trim()}
             >
               {isSaving ? 'Creating...' : 'Create Dashboard'}

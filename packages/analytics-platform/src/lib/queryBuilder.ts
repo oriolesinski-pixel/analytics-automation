@@ -31,26 +31,37 @@ export function buildTileQueryRequest(
   appKey: string
 ): TileQueryRequest {
   // Handle both Date objects and ISO strings for dateRange
-  const startDate = config.dateRange.start instanceof Date 
+  const startDate = config.dateRange?.start instanceof Date 
     ? config.dateRange.start.toISOString()
-    : config.dateRange.start;
-  const endDate = config.dateRange.end instanceof Date
+    : config.dateRange?.start;
+  const endDate = config.dateRange?.end instanceof Date
     ? config.dateRange.end.toISOString()
-    : config.dateRange.end;
+    : config.dateRange?.end;
+
+  // Use the first measure for now (backend currently supports single measure)
+  const primaryMeasure = config.measures?.[0];
+
+  if (!primaryMeasure) {
+    throw new Error('No measure defined for tile');
+  }
+
+  if (!startDate || !endDate) {
+    throw new Error('Invalid date range for tile');
+  }
 
   return {
     app_key: appKey,
     event_type: config.eventType,
     measure: {
-      aggregation: config.measure.aggregation,
-      field: config.measure.field,
+      aggregation: primaryMeasure.aggregation,
+      field: primaryMeasure.field,
     },
-    dimensions: config.dimensions.map(d => ({
+    dimensions: (config.dimensions || []).map(d => ({
       field: d.field,
       bucket: d.type === 'temporal' ? d.id : undefined,
       type: d.type,
     })),
-    filters: config.filters.map(f => ({
+    filters: (config.filters || []).map(f => ({
       field: f.field,
       operator: f.operator,
       value: f.value,

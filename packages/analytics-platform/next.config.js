@@ -9,9 +9,18 @@ const nextConfig = {
   },
   async rewrites() {
     return [
+      // Only proxy specific analytics service endpoints, not all /api routes
       {
-        source: '/api/:path*',
-        destination: 'http://localhost:8082/:path*',
+        source: '/api/query/:path*',
+        destination: 'http://localhost:8082/query/:path*',
+      },
+      {
+        source: '/api/ingest/:path*',
+        destination: 'http://localhost:8082/ingest/:path*',
+      },
+      {
+        source: '/api/events/:path*',
+        destination: 'http://localhost:8082/events/:path*',
       },
     ];
   },

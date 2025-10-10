@@ -408,8 +408,8 @@ export function UIGraphWithTraffic({ uiGraph, appKey }: UIGraphWithTrafficProps)
             onMouseEnter={() => setShowLegend(true)}
             onMouseLeave={() => setShowLegend(false)}
           >
-            <div className="p-3 bg-white/90 backdrop-blur-sm rounded-lg shadow-md border border-orange-200 cursor-help hover:bg-orange-50 transition-colors">
-              <Flame className="w-5 h-5 text-orange-600" />
+            <div className="p-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-md border border-orange-200 dark:border-orange-500/30 cursor-help hover:bg-orange-50 dark:hover:bg-orange-500/20 transition-colors">
+              <Flame className="w-5 h-5 text-orange-600 dark:text-orange-500" />
             </div>
           </div>
         )}
@@ -736,7 +736,7 @@ export function UIGraphWithTraffic({ uiGraph, appKey }: UIGraphWithTrafficProps)
         {/* Heat Map Legend - Show on Hover */}
         {isMounted && showTrafficOverlay && !selectedNode && showLegend && (
           <div 
-            className="absolute top-4 right-4 w-64 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg border border-orange-200 p-4 z-20"
+            className="absolute top-4 right-4 w-64 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm rounded-lg shadow-lg border border-orange-200 dark:border-orange-500/30 p-4 z-20"
             onMouseEnter={() => setShowLegend(true)}
             onMouseLeave={() => setShowLegend(false)}
           >

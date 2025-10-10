@@ -104,7 +104,7 @@ export function AppSelector({ variant = 'header', onAppChange }: AppSelectorProp
       <select
         value={selectedApp}
         onChange={(e) => handleSelectApp(e.target.value)}
-        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+        className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
       >
         {apps.map((app) => (
           <option key={app.app_key} value={app.app_key}>
