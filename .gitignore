@@ -15,3 +15,10 @@ node_modules/
 .env.local
 .env
 *.log
+# Generated outputs (temp files)
+packages/analytics-generator/src/utils/generated-outputs/unified/tmp/
+packages/analytics-generator/src/utils/generated-outputs/debug-*.json
+
+# Environment files with secrets
+.env
+*.env.local

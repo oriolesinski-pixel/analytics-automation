@@ -1,9 +1,0 @@
-{
-  "generatedAt": "2025-10-15T08:39:52.271Z",
-  "appKey": "demo-test-apps-2025-10-15-ptl7s2ju1qd",
-  "eventCount": 6,
-  "frameworksDetected": [
-    "unknown"
-  ],
-  "entryPointFile": "src/app/dashboard/layout.tsx"
-}
