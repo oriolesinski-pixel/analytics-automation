@@ -1,0 +1,2311 @@
+{
+  "base_fields": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "source": "generated"
+    },
+    "ts": {
+      "type": "number",
+      "format": "unix_timestamp",
+      "source": "generated"
+    },
+    "app_key": {
+      "type": "string",
+      "source": "config"
+    },
+    "session_id": {
+      "type": "string",
+      "source": "sessionStorage"
+    },
+    "user_id": {
+      "type": "string",
+      "source": "persistent_storage",
+      "description": "8-10 digit string"
+    },
+    "event_type": {
+      "type": "string",
+      "source": "code"
+    }
+  },
+  "events": [
+    {
+      "event_type": "PAGE_VIEW",
+      "data_fields": [
+        "url",
+        "path",
+        "title",
+        "referrer",
+        "is_first_view",
+        "entry_type"
+      ],
+      "properties": {
+        "url": "string",
+        "path": "string",
+        "title": "string",
+        "referrer": "string | null",
+        "is_first_view": "boolean",
+        "entry_type": "\"navigation\" | \"reload\" | \"back_forward\" | \"spa_transition\""
+      }
+    },
+    {
+      "event_type": "BUTTON_CLICK",
+      "data_fields": [
+        "element_text",
+        "element_id",
+        "element_type",
+        "surface",
+        "page_path",
+        "is_primary_cta",
+        "cta_category",
+        "pattern_type"
+      ],
+      "properties": {
+        "element_text": "string",
+        "element_id": "string | null",
+        "element_type": "\"button\" | \"link\" | \"icon\" | \"tab\"",
+        "surface": "string",
+        "page_path": "string",
+        "is_primary_cta": "boolean",
+        "cta_category": "\"conversion\" | \"navigation\" | \"engagement\"",
+        "pattern_type": "string | null",
+        "context": "Record<string, any> | undefined  // Only present for forms, bulk actions, etc."
+      }
+    },
+    {
+      "event_type": "FORM_INTERACTION",
+      "data_fields": [
+        "action",
+        "form_name",
+        "form_id",
+        "form_type",
+        "surface",
+        "page_path",
+        "fields_total",
+        "fields_completed"
+      ],
+      "properties": {
+        "action": "\"started\" | \"submitted\" | \"abandoned\"",
+        "form_name": "string",
+        "form_id": "string | null",
+        "form_type": "\"contact\" | \"signup\" | \"login\" | \"checkout\" | \"newsletter\" | \"other\"",
+        "surface": "string",
+        "page_path": "string",
+        "fields_total": "number",
+        "fields_completed": "number"
+      }
+    },
+    {
+      "event_type": "MODAL_INTERACTION",
+      "data_fields": [
+        "action",
+        "modal_name",
+        "modal_id",
+        "trigger_source",
+        "page_path",
+        "context"
+      ],
+      "properties": {
+        "action": "\"opened\" | \"closed\" | \"submitted\" | \"dismissed\"",
+        "modal_name": "string",
+        "modal_id": "string | null",
+        "trigger_source": "\"button_click\" | \"auto_trigger\" | \"other\"",
+        "page_path": "string",
+        "context": "Record<string, any>"
+      }
+    },
+    {
+      "event_type": "ELEMENT_VISIBILITY",
+      "data_fields": [
+        "action",
+        "element_type",
+        "element_name",
+        "element_id",
+        "trigger_source",
+        "page_path",
+        "has_cta"
+      ],
+      "properties": {
+        "action": "\"shown\" | \"hidden\" | \"dismissed\"",
+        "element_type": "\"modal\" | \"popup\" | \"drawer\" | \"tooltip\" | \"dropdown\" | \"toast\" | \"unknown\"",
+        "element_name": "string",
+        "element_id": "string | null",
+        "trigger_source": "\"button_click\" | \"auto_trigger\" | \"scroll_trigger\" | \"unknown\"",
+        "page_path": "string",
+        "has_cta": "boolean"
+      }
+    },
+    {
+      "event_type": "SCROLL_INTERACTION",
+      "data_fields": [
+        "action",
+        "depth_percentage",
+        "milestone",
+        "page_path",
+        "direction"
+      ],
+      "properties": {
+        "action": "\"depth_reached\"",
+        "depth_percentage": "number",
+        "milestone": "\"25%\" | \"50%\" | \"75%\" | \"90%\" | \"100%\" | \"none\"",
+        "page_path": "string",
+        "direction": "\"up\" | \"down\""
+      }
+    }
+  ],
+  "ai_components": [
+    {
+      "name": "CheckoutStepContinue",
+      "type": "button",
+      "selector_patterns": [
+        "button[type='button']"
+      ],
+      "interaction_type": "click",
+      "pattern_type": "multi_step_flow",
+      "likely_purpose": "Advance to payment step",
+      "context_needed": [
+        "plan",
+        "billing_cycle",
+        "amount",
+        "step"
+      ],
+      "context_collection": {
+        "strategy": "global_context",
+        "scope_selector": "body",
+        "fields": [
+          {
+            "field_name": "plan",
+            "selector": "body",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "attribute_name": "searchParams.plan",
+            "required": true,
+            "description": "Selected subscription plan"
+          },
+          {
+            "field_name": "billing_cycle",
+            "selector": "body",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "attribute_name": "searchParams.cycle",
+            "required": true,
+            "description": "Monthly or annual billing"
+          },
+          {
+            "field_name": "step",
+            "selector": "body",
+            "extraction_method": "data-attribute",
+            "data_type": "number",
+            "required": true,
+            "description": "Current checkout step"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": true,
+          "track_change_delta": false,
+          "track_timing": true
+        },
+        "fallback_sources": [
+          "URL parameters"
+        ]
+      },
+      "relationships": {
+        "triggers": [
+          "checkout_step_viewed"
+        ],
+        "affects": [
+          "step state"
+        ],
+        "depends_on": [
+          "plan selection"
+        ]
+      }
+    },
+    {
+      "name": "CheckoutForm",
+      "type": "form",
+      "selector_patterns": [
+        "form"
+      ],
+      "interaction_type": "submit",
+      "pattern_type": "form_submission,multi_step_flow",
+      "likely_purpose": "Complete payment and subscription",
+      "context_needed": [
+        "card_number",
+        "expiry",
+        "cvv",
+        "cardholder_name",
+        "billing_address",
+        "city",
+        "state",
+        "zip",
+        "plan",
+        "billing_cycle",
+        "total"
+      ],
+      "context_collection": {
+        "strategy": "form_state",
+        "scope_selector": "form",
+        "fields": [
+          {
+            "field_name": "card_number",
+            "selector": "input[name='cardNumber']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": true,
+            "description": "Credit card number"
+          },
+          {
+            "field_name": "expiry",
+            "selector": "input[name='expiry']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": true,
+            "description": "Card expiration date"
+          },
+          {
+            "field_name": "cvv",
+            "selector": "input[name='cvv']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": true,
+            "description": "Card security code"
+          },
+          {
+            "field_name": "cardholder_name",
+            "selector": "input[name='cardholderName']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": true,
+            "description": "Name on card"
+          },
+          {
+            "field_name": "billing_address",
+            "selector": "input[name='billingAddress']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": true,
+            "description": "Billing street address"
+          },
+          {
+            "field_name": "city",
+            "selector": "input[name='city']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": true,
+            "description": "Billing city"
+          },
+          {
+            "field_name": "state",
+            "selector": "input[name='state']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": true,
+            "description": "Billing state"
+          },
+          {
+            "field_name": "zip",
+            "selector": "input[name='zip']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": true,
+            "description": "Billing zip code"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": true
+        },
+        "fallback_sources": [
+          "state variables"
+        ]
+      },
+      "relationships": {
+        "triggers": [
+          "checkout_completed"
+        ],
+        "affects": [
+          "subscription status"
+        ],
+        "depends_on": [
+          "plan selection",
+          "step 2"
+        ]
+      }
+    },
+    {
+      "name": "BackToPricingLink",
+      "type": "link",
+      "selector_patterns": [
+        "a[href='/pricing']"
+      ],
+      "interaction_type": "click",
+      "pattern_type": "item_selection",
+      "likely_purpose": "Return to pricing page",
+      "context_needed": [
+        "current_step",
+        "form_data"
+      ],
+      "context_collection": {
+        "strategy": "component_props",
+        "scope_selector": "body",
+        "fields": [
+          {
+            "field_name": "current_step",
+            "selector": "body",
+            "extraction_method": "data-attribute",
+            "data_type": "number",
+            "required": false,
+            "description": "Step user was on"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": false
+        },
+        "fallback_sources": []
+      },
+      "relationships": {
+        "triggers": [
+          "checkout_abandoned"
+        ],
+        "affects": [
+          "navigation"
+        ],
+        "depends_on": []
+      }
+    },
+    {
+      "name": "GetStartedButton",
+      "type": "button",
+      "selector_patterns": [
+        "button"
+      ],
+      "interaction_type": "click",
+      "pattern_type": "item_selection",
+      "likely_purpose": "Navigate to dashboard after upgrade",
+      "context_needed": [
+        "upgrade_completed"
+      ],
+      "context_collection": {
+        "strategy": "global_context",
+        "scope_selector": "body",
+        "fields": [
+          {
+            "field_name": "upgrade_completed",
+            "selector": "body",
+            "extraction_method": "data-attribute",
+            "data_type": "boolean",
+            "required": true,
+            "description": "Upgrade success status"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": false
+        },
+        "fallback_sources": []
+      },
+      "relationships": {
+        "triggers": [
+          "upgrade_success_viewed"
+        ],
+        "affects": [
+          "navigation"
+        ],
+        "depends_on": [
+          "checkout completion"
+        ]
+      }
+    },
+    {
+      "name": "NewProjectButton",
+      "type": "button",
+      "selector_patterns": [
+        "a[href='/dashboard/projects/new'] button",
+        "button:has-text('New Project')"
+      ],
+      "interaction_type": "click",
+      "pattern_type": "item_selection",
+      "likely_purpose": "Navigate to create project",
+      "context_needed": [
+        "workspace_id",
+        "current_project_count"
+      ],
+      "context_collection": {
+        "strategy": "global_context",
+        "scope_selector": "body",
+        "fields": [
+          {
+            "field_name": "workspace_id",
+            "selector": "body",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "required": true,
+            "description": "Current workspace"
+          },
+          {
+            "field_name": "current_project_count",
+            "selector": ".project-count",
+            "extraction_method": "textContent",
+            "data_type": "number",
+            "required": false,
+            "description": "Number of active projects"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": false
+        },
+        "fallback_sources": []
+      },
+      "relationships": {
+        "triggers": [
+          "new_project_clicked"
+        ],
+        "affects": [
+          "navigation"
+        ],
+        "depends_on": [
+          "workspace membership"
+        ]
+      }
+    },
+    {
+      "name": "UpgradeToPremiumButton",
+      "type": "button",
+      "selector_patterns": [
+        "a[href='/pricing'] button",
+        "button:has-text('Upgrade')"
+      ],
+      "interaction_type": "click",
+      "pattern_type": "item_selection",
+      "likely_purpose": "Navigate to pricing page",
+      "context_needed": [
+        "current_plan",
+        "context"
+      ],
+      "context_collection": {
+        "strategy": "global_context",
+        "scope_selector": "body",
+        "fields": [
+          {
+            "field_name": "current_plan",
+            "selector": "body",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "required": true,
+            "description": "User's current plan"
+          },
+          {
+            "field_name": "context",
+            "selector": "body",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "required": false,
+            "description": "Where upgrade clicked"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": false
+        },
+        "fallback_sources": []
+      },
+      "relationships": {
+        "triggers": [
+          "upgrade_clicked"
+        ],
+        "affects": [
+          "navigation"
+        ],
+        "depends_on": [
+          "plan status"
+        ]
+      }
+    },
+    {
+      "name": "ProjectForm",
+      "type": "form",
+      "selector_patterns": [
+        "form"
+      ],
+      "interaction_type": "submit",
+      "pattern_type": "form_submission",
+      "likely_purpose": "Create new project",
+      "context_needed": [
+        "name",
+        "description",
+        "workspace_id",
+        "project_count"
+      ],
+      "context_collection": {
+        "strategy": "form_state",
+        "scope_selector": "form",
+        "fields": [
+          {
+            "field_name": "name",
+            "selector": "input[name='name']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": true,
+            "description": "Project name"
+          },
+          {
+            "field_name": "description",
+            "selector": "textarea[name='description']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": false,
+            "description": "Project description"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": true
+        },
+        "fallback_sources": [
+          "state variables"
+        ]
+      },
+      "relationships": {
+        "triggers": [
+          "created_project",
+          "paywall_encountered"
+        ],
+        "affects": [
+          "project list"
+        ],
+        "depends_on": [
+          "workspace",
+          "plan limits"
+        ]
+      }
+    },
+    {
+      "name": "CreateTaskButton",
+      "type": "button",
+      "selector_patterns": [
+        "button:has-text('New Task')",
+        "button:has-text('Create Task')"
+      ],
+      "interaction_type": "click",
+      "pattern_type": "modal_lifecycle",
+      "likely_purpose": "Open task creation modal",
+      "context_needed": [
+        "project_id",
+        "project_name"
+      ],
+      "context_collection": {
+        "strategy": "parent_data",
+        "scope_selector": "[data-project-id]",
+        "fields": [
+          {
+            "field_name": "project_id",
+            "selector": "[data-project-id]",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "attribute_name": "data-project-id",
+            "required": true,
+            "description": "Project for new task"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": false
+        },
+        "fallback_sources": [
+          "URL params"
+        ]
+      },
+      "relationships": {
+        "triggers": [
+          "task_modal_opened"
+        ],
+        "affects": [
+          "modal state"
+        ],
+        "depends_on": [
+          "project context"
+        ]
+      }
+    },
+    {
+      "name": "TaskForm",
+      "type": "form",
+      "selector_patterns": [
+        "form"
+      ],
+      "interaction_type": "submit",
+      "pattern_type": "form_submission,modal_lifecycle",
+      "likely_purpose": "Create or update task",
+      "context_needed": [
+        "title",
+        "description",
+        "priority",
+        "assigned_to",
+        "due_date",
+        "project_id"
+      ],
+      "context_collection": {
+        "strategy": "form_state",
+        "scope_selector": "form",
+        "fields": [
+          {
+            "field_name": "title",
+            "selector": "input[name='title']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": true,
+            "description": "Task title"
+          },
+          {
+            "field_name": "description",
+            "selector": "textarea[name='description']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": false,
+            "description": "Task description"
+          },
+          {
+            "field_name": "priority",
+            "selector": "select[name='priority']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": true,
+            "description": "Task priority level"
+          },
+          {
+            "field_name": "assigned_to",
+            "selector": "select[name='assigned_to']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": false,
+            "description": "Assigned team member"
+          },
+          {
+            "field_name": "due_date",
+            "selector": "input[type='date']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": false,
+            "description": "Task due date"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": true
+        },
+        "fallback_sources": [
+          "state variables"
+        ]
+      },
+      "relationships": {
+        "triggers": [
+          "created_task",
+          "updated_task"
+        ],
+        "affects": [
+          "task list"
+        ],
+        "depends_on": [
+          "project",
+          "team members"
+        ]
+      }
+    },
+    {
+      "name": "TaskStatusDropdown",
+      "type": "select",
+      "selector_patterns": [
+        "select[name='status']",
+        "[role='combobox']"
+      ],
+      "interaction_type": "change",
+      "pattern_type": "toggle_state",
+      "likely_purpose": "Change task status",
+      "context_needed": [
+        "task_id",
+        "previous_status",
+        "new_status"
+      ],
+      "context_collection": {
+        "strategy": "parent_data",
+        "scope_selector": "[data-task-id]",
+        "fields": [
+          {
+            "field_name": "task_id",
+            "selector": "[data-task-id]",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "attribute_name": "data-task-id",
+            "required": true,
+            "description": "Task being updated"
+          },
+          {
+            "field_name": "previous_status",
+            "selector": "select[name='status']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": true,
+            "description": "Status before change"
+          },
+          {
+            "field_name": "new_status",
+            "selector": "select[name='status']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": true,
+            "description": "Status after change"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": true,
+          "track_change_delta": true,
+          "track_timing": false
+        },
+        "fallback_sources": []
+      },
+      "relationships": {
+        "triggers": [
+          "task_status_changed"
+        ],
+        "affects": [
+          "task state"
+        ],
+        "depends_on": [
+          "task context"
+        ]
+      }
+    },
+    {
+      "name": "TaskActionMenu",
+      "type": "button",
+      "selector_patterns": [
+        "button[aria-label='Task actions']",
+        "[data-task-menu]"
+      ],
+      "interaction_type": "click",
+      "pattern_type": "item_selection",
+      "likely_purpose": "Open task actions menu",
+      "context_needed": [
+        "task_id",
+        "task_status"
+      ],
+      "context_collection": {
+        "strategy": "parent_data",
+        "scope_selector": "[data-task-id]",
+        "fields": [
+          {
+            "field_name": "task_id",
+            "selector": "[data-task-id]",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "attribute_name": "data-task-id",
+            "required": true,
+            "description": "Task for actions"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": false
+        },
+        "fallback_sources": []
+      },
+      "relationships": {
+        "triggers": [
+          "task_menu_opened"
+        ],
+        "affects": [
+          "menu state"
+        ],
+        "depends_on": [
+          "task context"
+        ]
+      }
+    },
+    {
+      "name": "DeleteTaskButton",
+      "type": "button",
+      "selector_patterns": [
+        "button:has-text('Delete')",
+        "[data-action='delete']"
+      ],
+      "interaction_type": "click",
+      "pattern_type": "item_selection",
+      "likely_purpose": "Delete task",
+      "context_needed": [
+        "task_id",
+        "task_title",
+        "project_id"
+      ],
+      "context_collection": {
+        "strategy": "parent_data",
+        "scope_selector": "[data-task-id]",
+        "fields": [
+          {
+            "field_name": "task_id",
+            "selector": "[data-task-id]",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "attribute_name": "data-task-id",
+            "required": true,
+            "description": "Task to delete"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": false
+        },
+        "fallback_sources": []
+      },
+      "relationships": {
+        "triggers": [
+          "task_deleted"
+        ],
+        "affects": [
+          "task list"
+        ],
+        "depends_on": [
+          "task context"
+        ]
+      }
+    },
+    {
+      "name": "ArchiveProjectButton",
+      "type": "button",
+      "selector_patterns": [
+        "button:has-text('Archive')"
+      ],
+      "interaction_type": "click",
+      "pattern_type": "item_selection",
+      "likely_purpose": "Archive project",
+      "context_needed": [
+        "project_id",
+        "project_name",
+        "task_count"
+      ],
+      "context_collection": {
+        "strategy": "parent_data",
+        "scope_selector": "[data-project-id]",
+        "fields": [
+          {
+            "field_name": "project_id",
+            "selector": "[data-project-id]",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "attribute_name": "data-project-id",
+            "required": true,
+            "description": "Project to archive"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": false
+        },
+        "fallback_sources": []
+      },
+      "relationships": {
+        "triggers": [
+          "project_archived"
+        ],
+        "affects": [
+          "project status"
+        ],
+        "depends_on": [
+          "project context"
+        ]
+      }
+    },
+    {
+      "name": "InviteTeamMemberButton",
+      "type": "button",
+      "selector_patterns": [
+        "button:has-text('Invite')"
+      ],
+      "interaction_type": "click",
+      "pattern_type": "modal_lifecycle",
+      "likely_purpose": "Open invite modal",
+      "context_needed": [
+        "workspace_id",
+        "current_member_count"
+      ],
+      "context_collection": {
+        "strategy": "global_context",
+        "scope_selector": "body",
+        "fields": [
+          {
+            "field_name": "workspace_id",
+            "selector": "body",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "required": true,
+            "description": "Workspace for invite"
+          },
+          {
+            "field_name": "current_member_count",
+            "selector": ".member-count",
+            "extraction_method": "textContent",
+            "data_type": "number",
+            "required": false,
+            "description": "Current team size"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": false
+        },
+        "fallback_sources": []
+      },
+      "relationships": {
+        "triggers": [
+          "invite_modal_opened"
+        ],
+        "affects": [
+          "modal state"
+        ],
+        "depends_on": [
+          "workspace"
+        ]
+      }
+    },
+    {
+      "name": "InviteForm",
+      "type": "form",
+      "selector_patterns": [
+        "form"
+      ],
+      "interaction_type": "submit",
+      "pattern_type": "form_submission,modal_lifecycle",
+      "likely_purpose": "Send team invitation",
+      "context_needed": [
+        "email",
+        "workspace_id"
+      ],
+      "context_collection": {
+        "strategy": "form_state",
+        "scope_selector": "form",
+        "fields": [
+          {
+            "field_name": "email",
+            "selector": "input[type='email']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": true,
+            "description": "Invitee email"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": true
+        },
+        "fallback_sources": [
+          "state variables"
+        ]
+      },
+      "relationships": {
+        "triggers": [
+          "invited_member"
+        ],
+        "affects": [
+          "team members"
+        ],
+        "depends_on": [
+          "workspace"
+        ]
+      }
+    },
+    {
+      "name": "RemoveMemberButton",
+      "type": "button",
+      "selector_patterns": [
+        "button:has-text('Remove')"
+      ],
+      "interaction_type": "click",
+      "pattern_type": "item_selection",
+      "likely_purpose": "Remove team member",
+      "context_needed": [
+        "user_id",
+        "workspace_id"
+      ],
+      "context_collection": {
+        "strategy": "parent_data",
+        "scope_selector": "[data-user-id]",
+        "fields": [
+          {
+            "field_name": "user_id",
+            "selector": "[data-user-id]",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "attribute_name": "data-user-id",
+            "required": true,
+            "description": "Member to remove"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": false
+        },
+        "fallback_sources": []
+      },
+      "relationships": {
+        "triggers": [
+          "member_removed"
+        ],
+        "affects": [
+          "team members"
+        ],
+        "depends_on": [
+          "member context"
+        ]
+      }
+    },
+    {
+      "name": "SettingsForm",
+      "type": "form",
+      "selector_patterns": [
+        "form"
+      ],
+      "interaction_type": "submit",
+      "pattern_type": "form_submission",
+      "likely_purpose": "Update settings",
+      "context_needed": [
+        "full_name",
+        "workspace_name",
+        "email_notifications",
+        "task_updates",
+        "weekly_digest"
+      ],
+      "context_collection": {
+        "strategy": "form_state",
+        "scope_selector": "form",
+        "fields": [
+          {
+            "field_name": "full_name",
+            "selector": "input[name='fullName']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": false,
+            "description": "User full name"
+          },
+          {
+            "field_name": "workspace_name",
+            "selector": "input[name='workspaceName']",
+            "extraction_method": "value",
+            "data_type": "string",
+            "required": false,
+            "description": "Workspace name"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": true,
+          "track_change_delta": true,
+          "track_timing": false
+        },
+        "fallback_sources": [
+          "state variables"
+        ]
+      },
+      "relationships": {
+        "triggers": [
+          "updated_settings"
+        ],
+        "affects": [
+          "profile",
+          "workspace"
+        ],
+        "depends_on": [
+          "user context"
+        ]
+      }
+    },
+    {
+      "name": "NotificationToggle",
+      "type": "toggle",
+      "selector_patterns": [
+        "input[type='checkbox']",
+        "[role='switch']"
+      ],
+      "interaction_type": "toggle",
+      "pattern_type": "toggle_state",
+      "likely_purpose": "Toggle notification preferences",
+      "context_needed": [
+        "setting_name",
+        "previous_state",
+        "new_state"
+      ],
+      "context_collection": {
+        "strategy": "component_props",
+        "scope_selector": "[data-setting]",
+        "fields": [
+          {
+            "field_name": "setting_name",
+            "selector": "[data-setting]",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "attribute_name": "data-setting",
+            "required": true,
+            "description": "Setting being toggled"
+          },
+          {
+            "field_name": "previous_state",
+            "selector": "input[type='checkbox']",
+            "extraction_method": "checked",
+            "data_type": "boolean",
+            "required": true,
+            "description": "State before toggle"
+          },
+          {
+            "field_name": "new_state",
+            "selector": "input[type='checkbox']",
+            "extraction_method": "checked",
+            "data_type": "boolean",
+            "required": true,
+            "description": "State after toggle"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": true,
+          "track_change_delta": true,
+          "track_timing": false
+        },
+        "fallback_sources": []
+      },
+      "relationships": {
+        "triggers": [
+          "setting_changed"
+        ],
+        "affects": [
+          "preferences"
+        ],
+        "depends_on": [
+          "user settings"
+        ]
+      }
+    },
+    {
+      "name": "SettingsTabs",
+      "type": "tab",
+      "selector_patterns": [
+        "[role='tab']",
+        "button[data-tab]"
+      ],
+      "interaction_type": "click",
+      "pattern_type": "tab_switch",
+      "likely_purpose": "Switch settings section",
+      "context_needed": [
+        "previous_tab",
+        "new_tab",
+        "unsaved_changes"
+      ],
+      "context_collection": {
+        "strategy": "sibling_state",
+        "scope_selector": "[role='tablist']",
+        "fields": [
+          {
+            "field_name": "previous_tab",
+            "selector": "[role='tab'][aria-selected='true']",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "attribute_name": "data-tab",
+            "required": true,
+            "description": "Tab before switch"
+          },
+          {
+            "field_name": "new_tab",
+            "selector": "[role='tab']",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "attribute_name": "data-tab",
+            "required": true,
+            "description": "Tab after switch"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": true,
+          "track_change_delta": false,
+          "track_timing": false
+        },
+        "fallback_sources": []
+      },
+      "relationships": {
+        "triggers": [
+          "tab_switched"
+        ],
+        "affects": [
+          "visible content"
+        ],
+        "depends_on": [
+          "tab state"
+        ]
+      }
+    },
+    {
+      "name": "ManageBillingButton",
+      "type": "button",
+      "selector_patterns": [
+        "button:has-text('Manage Billing')",
+        "a[href*='billing']"
+      ],
+      "interaction_type": "click",
+      "pattern_type": "item_selection",
+      "likely_purpose": "Navigate to billing page",
+      "context_needed": [
+        "current_plan",
+        "billing_cycle"
+      ],
+      "context_collection": {
+        "strategy": "global_context",
+        "scope_selector": "body",
+        "fields": [
+          {
+            "field_name": "current_plan",
+            "selector": "body",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "required": true,
+            "description": "User's plan"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": false
+        },
+        "fallback_sources": []
+      },
+      "relationships": {
+        "triggers": [
+          "billing_viewed"
+        ],
+        "affects": [
+          "navigation"
+        ],
+        "depends_on": [
+          "subscription"
+        ]
+      }
+    },
+    {
+      "name": "DownloadInvoiceButton",
+      "type": "button",
+      "selector_patterns": [
+        "button:has-text('Download')"
+      ],
+      "interaction_type": "click",
+      "pattern_type": "item_selection",
+      "likely_purpose": "Download invoice",
+      "context_needed": [
+        "invoice_id",
+        "invoice_date",
+        "amount"
+      ],
+      "context_collection": {
+        "strategy": "parent_data",
+        "scope_selector": "[data-invoice-id]",
+        "fields": [
+          {
+            "field_name": "invoice_id",
+            "selector": "[data-invoice-id]",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "attribute_name": "data-invoice-id",
+            "required": true,
+            "description": "Invoice to download"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": false
+        },
+        "fallback_sources": []
+      },
+      "relationships": {
+        "triggers": [
+          "invoice_downloaded"
+        ],
+        "affects": [
+          "download"
+        ],
+        "depends_on": [
+          "invoice context"
+        ]
+      }
+    },
+    {
+      "name": "ProjectCard",
+      "type": "link",
+      "selector_patterns": [
+        "a[href*='/dashboard/projects/']"
+      ],
+      "interaction_type": "click",
+      "pattern_type": "item_selection",
+      "likely_purpose": "Navigate to project detail",
+      "context_needed": [
+        "project_id",
+        "project_name",
+        "task_count"
+      ],
+      "context_collection": {
+        "strategy": "parent_data",
+        "scope_selector": "[data-project-id]",
+        "fields": [
+          {
+            "field_name": "project_id",
+            "selector": "[data-project-id]",
+            "extraction_method": "data-attribute",
+            "data_type": "string",
+            "attribute_name": "data-project-id",
+            "required": true,
+            "description": "Project clicked"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": false,
+          "track_change_delta": false,
+          "track_timing": false
+        },
+        "fallback_sources": [
+          "href attribute"
+        ]
+      },
+      "relationships": {
+        "triggers": [
+          "project_viewed"
+        ],
+        "affects": [
+          "navigation"
+        ],
+        "depends_on": [
+          "project list"
+        ]
+      }
+    }
+  ],
+  "ai_patterns": [
+    {
+      "component": "CheckoutStepContinue",
+      "context_collection": {
+        "search_parents": [
+          "body"
+        ],
+        "extract_fields": [
+          "plan",
+          "cycle",
+          "step"
+        ],
+        "sibling_context": [],
+        "data_attributes": [],
+        "extraction_strategy": "url_params_and_state",
+        "specific_selectors": {
+          "plan": "searchParams.get('plan')",
+          "cycle": "searchParams.get('cycle')",
+          "step": "useState hook value"
+        }
+      },
+      "state_changes": [
+        "increments_step_state",
+        "triggers_step_2_view"
+      ],
+      "triggers_events": [
+        "checkout_step_viewed"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "URL searchParams",
+          "component state"
+        ],
+        "writes_to": [
+          "step state",
+          "activity_log table"
+        ],
+        "side_effects": [
+          "logs analytics event"
+        ]
+      }
+    },
+    {
+      "component": "CheckoutForm",
+      "context_collection": {
+        "search_parents": [
+          "form"
+        ],
+        "extract_fields": [
+          "cardNumber",
+          "expiry",
+          "cvv",
+          "cardholderName",
+          "billingAddress",
+          "city",
+          "state",
+          "zip"
+        ],
+        "sibling_context": [],
+        "data_attributes": [],
+        "extraction_strategy": "form_controlled_inputs",
+        "specific_selectors": {
+          "cardNumber": "useState cardNumber",
+          "expiry": "useState expiry",
+          "cvv": "useState cvv",
+          "cardholderName": "useState cardholderName",
+          "billingAddress": "useState billingAddress",
+          "city": "useState city",
+          "state": "useState state",
+          "zip": "useState zip",
+          "plan": "searchParams.get('plan')",
+          "cycle": "searchParams.get('cycle')"
+        }
+      },
+      "state_changes": [
+        "sets_processing_true",
+        "updates_workspace_plan",
+        "navigates_to_success"
+      ],
+      "triggers_events": [
+        "checkout_completed"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "form state hooks",
+          "URL params"
+        ],
+        "writes_to": [
+          "workspaces.plan",
+          "workspaces.billing_cycle",
+          "activity_log"
+        ],
+        "side_effects": [
+          "updates subscription",
+          "redirects to success page"
+        ]
+      }
+    },
+    {
+      "component": "BackToPricingLink",
+      "context_collection": {
+        "search_parents": [
+          "body"
+        ],
+        "extract_fields": [
+          "current_step"
+        ],
+        "sibling_context": [],
+        "data_attributes": [],
+        "extraction_strategy": "component_state",
+        "specific_selectors": {
+          "current_step": "useState step value"
+        }
+      },
+      "state_changes": [
+        "navigates_away"
+      ],
+      "triggers_events": [
+        "checkout_abandoned"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "step state"
+        ],
+        "writes_to": [
+          "activity_log"
+        ],
+        "side_effects": [
+          "navigation to /pricing"
+        ]
+      }
+    },
+    {
+      "component": "GetStartedButton",
+      "context_collection": {
+        "search_parents": [
+          "body"
+        ],
+        "extract_fields": [
+          "upgrade_completed"
+        ],
+        "sibling_context": [],
+        "data_attributes": [],
+        "extraction_strategy": "page_context",
+        "specific_selectors": {
+          "upgrade_completed": "implicit from success page load"
+        }
+      },
+      "state_changes": [
+        "navigates_to_dashboard"
+      ],
+      "triggers_events": [
+        "upgrade_success_viewed"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "page mount"
+        ],
+        "writes_to": [
+          "activity_log"
+        ],
+        "side_effects": [
+          "logs page view on mount"
+        ]
+      }
+    },
+    {
+      "component": "NewProjectButton",
+      "context_collection": {
+        "search_parents": [
+          "body"
+        ],
+        "extract_fields": [
+          "workspace_id"
+        ],
+        "sibling_context": [],
+        "data_attributes": [],
+        "extraction_strategy": "auth_and_query",
+        "specific_selectors": {
+          "workspace_id": "workspace_members query by user_id"
+        }
+      },
+      "state_changes": [
+        "navigates_to_new_project"
+      ],
+      "triggers_events": [
+        "new_project_clicked"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "supabase auth",
+          "workspace_members table"
+        ],
+        "writes_to": [
+          "navigation"
+        ],
+        "side_effects": [
+          "route change to /dashboard/projects/new"
+        ]
+      }
+    },
+    {
+      "component": "UpgradeToPremiumButton",
+      "context_collection": {
+        "search_parents": [
+          "body"
+        ],
+        "extract_fields": [
+          "current_plan"
+        ],
+        "sibling_context": [],
+        "data_attributes": [],
+        "extraction_strategy": "workspace_query",
+        "specific_selectors": {
+          "current_plan": "workspaces.plan from query"
+        }
+      },
+      "state_changes": [
+        "navigates_to_pricing"
+      ],
+      "triggers_events": [
+        "upgrade_clicked"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "workspaces table"
+        ],
+        "writes_to": [
+          "navigation"
+        ],
+        "side_effects": [
+          "route change to /pricing"
+        ]
+      }
+    },
+    {
+      "component": "ProjectForm",
+      "context_collection": {
+        "search_parents": [
+          "form"
+        ],
+        "extract_fields": [
+          "name",
+          "description",
+          "workspace_id",
+          "project_count"
+        ],
+        "sibling_context": [],
+        "data_attributes": [],
+        "extraction_strategy": "form_state_with_limit_check",
+        "specific_selectors": {
+          "name": "useState name",
+          "description": "useState description",
+          "workspace_id": "workspace_members query",
+          "project_count": "projects count query with status='active'"
+        }
+      },
+      "state_changes": [
+        "checks_plan_limits",
+        "shows_paywall_or_creates_project"
+      ],
+      "triggers_events": [
+        "created_project",
+        "paywall_encountered"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "form state",
+          "workspaces.plan",
+          "projects count"
+        ],
+        "writes_to": [
+          "projects table",
+          "activity_log",
+          "paywall modal state"
+        ],
+        "side_effects": [
+          "conditional paywall display",
+          "project creation",
+          "navigation on success"
+        ]
+      }
+    },
+    {
+      "component": "CreateTaskButton",
+      "context_collection": {
+        "search_parents": [
+          "[data-project-id]"
+        ],
+        "extract_fields": [
+          "project_id"
+        ],
+        "sibling_context": [],
+        "data_attributes": [
+          "data-project-id"
+        ],
+        "extraction_strategy": "parent_data_attribute",
+        "specific_selectors": {
+          "project_id": "closest [data-project-id] attribute"
+        }
+      },
+      "state_changes": [
+        "opens_task_modal"
+      ],
+      "triggers_events": [
+        "task_modal_opened"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "parent element data-project-id"
+        ],
+        "writes_to": [
+          "modal state"
+        ],
+        "side_effects": [
+          "dialog open state change"
+        ]
+      }
+    },
+    {
+      "component": "TaskForm",
+      "context_collection": {
+        "search_parents": [
+          "form",
+          "[data-project-id]"
+        ],
+        "extract_fields": [
+          "title",
+          "description",
+          "priority",
+          "assigned_to",
+          "due_date",
+          "project_id"
+        ],
+        "sibling_context": [],
+        "data_attributes": [
+          "data-project-id"
+        ],
+        "extraction_strategy": "form_state_with_context",
+        "specific_selectors": {
+          "title": "useState taskTitle",
+          "description": "useState taskDescription",
+          "priority": "useState taskPriority",
+          "assigned_to": "useState taskAssignedTo",
+          "due_date": "useState taskDueDate",
+          "project_id": "params.projectId or parent data attribute"
+        }
+      },
+      "state_changes": [
+        "creates_or_updates_task",
+        "closes_modal",
+        "refreshes_task_list"
+      ],
+      "triggers_events": [
+        "created_task",
+        "updated_task"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "form state hooks",
+          "URL params",
+          "selectedTask state"
+        ],
+        "writes_to": [
+          "tasks table",
+          "activity_log"
+        ],
+        "side_effects": [
+          "task list reload",
+          "modal close",
+          "toast notification"
+        ]
+      }
+    },
+    {
+      "component": "TaskStatusDropdown",
+      "context_collection": {
+        "search_parents": [
+          "[data-task-id]"
+        ],
+        "extract_fields": [
+          "task_id",
+          "previous_status",
+          "new_status"
+        ],
+        "sibling_context": [
+          "select[name='status']"
+        ],
+        "data_attributes": [
+          "data-task-id"
+        ],
+        "extraction_strategy": "parent_context_with_value_tracking",
+        "specific_selectors": {
+          "task_id": "closest [data-task-id] attribute",
+          "previous_status": "task.status from state before change",
+          "new_status": "event.target.value"
+        }
+      },
+      "state_changes": [
+        "updates_task_status",
+        "updates_local_state"
+      ],
+      "triggers_events": [
+        "task_status_changed"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "parent data-task-id",
+          "select value",
+          "tasks state"
+        ],
+        "writes_to": [
+          "tasks table",
+          "local tasks state"
+        ],
+        "side_effects": [
+          "optimistic UI update",
+          "database update"
+        ]
+      }
+    },
+    {
+      "component": "TaskActionMenu",
+      "context_collection": {
+        "search_parents": [
+          "[data-task-id]"
+        ],
+        "extract_fields": [
+          "task_id"
+        ],
+        "sibling_context": [],
+        "data_attributes": [
+          "data-task-id"
+        ],
+        "extraction_strategy": "parent_data_attribute",
+        "specific_selectors": {
+          "task_id": "closest [data-task-id] attribute"
+        }
+      },
+      "state_changes": [
+        "opens_dropdown_menu"
+      ],
+      "triggers_events": [
+        "task_menu_opened"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "parent data-task-id"
+        ],
+        "writes_to": [
+          "dropdown state"
+        ],
+        "side_effects": [
+          "menu visibility toggle"
+        ]
+      }
+    },
+    {
+      "component": "DeleteTaskButton",
+      "context_collection": {
+        "search_parents": [
+          "[data-task-id]"
+        ],
+        "extract_fields": [
+          "task_id",
+          "task_title",
+          "project_id"
+        ],
+        "sibling_context": [],
+        "data_attributes": [
+          "data-task-id"
+        ],
+        "extraction_strategy": "parent_and_state_lookup",
+        "specific_selectors": {
+          "task_id": "closest [data-task-id] or selectedTask.id",
+          "task_title": "selectedTask.title from state",
+          "project_id": "params.projectId"
+        }
+      },
+      "state_changes": [
+        "deletes_task",
+        "updates_task_list"
+      ],
+      "triggers_events": [
+        "task_deleted"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "parent data-task-id",
+          "selectedTask state",
+          "URL params"
+        ],
+        "writes_to": [
+          "tasks table (delete)",
+          "activity_log",
+          "local state"
+        ],
+        "side_effects": [
+          "task removal from list",
+          "toast notification"
+        ]
+      }
+    },
+    {
+      "component": "ArchiveProjectButton",
+      "context_collection": {
+        "search_parents": [
+          "[data-project-id]"
+        ],
+        "extract_fields": [
+          "project_id",
+          "project_name"
+        ],
+        "sibling_context": [],
+        "data_attributes": [
+          "data-project-id"
+        ],
+        "extraction_strategy": "parent_and_state",
+        "specific_selectors": {
+          "project_id": "params.projectId or data-project-id",
+          "project_name": "project.name from state"
+        }
+      },
+      "state_changes": [
+        "updates_project_status_to_archived"
+      ],
+      "triggers_events": [
+        "project_archived"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "URL params",
+          "project state"
+        ],
+        "writes_to": [
+          "projects.status",
+          "activity_log"
+        ],
+        "side_effects": [
+          "navigation to projects list",
+          "toast notification"
+        ]
+      }
+    },
+    {
+      "component": "InviteTeamMemberButton",
+      "context_collection": {
+        "search_parents": [
+          "body"
+        ],
+        "extract_fields": [
+          "workspace_id"
+        ],
+        "sibling_context": [],
+        "data_attributes": [],
+        "extraction_strategy": "workspace_query",
+        "specific_selectors": {
+          "workspace_id": "workspaceId state from workspace_members query"
+        }
+      },
+      "state_changes": [
+        "opens_invite_dialog"
+      ],
+      "triggers_events": [
+        "invite_modal_opened"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "workspaceId state"
+        ],
+        "writes_to": [
+          "dialog state"
+        ],
+        "side_effects": [
+          "modal visibility change"
+        ]
+      }
+    },
+    {
+      "component": "InviteForm",
+      "context_collection": {
+        "search_parents": [
+          "form"
+        ],
+        "extract_fields": [
+          "email",
+          "workspace_id"
+        ],
+        "sibling_context": [],
+        "data_attributes": [],
+        "extraction_strategy": "form_state_with_workspace",
+        "specific_selectors": {
+          "email": "useState inviteEmail",
+          "workspace_id": "workspaceId state"
+        }
+      },
+      "state_changes": [
+        "creates_invitation",
+        "closes_dialog",
+        "refreshes_team_list"
+      ],
+      "triggers_events": [
+        "invited_member"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "inviteEmail state",
+          "workspaceId state"
+        ],
+        "writes_to": [
+          "invitations table",
+          "activity_log"
+        ],
+        "side_effects": [
+          "team data reload",
+          "modal close",
+          "toast notification"
+        ]
+      }
+    },
+    {
+      "component": "RemoveMemberButton",
+      "context_collection": {
+        "search_parents": [
+          "[data-user-id]"
+        ],
+        "extract_fields": [
+          "user_id",
+          "workspace_id"
+        ],
+        "sibling_context": [],
+        "data_attributes": [
+          "data-user-id"
+        ],
+        "extraction_strategy": "parent_data_with_workspace",
+        "specific_selectors": {
+          "user_id": "data-user-id from parent or member object",
+          "workspace_id": "workspaceId state"
+        }
+      },
+      "state_changes": [
+        "deletes_workspace_member",
+        "updates_member_list"
+      ],
+      "triggers_events": [
+        "member_removed"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "parent data-user-id",
+          "workspaceId state"
+        ],
+        "writes_to": [
+          "workspace_members table (delete)",
+          "activity_log"
+        ],
+        "side_effects": [
+          "member list refresh",
+          "toast notification"
+        ]
+      }
+    },
+    {
+      "component": "SettingsForm",
+      "context_collection": {
+        "search_parents": [
+          "form"
+        ],
+        "extract_fields": [
+          "full_name",
+          "workspace_name"
+        ],
+        "sibling_context": [],
+        "data_attributes": [],
+        "extraction_strategy": "form_state_dual_entity",
+        "specific_selectors": {
+          "full_name": "useState fullName",
+          "workspace_name": "useState workspaceName",
+          "profile_id": "profile.id from state",
+          "workspace_id": "workspace.id from state"
+        }
+      },
+      "state_changes": [
+        "updates_profile_and_workspace"
+      ],
+      "triggers_events": [
+        "updated_settings"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "fullName state",
+          "workspaceName state",
+          "profile state",
+          "workspace state"
+        ],
+        "writes_to": [
+          "profiles table",
+          "workspaces table",
+          "activity_log"
+        ],
+        "side_effects": [
+          "toast notification",
+          "state refresh"
+        ]
+      }
+    },
+    {
+      "component": "NotificationToggle",
+      "context_collection": {
+        "search_parents": [
+          "[data-setting]"
+        ],
+        "extract_fields": [
+          "setting_name",
+          "previous_state",
+          "new_state"
+        ],
+        "sibling_context": [
+          "input[type='checkbox']"
+        ],
+        "data_attributes": [
+          "data-setting"
+        ],
+        "extraction_strategy": "toggle_with_tracking",
+        "specific_selectors": {
+          "setting_name": "data-setting attribute",
+          "previous_state": "useState value before change",
+          "new_state": "event.target.checked"
+        }
+      },
+      "state_changes": [
+        "updates_preference_state"
+      ],
+      "triggers_events": [
+        "setting_changed"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "data-setting",
+          "checkbox state"
+        ],
+        "writes_to": [
+          "local state",
+          "activity_log"
+        ],
+        "side_effects": [
+          "immediate state update"
+        ]
+      }
+    },
+    {
+      "component": "SettingsTabs",
+      "context_collection": {
+        "search_parents": [
+          "[role='tablist']"
+        ],
+        "extract_fields": [
+          "previous_tab",
+          "new_tab"
+        ],
+        "sibling_context": [
+          "[role='tab'][aria-selected='true']"
+        ],
+        "data_attributes": [
+          "data-tab"
+        ],
+        "extraction_strategy": "tab_state_tracking",
+        "specific_selectors": {
+          "previous_tab": "current [aria-selected='true'] data-tab",
+          "new_tab": "clicked tab data-tab"
+        }
+      },
+      "state_changes": [
+        "switches_active_tab"
+      ],
+      "triggers_events": [
+        "tab_switched"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "aria-selected state",
+          "data-tab attributes"
+        ],
+        "writes_to": [
+          "tab state"
+        ],
+        "side_effects": [
+          "content visibility change"
+        ]
+      }
+    },
+    {
+      "component": "ManageBillingButton",
+      "context_collection": {
+        "search_parents": [
+          "body"
+        ],
+        "extract_fields": [
+          "current_plan",
+          "billing_cycle"
+        ],
+        "sibling_context": [],
+        "data_attributes": [],
+        "extraction_strategy": "workspace_plan_query",
+        "specific_selectors": {
+          "current_plan": "plan state from workspaces query",
+          "billing_cycle": "billingCycle state"
+        }
+      },
+      "state_changes": [
+        "navigates_to_billing"
+      ],
+      "triggers_events": [
+        "billing_viewed"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "plan state",
+          "billingCycle state"
+        ],
+        "writes_to": [
+          "activity_log"
+        ],
+        "side_effects": [
+          "page load logs event"
+        ]
+      }
+    },
+    {
+      "component": "DownloadInvoiceButton",
+      "context_collection": {
+        "search_parents": [
+          "[data-invoice-id]"
+        ],
+        "extract_fields": [
+          "invoice_id",
+          "invoice_date",
+          "amount"
+        ],
+        "sibling_context": [],
+        "data_attributes": [
+          "data-invoice-id"
+        ],
+        "extraction_strategy": "parent_invoice_context",
+        "specific_selectors": {
+          "invoice_id": "data-invoice-id or invoice object id",
+          "invoice_date": "invoice.date from parent context",
+          "amount": "invoice.amount from parent context"
+        }
+      },
+      "state_changes": [
+        "triggers_download"
+      ],
+      "triggers_events": [
+        "invoice_downloaded"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "parent data-invoice-id",
+          "invoice object"
+        ],
+        "writes_to": [
+          "activity_log"
+        ],
+        "side_effects": [
+          "file download initiation"
+        ]
+      }
+    },
+    {
+      "component": "ProjectCard",
+      "context_collection": {
+        "search_parents": [
+          "[data-project-id]"
+        ],
+        "extract_fields": [
+          "project_id",
+          "project_name",
+          "task_count"
+        ],
+        "sibling_context": [],
+        "data_attributes": [
+          "data-project-id"
+        ],
+        "extraction_strategy": "card_context_from_render",
+        "specific_selectors": {
+          "project_id": "project.id from map iteration",
+          "project_name": "project.name",
+          "task_count": "project.tasks.length"
+        }
+      },
+      "state_changes": [
+        "navigates_to_project_detail"
+      ],
+      "triggers_events": [
+        "project_viewed"
+      ],
+      "data_flow": {
+        "reads_from": [
+          "project object from map",
+          "href attribute"
+        ],
+        "writes_to": [
+          "navigation"
+        ],
+        "side_effects": [
+          "route change to project detail"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,438 @@
+{
+  "app_key": "demo-test-apps-2025-10-15-p2w0l70pwva",
+  "framework": "nextjs-app-router",
+  "relationships": [],
+  "pages": {
+    "home": {
+      "route": "/",
+      "page_type": "home",
+      "widgets": [
+        "header",
+        "navigation"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "login",
+        "signup"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [
+          "click"
+        ],
+        "has_forms": false,
+        "has_product_interactions": false
+      }
+    },
+    "login": {
+      "route": "/login",
+      "page_type": "auth",
+      "widgets": [
+        "header"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "signup",
+        "home",
+        "dashboard"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "FORM_INTERACTION",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [
+          "submit",
+          "click"
+        ],
+        "has_forms": true,
+        "has_product_interactions": false
+      }
+    },
+    "signup": {
+      "route": "/signup",
+      "page_type": "auth",
+      "widgets": [
+        "header"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "login",
+        "home",
+        "dashboard"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "FORM_INTERACTION",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [
+          "submit",
+          "click"
+        ],
+        "has_forms": true,
+        "has_product_interactions": false
+      }
+    },
+    "reset_password": {
+      "route": "/reset-password",
+      "page_type": "auth",
+      "widgets": [
+        "header"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "home"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "FORM_INTERACTION",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [
+          "submit",
+          "click"
+        ],
+        "has_forms": true,
+        "has_product_interactions": false
+      }
+    },
+    "pricing": {
+      "route": "/pricing",
+      "page_type": "info",
+      "widgets": [
+        "header",
+        "navigation"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "login",
+        "signup",
+        "checkout"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "SCROLL_INTERACTION"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [
+          "click"
+        ],
+        "has_forms": false,
+        "has_product_interactions": true
+      }
+    },
+    "checkout": {
+      "route": "/checkout",
+      "page_type": "checkout",
+      "widgets": [
+        "header"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "pricing",
+        "checkout_success"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "FORM_INTERACTION",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [
+          "submit",
+          "click"
+        ],
+        "has_forms": true,
+        "has_product_interactions": true
+      }
+    },
+    "checkout_success": {
+      "route": "/checkout/success",
+      "page_type": "info",
+      "widgets": [],
+      "modals": [],
+      "can_navigate_to": [
+        "dashboard"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [
+          "click"
+        ],
+        "has_forms": false,
+        "has_product_interactions": false
+      }
+    },
+    "dashboard": {
+      "route": "/dashboard",
+      "page_type": "home",
+      "widgets": [
+        "header",
+        "sidebar",
+        "navigation",
+        "usage_widget"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "dashboard_projects",
+        "dashboard_projects_new",
+        "pricing"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "SCROLL_INTERACTION"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [
+          "click"
+        ],
+        "has_forms": false,
+        "has_product_interactions": true
+      }
+    },
+    "dashboard_projects": {
+      "route": "/dashboard/projects",
+      "page_type": "info",
+      "widgets": [
+        "header",
+        "sidebar",
+        "navigation"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "dashboard_projects_new",
+        "dashboard_projects_detail"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "SCROLL_INTERACTION"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [
+          "click"
+        ],
+        "has_forms": false,
+        "has_product_interactions": true
+      }
+    },
+    "dashboard_projects_new": {
+      "route": "/dashboard/projects/new",
+      "page_type": "info",
+      "widgets": [
+        "header",
+        "sidebar",
+        "navigation"
+      ],
+      "modals": [
+        "paywall_modal"
+      ],
+      "can_navigate_to": [
+        "dashboard_projects",
+        "pricing"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "FORM_INTERACTION",
+        "BUTTON_CLICK",
+        "ELEMENT_VISIBILITY"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [
+          "submit",
+          "click"
+        ],
+        "has_forms": true,
+        "has_product_interactions": true
+      }
+    },
+    "dashboard_projects_detail": {
+      "route": "/dashboard/projects/:projectId",
+      "page_type": "product_detail",
+      "widgets": [
+        "header",
+        "sidebar",
+        "navigation"
+      ],
+      "modals": [
+        "task_modal"
+      ],
+      "can_navigate_to": [
+        "dashboard_projects"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "ELEMENT_VISIBILITY"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [
+          "click",
+          "submit",
+          "change"
+        ],
+        "has_forms": true,
+        "has_product_interactions": true
+      }
+    },
+    "dashboard_activity": {
+      "route": "/dashboard/activity",
+      "page_type": "info",
+      "widgets": [
+        "header",
+        "sidebar",
+        "navigation"
+      ],
+      "modals": [],
+      "can_navigate_to": [],
+      "events": [
+        "PAGE_VIEW",
+        "SCROLL_INTERACTION"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [],
+        "has_forms": false,
+        "has_product_interactions": false
+      }
+    },
+    "dashboard_team": {
+      "route": "/dashboard/team",
+      "page_type": "info",
+      "widgets": [
+        "header",
+        "sidebar",
+        "navigation"
+      ],
+      "modals": [
+        "invite_modal"
+      ],
+      "can_navigate_to": [],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "ELEMENT_VISIBILITY"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [
+          "click",
+          "submit"
+        ],
+        "has_forms": true,
+        "has_product_interactions": true
+      }
+    },
+    "dashboard_settings": {
+      "route": "/dashboard/settings",
+      "page_type": "info",
+      "widgets": [
+        "header",
+        "sidebar",
+        "navigation"
+      ],
+      "modals": [],
+      "can_navigate_to": [],
+      "events": [
+        "PAGE_VIEW",
+        "FORM_INTERACTION",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [
+          "submit",
+          "click",
+          "change"
+        ],
+        "has_forms": true,
+        "has_product_interactions": false
+      }
+    },
+    "dashboard_settings_billing": {
+      "route": "/dashboard/settings/billing",
+      "page_type": "info",
+      "widgets": [
+        "header",
+        "sidebar",
+        "navigation"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "pricing"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "SCROLL_INTERACTION"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [
+          "click"
+        ],
+        "has_forms": false,
+        "has_product_interactions": true
+      }
+    },
+    "dashboard_upgrade": {
+      "route": "/dashboard/upgrade",
+      "page_type": "info",
+      "widgets": [
+        "header",
+        "sidebar",
+        "navigation"
+      ],
+      "modals": [],
+      "can_navigate_to": [],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "nextjs-app-router",
+        "interaction_types": [
+          "click"
+        ],
+        "has_forms": false,
+        "has_product_interactions": true
+      }
+    }
+  },
+  "widgets": [
+    "header",
+    "sidebar",
+    "navigation",
+    "usage_widget"
+  ],
+  "modals": [
+    "paywall_modal",
+    "task_modal",
+    "invite_modal"
+  ]
+}

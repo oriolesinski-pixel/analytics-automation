@@ -1,0 +1,424 @@
+{
+  "app_key": "demo-test-apps-2025-10-15-tw3urh2rlam",
+  "framework": "next",
+  "relationships": [],
+  "pages": {
+    "home": {
+      "route": "/",
+      "page_type": "home",
+      "widgets": [
+        "header"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "login",
+        "signup",
+        "dashboard"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click"
+        ],
+        "has_forms": false,
+        "has_product_interactions": false
+      }
+    },
+    "login": {
+      "route": "/login",
+      "page_type": "auth",
+      "widgets": [
+        "header"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "home",
+        "signup",
+        "dashboard"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "FORM_INTERACTION",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click",
+          "submit"
+        ],
+        "has_forms": true,
+        "has_product_interactions": false
+      }
+    },
+    "signup": {
+      "route": "/signup",
+      "page_type": "auth",
+      "widgets": [
+        "header"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "home",
+        "login",
+        "dashboard"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "FORM_INTERACTION",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click",
+          "submit"
+        ],
+        "has_forms": true,
+        "has_product_interactions": false
+      }
+    },
+    "reset_password": {
+      "route": "/reset-password",
+      "page_type": "auth",
+      "widgets": [
+        "header"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "home"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "FORM_INTERACTION",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click",
+          "submit"
+        ],
+        "has_forms": true,
+        "has_product_interactions": false
+      }
+    },
+    "dashboard": {
+      "route": "/dashboard",
+      "page_type": "home",
+      "widgets": [
+        "header",
+        "navigation",
+        "usage_widget"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "dashboard_projects",
+        "dashboard_activity",
+        "dashboard_team",
+        "dashboard_settings",
+        "dashboard_settings_billing",
+        "dashboard_projects_new"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "SCROLL_INTERACTION"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click"
+        ],
+        "has_forms": false,
+        "has_product_interactions": true
+      }
+    },
+    "dashboard_projects": {
+      "route": "/dashboard/projects",
+      "page_type": "info",
+      "widgets": [
+        "header",
+        "navigation"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "dashboard_projects_new",
+        "dashboard_projects_param"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "SCROLL_INTERACTION"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click"
+        ],
+        "has_forms": false,
+        "has_product_interactions": true
+      }
+    },
+    "dashboard_projects_new": {
+      "route": "/dashboard/projects/new",
+      "page_type": "info",
+      "widgets": [
+        "header",
+        "navigation"
+      ],
+      "modals": [
+        "paywall_modal"
+      ],
+      "can_navigate_to": [
+        "dashboard_projects",
+        "dashboard_projects_param"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "FORM_INTERACTION",
+        "BUTTON_CLICK",
+        "ELEMENT_VISIBILITY"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click",
+          "submit"
+        ],
+        "has_forms": true,
+        "has_product_interactions": true
+      }
+    },
+    "dashboard_projects_param": {
+      "route": "/dashboard/projects/:projectId",
+      "page_type": "product_detail",
+      "widgets": [
+        "header",
+        "navigation"
+      ],
+      "modals": [
+        "task_dialog",
+        "delete_dialog"
+      ],
+      "can_navigate_to": [
+        "dashboard_projects"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "ELEMENT_VISIBILITY"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click",
+          "submit"
+        ],
+        "has_forms": true,
+        "has_product_interactions": true
+      }
+    },
+    "dashboard_activity": {
+      "route": "/dashboard/activity",
+      "page_type": "info",
+      "widgets": [
+        "header",
+        "navigation"
+      ],
+      "modals": [],
+      "can_navigate_to": [],
+      "events": [
+        "PAGE_VIEW",
+        "SCROLL_INTERACTION"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click"
+        ],
+        "has_forms": false,
+        "has_product_interactions": false
+      }
+    },
+    "dashboard_team": {
+      "route": "/dashboard/team",
+      "page_type": "info",
+      "widgets": [
+        "header",
+        "navigation"
+      ],
+      "modals": [
+        "invite_dialog"
+      ],
+      "can_navigate_to": [],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "FORM_INTERACTION",
+        "ELEMENT_VISIBILITY"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click",
+          "submit"
+        ],
+        "has_forms": true,
+        "has_product_interactions": true
+      }
+    },
+    "dashboard_settings": {
+      "route": "/dashboard/settings",
+      "page_type": "info",
+      "widgets": [
+        "header",
+        "navigation"
+      ],
+      "modals": [],
+      "can_navigate_to": [],
+      "events": [
+        "PAGE_VIEW",
+        "FORM_INTERACTION",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click",
+          "submit"
+        ],
+        "has_forms": true,
+        "has_product_interactions": false
+      }
+    },
+    "dashboard_settings_billing": {
+      "route": "/dashboard/settings/billing",
+      "page_type": "info",
+      "widgets": [
+        "header",
+        "navigation"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "checkout",
+        "pricing"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "SCROLL_INTERACTION"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click"
+        ],
+        "has_forms": false,
+        "has_product_interactions": true
+      }
+    },
+    "dashboard_upgrade": {
+      "route": "/dashboard/upgrade",
+      "page_type": "info",
+      "widgets": [
+        "header",
+        "navigation"
+      ],
+      "modals": [],
+      "can_navigate_to": [],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click"
+        ],
+        "has_forms": false,
+        "has_product_interactions": true
+      }
+    },
+    "pricing": {
+      "route": "/pricing",
+      "page_type": "info",
+      "widgets": [
+        "header"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "home",
+        "login",
+        "signup",
+        "checkout"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK",
+        "SCROLL_INTERACTION"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click"
+        ],
+        "has_forms": false,
+        "has_product_interactions": true
+      }
+    },
+    "checkout": {
+      "route": "/checkout",
+      "page_type": "checkout",
+      "widgets": [
+        "header"
+      ],
+      "modals": [],
+      "can_navigate_to": [
+        "checkout_success"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "FORM_INTERACTION",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click",
+          "submit"
+        ],
+        "has_forms": true,
+        "has_product_interactions": true
+      }
+    },
+    "checkout_success": {
+      "route": "/checkout/success",
+      "page_type": "info",
+      "widgets": [],
+      "modals": [],
+      "can_navigate_to": [
+        "dashboard"
+      ],
+      "events": [
+        "PAGE_VIEW",
+        "BUTTON_CLICK"
+      ],
+      "ai_insights": {
+        "framework": "next",
+        "interaction_types": [
+          "click"
+        ],
+        "has_forms": false,
+        "has_product_interactions": false
+      }
+    }
+  },
+  "widgets": [],
+  "modals": []
+}

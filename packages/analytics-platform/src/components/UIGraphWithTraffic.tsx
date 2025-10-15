@@ -22,11 +22,23 @@ export function UIGraphWithTraffic({ uiGraph, appKey }: UIGraphWithTrafficProps)
   const [showFooterPages, setShowFooterPages] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
 
   // Fix hydration by only rendering after mount
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  // Set initial zoom to fit screen when graph loads
+  useEffect(() => {
+    if (isMounted && uiGraph?.pages && Object.keys(uiGraph.pages).length > 0) {
+      // Start with a zoom level that shows the whole graph
+      const pageCount = Object.keys(uiGraph.pages).length;
+      // More pages = need more zoom out to fit
+      const initialZoom = pageCount > 8 ? 0.6 : pageCount > 5 ? 0.75 : 0.85;
+      setZoomLevel(initialZoom);
+    }
+  }, [isMounted, uiGraph]);
 
   // Debug: Log the uiGraph structure
   useEffect(() => {
@@ -379,10 +391,13 @@ export function UIGraphWithTraffic({ uiGraph, appKey }: UIGraphWithTrafficProps)
 
     const allX = Object.values(positions).map(p => p.x);
     const allY = Object.values(positions).map(p => p.y);
-    const minX = Math.min(...allX) - 100;
-    const maxX = Math.max(...allX) + 100;
-    const minY = Math.min(...allY) - 50;
-    const maxY = Math.max(...allY) + 100;
+    
+    // Add more padding for better visibility
+    const padding = 150;
+    const minX = Math.min(...allX) - padding;
+    const maxX = Math.max(...allX) + padding;
+    const minY = Math.min(...allY) - padding;
+    const maxY = Math.max(...allY) + padding;
 
     return {
       positions,
@@ -398,9 +413,61 @@ export function UIGraphWithTraffic({ uiGraph, appKey }: UIGraphWithTrafficProps)
     }
 
     const { positions: nodePositions, viewBox, width, height } = calculateNodePositions(filteredPages);
+    
+    // Calculate zoomed viewBox
+    const [vbX, vbY, vbWidth, vbHeight] = viewBox.split(' ').map(Number);
+    const centerX = vbX + vbWidth / 2;
+    const centerY = vbY + vbHeight / 2;
+    const zoomedWidth = vbWidth / zoomLevel;
+    const zoomedHeight = vbHeight / zoomLevel;
+    const zoomedViewBox = `${centerX - zoomedWidth / 2} ${centerY - zoomedHeight / 2} ${zoomedWidth} ${zoomedHeight}`;
 
     return (
       <div className="relative">
+        {/* Zoom Controls */}
+        <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
+          <button
+            onClick={() => setZoomLevel(prev => Math.min(prev + 0.2, 3))}
+            className="p-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-md border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            title="Zoom In (or scroll up)"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setZoomLevel(prev => Math.max(prev - 0.2, 0.3))}
+            className="p-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-md border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            title="Zoom Out (or scroll down)"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setZoomLevel(1)}
+            className="p-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-md border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-xs font-semibold"
+            title="Reset Zoom (100%)"
+          >
+            {Math.round(zoomLevel * 100)}%
+          </button>
+          <button
+            onClick={() => {
+              // Calculate optimal zoom to fit all content
+              const containerAspect = 1.4; // Approximate aspect ratio of the container
+              const graphAspect = vbWidth / vbHeight;
+              const optimalZoom = containerAspect > graphAspect ? 0.8 : 0.7;
+              setZoomLevel(optimalZoom);
+            }}
+            className="p-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg shadow-md border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-xs"
+            title="Fit to Screen"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
+          </button>
+        </div>
+
         {/* Legend Trigger Icon - Hover to show legend */}
         {isMounted && showTrafficOverlay && !selectedNode && (
           <div 
@@ -415,13 +482,20 @@ export function UIGraphWithTraffic({ uiGraph, appKey }: UIGraphWithTrafficProps)
         )}
 
         {/* SVG Container */}
-        <div className="h-[700px] bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg overflow-hidden">
+        <div 
+          className="h-[700px] bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg overflow-hidden"
+          onWheel={(e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            setZoomLevel(prev => Math.max(0.3, Math.min(3, prev + delta)));
+          }}
+        >
           <svg
             width="100%"
             height="100%"
-            viewBox={viewBox}
-            preserveAspectRatio="xMidYMin meet"
-            className="w-full h-full"
+            viewBox={zoomedViewBox}
+            preserveAspectRatio="xMidYMid meet"
+            className="w-full h-full transition-all duration-200"
           >
             {/* Define arrow markers */}
             <defs>

@@ -1,0 +1,9 @@
+{
+  "generatedAt": "2025-10-15T09:27:48.764Z",
+  "appKey": "demo-test-apps-2025-10-15-p2w0l70pwva",
+  "eventCount": 6,
+  "frameworksDetected": [
+    "nextjs-app-router"
+  ],
+  "entryPointFile": "src/app/dashboard/layout.tsx"
+}

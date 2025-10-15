@@ -28,11 +28,11 @@ const supabase = createClient(
 
 // Configuration
 const CONFIG = {
-  OUTPUTS_DIR: '/Users/oriolesinski/analytics-automation/packages/analytics-generator/src/utils/generated-outputs',
+  OUTPUTS_DIR: '/Users/oriolesinski/main-project-repo/analytics-automation/packages/analytics-generator/src/utils/generated-outputs',
   EXAMPLES_DIR: '/Users/oriolesinski/analytics-automation/examples',
   MAX_FILES: 50,
   MAX_FILE_CONTENT_LENGTH: 5000,
-  LLM_MAX_TOKENS: 4096,
+  LLM_MAX_TOKENS: 64000,  // Claude Sonnet 4.5 MAXIMUM! (8x larger than Claude 3)
   DEFAULT_BACKEND_URL: process.env.ANALYTICS_BACKEND_URL || 'https://analytics-service-production-0f0c.up.railway.app/ingest/analytics'
 };
 
@@ -104,14 +104,47 @@ interface GeneratorOutput {
   };
 }
 
+interface ContextField {
+  field_name: string;
+  selector: string;
+  extraction_method: 'value' | 'checked' | 'textContent' | 'data-attribute' | 'aria-attribute' | 'class-state' | 'computed-style' | 'count';
+  data_type?: 'string' | 'number' | 'boolean' | 'array' | 'object';
+  attribute_name?: string;
+  required?: boolean;
+  description?: string;
+}
+
+interface StateTracking {
+  track_previous_value?: boolean;
+  track_change_delta?: boolean;
+  track_timing?: boolean;
+}
+
+interface ComponentRelationships {
+  triggers?: string[];
+  affects?: string[];
+  depends_on?: string[];
+}
+
+interface ContextCollection {
+  strategy: 'form_state' | 'parent_data' | 'sibling_state' | 'modal_scope' | 'component_props' | 'global_context' | 'accumulated_state';
+  scope_selector?: string;
+  fields: ContextField[];
+  state_tracking?: StateTracking;
+  fallback_sources?: string[];
+}
+
 interface ComponentDiscovery {
   components: Array<{
     name: string;
     type: string;
     selector_patterns: string[];
     interaction_type: string;
+    pattern_type?: string;
     likely_purpose: string;
     context_needed: string[];
+    context_collection?: ContextCollection;
+    relationships?: ComponentRelationships;
   }>;
   framework: string;
 }
@@ -391,147 +424,513 @@ export class AnalyticsIntelligenceGenerator {
       `=== File: ${f.path} ===\n${f.content.slice(0, 3000)}\n`
     ).join('\n').slice(0, 40000);
 
-    const systemPrompt = `You are an expert UI component analyzer. 
-Analyze code to identify ALL interactive components, not just standard HTML elements.
-Use context clues from the code to understand component purposes.
-Focus on understanding the actual implementation, not theoretical possibilities.
-Return ONLY valid JSON.`;
+    const systemPrompt = `You are a frontend code analyzer. Find ALL interactive components (buttons, forms, inputs, links) in the provided code. 
+CRITICAL: Be CONCISE - only include ESSENTIAL fields. Keep descriptions short (under 10 words).
+Return ONLY valid JSON with NO trailing text or explanations.`;
 
-    const userPrompt = `Analyze this code and identify ALL interactive UI components.
+    const userPrompt = `Analyze this code and find all interactive components.
 
-INTELLIGENT DETECTION INSTRUCTIONS:
-Look at the actual values and context in the code to understand component purposes. These are EXAMPLES, not a complete list:
+IMPORTANT PATTERNS TO DETECT:
+1. Forms - capture all input fields
+2. Buttons - identify purpose from text/handlers
+3. Links - navigation elements
+4. Dropdowns/Selects - state changes
+5. Checkboxes/Toggles - state tracking
+6. Modals/Dialogs - popup interactions
 
-1. **Infer selector types from their values:**
-   - If you see options like "red", "blue", "#FF5733" → likely a color selector
-   - If you see "S", "M", "L", "XL", "small", "large" → likely a size selector  
-   - If you see "1", "2", "3" or +/- buttons with numbers → likely quantity control
-   - If you see "cotton", "polyester", "silk" → likely material selector
-   - If you see dates, times, calendars → likely date/time picker
-   - Use your understanding to categorize any other value patterns you find
+For each component, provide:
+- name: descriptive name from code
+- type: button/form/input/select/link/toggle
+- selector_patterns: CSS selectors to find it (use VALID CSS only: button[type='submit'], .classname, #id, etc)
+- interaction_type: click/change/submit/toggle
+- likely_purpose: what it does (from handler names, text, context)
+- context_needed: what data to capture (IDs, form fields, state)
 
-2. **Understand purpose from handler names:**
-   - onClick={handleAddToCart} → cart functionality
-   - onClick={toggleWishlist} → wishlist functionality
-   - onChange={updateQuantity} → quantity control
-   - onSubmit={processPayment} → payment processing
-   - The function name usually describes what it does
+IMPORTANT: Use ONLY valid CSS selectors in "selector" fields:
+- ✅ GOOD: "input[name='email']", "button[type='submit']", ".pricing-card", "#checkout-form"
+- ❌ BAD: "state:step", "searchParams:plan", "props.value" (these are NOT CSS selectors)
 
-3. **Use context clues from classes and IDs:**
-   - className="product-card__wishlist-btn" → wishlist button for products
-   - id="size-selector-modal" → size selection in a modal
-   - className="nav-menu-toggle" → navigation menu control
-   - Look for descriptive naming patterns in the code
+FRAMEWORK DETECTION:
+- "app/" + layout.tsx = nextjs-app-router
+- "pages/" + _app.tsx = nextjs-pages-router  
+- src/main.tsx = vite-react
 
-4. **Check surrounding elements for context:**
-   - A heart icon near product info → likely wishlist
-   - Plus/minus buttons near a number → likely quantity
-   - Swatches near product images → likely color selection
-   - Stars near text → likely rating system
+Return this EXACT JSON structure:
+{
+  "framework": "nextjs-app-router|nextjs-pages-router|vite-react|vue|angular|unknown",
+  "components": [
+    {
+      "name": "LoginButton",
+      "type": "button",
+      "selector_patterns": ["button[type='submit']", ".login-btn"],
+      "interaction_type": "click",
+      "likely_purpose": "Submit login form",
+      "context_needed": ["email", "password", "form_type"]
+    }
+  ]
+}
 
-5. **Look for aria-labels and data attributes:**
-   - aria-label="Add to shopping cart" → clear purpose
-   - data-action="remove-item" → describes the action
-   - data-product-id="123" → shows what context is available
+Analyze this code:
 
-6. **Identify patterns in component composition:**
-   - Multiple similar buttons in a row → likely option selectors
-   - Form with email/password → likely authentication
-   - Grid of cards with images/prices → likely product listing
+CRITICAL OBJECTIVE: Achieve COMPLETE COMPREHENSION of frontend application structure through micro-pattern recognition. This analysis determines schema accuracy.
 
-Remember: These are just examples. Use your understanding to identify ANY interactive pattern you find in the code, even if it's not listed here.
+=============================================================================
+UNIVERSAL FRONTEND MICRO-PATTERNS
+=============================================================================
 
-COMPREHENSIVE DETECTION GUIDE:
+PATTERN 1: FORM SUBMISSION → CONTEXT CAPTURE
+├─ Structure: Form container with inputs + submission button
+├─ Trigger: Submit button click, Enter key, form.submit()
+├─ Context: ALL input values within form scope at submission moment
+└─ Extraction: Serialize entire form state
 
-STANDARD CLICKABLE ELEMENTS:
-- HTML: <button>, <a>, <input type="submit">, <input type="button">
-- React/Vue: <Button>, <Link>, <IconButton>, <ActionButton>
-- Attributes: onClick, @click, v-on:click, (click), ng-click
-- Role attributes: role="button", role="link", tabindex="0" with onClick
-- Custom components: Any component with "Button", "Btn", "Link" in name
-- Icons with handlers: <svg onClick>, <Icon onClick>, any icon component
-- Divs/Spans: <div onClick>, <span onClick>, elements with cursor:pointer
-- Special classes: class containing "clickable", "btn", "button", "link"
+PATTERN 2: ITEM SELECTION → ITEM CONTEXT
+├─ Structure: List/grid of items + action buttons per item
+├─ Trigger: Click on item row, card, or action button
+├─ Context: Item identifier + item metadata from parent container
+├─ Examples: 
+│   - Row in table → data-row-id, data-item-type
+│   - Card in grid → data-product-id, data-status
+│   - List item → data-entity-id, aria-label
+└─ Extraction: data-* attributes from closest item container
 
-CUSTOM COMPONENTS TO IDENTIFY:
-- Framework components (Button, Link, IconButton, Card)
-- Custom components with click/change handlers
-- Icon components (HeartIcon, CartIcon, WishlistIcon, etc.)
-- Styled components with interactions
-- HOCs and wrapper components
-- Components with cursor:pointer or interactive styling
+PATTERN 3: TOGGLE STATE → PREVIOUS + NEW STATE
+├─ Structure: Toggle/switch/checkbox with state
+├─ Trigger: Click to change state
+├─ Context: previous_state + new_state + what's being toggled
+├─ Examples:
+│   - Feature flag: feature_name, was_enabled, now_enabled
+│   - Visibility toggle: item_id, was_visible, now_visible
+│   - Selection checkbox: item_id, was_selected, now_selected
+└─ Extraction: Element checked/aria-checked before and after
 
-SELECTION ELEMENTS:
-- Color/size/variant selectors (ColorPicker, SizeSelector, VariantButtons)
-- Radio buttons, checkboxes for options
-- Dropdown selects for choices
-- Quantity inputs (QuantitySelector, NumberInput)
-- Any element that represents a user choice/selection
+PATTERN 4: DROPDOWN/SELECT CHANGE → OLD + NEW VALUE
+├─ Structure: Select, dropdown, or option picker
+├─ Trigger: onChange event
+├─ Context: previous_value + new_value + options_available
+├─ Examples:
+│   - Status dropdown: from_status, to_status
+│   - Filter select: previous_filter, new_filter
+│   - Sort control: previous_sort, new_sort
+└─ Extraction: Store previous value, capture new value on change
 
-FORM ELEMENTS:
-- HTML: <form>, <input>, <select>, <textarea>
-- React: <Form>, controlled inputs with onChange/value
-- Vue: v-model, @submit, v-on:submit
-- Custom form components (FormField, InputField, TextInput)
-- Validation: error states, validation messages, required fields
+PATTERN 5: MODAL LIFECYCLE → TRIGGER + CONTENT + OUTCOME
+├─ Structure: Modal/dialog with trigger and content
+├─ Phases:
+│   OPEN: what triggered it, pre-filled data, entry context
+│   INTERACT: form fills, selections made within modal
+│   CLOSE: outcome (submitted/cancelled/dismissed), final form state
+├─ Context: 
+│   - Entry: trigger_element, trigger_location, initial_data
+│   - Exit: action_taken, form_data, time_in_modal
+└─ Extraction: Track modal lifecycle events with accumulated context
 
-UI COMPONENTS:
-- Modals/Dialogs: Modal, Dialog, Popup, Overlay, role="dialog"
-- Tabs: Tab, TabPanel, role="tab"
-- Accordions: Accordion, Collapsible, expand/collapse
-- Dropdowns: Select, Dropdown, Combobox
-- Search: SearchBar, SearchInput, SearchBox
-- Filters: FilterPanel, filter controls, FilterButton
-- Pagination: Pagination, "next", "previous", PageNumbers
+PATTERN 6: MULTI-STEP FLOW → ACCUMULATED STATE
+├─ Structure: Wizard, stepper, or paginated flow
+├─ Trigger: Next/Previous/Skip navigation
+├─ Context: 
+│   - Current: step_number, current_step_data
+│   - Accumulated: all_previous_steps_data{}
+│   - Navigation: is_forward, can_skip, validation_passed
+├─ Examples:
+│   - Onboarding: {step1_data, step2_data, step3_data}
+│   - Checkout: {shipping_info, payment_info, review_data}
+└─ Extraction: Maintain flow state, merge on completion
 
-NAVIGATION PATTERNS:
-- Router links: Link, NavLink, RouterLink
-- Menu items: MenuItem, NavItem, NavigationItem
-- Back buttons: history.back(), BackButton, ReturnButton
+PATTERN 7: TAB SWITCH → TAB CONTEXT + FORM STATE
+├─ Structure: Tab navigation with different content per tab
+├─ Trigger: Tab click, keyboard navigation
+├─ Context:
+│   - From: previous_tab_id, previous_tab_form_state
+│   - To: new_tab_id
+│   - Unsaved: had_unsaved_changes
+├─ Examples:
+│   - Settings tabs: switching from "Profile" to "Billing"
+│   - Editor tabs: switching between "Edit" and "Preview"
+└─ Extraction: Capture active tab form state before switch
 
-For each component found:
-1. Create SPECIFIC selectors that won't match everything (use classes, IDs, data attributes)
-2. Look at the actual onClick handler name to understand purpose
-3. Check the actual values/options to categorize
-4. Use parent element context to create more specific selectors
-5. Only include components that actually appear in the code
+PATTERN 8: INLINE EDIT → EDIT TRIGGER + FIELD CHANGES
+├─ Structure: Toggle between view and edit mode
+├─ Trigger: Edit button, double-click, focus
+├─ Context:
+│   - Entry: field_name, original_value, edit_trigger
+│   - Exit: new_value, was_changed, save_method
+├─ Examples:
+│   - Editable field: click to edit, type, click away to save
+│   - Inline editor: edit icon → input appears → save/cancel
+└─ Extraction: Track before/after values, edit duration
 
-FRAMEWORK DETECTION HEURISTICS (use these clues from file paths and imports):
-- If you see file paths like "app/layout.tsx", "app/page.tsx" → likely "nextjs-app-router"
-- If you see file paths like "pages/_app.tsx", "pages/index.tsx" → likely "nextjs-pages-router"  
-- If you see file paths like "src/main.tsx" or "src/App.tsx" → likely "vite-react" or "create-react-app"
-- If you see imports like "from 'next/font/google'" or "import type { Metadata } from 'next'" → definitely Next.js
-- If you see "app/" directory structure with layout.tsx → specifically "nextjs-app-router"
-- If you see "pages/" directory structure → specifically "nextjs-pages-router"
-- Look at the actual file paths provided, not just the code content
+PATTERN 9: SEARCH/FILTER APPLICATION → QUERY + RESULTS
+├─ Structure: Search input or filter controls + results display
+├─ Trigger: Search submit, filter change, clear filters
+├─ Context:
+│   - Input: search_query, applied_filters{}, sort_order
+│   - Output: results_count, results_displayed, time_to_results
+│   - State: previous_query, filter_history[]
+├─ Examples:
+│   - Search bar: query text, filters, result count
+│   - Filter panel: selected_filters, facet_counts
+└─ Extraction: Capture search state + result metadata
 
-Also, return this EXACT JSON structure:
+PATTERN 10: DRAG & DROP → SOURCE + TARGET + CONTEXT
+├─ Structure: Draggable items + drop zones
+├─ Trigger: dragstart, dragend events
+├─ Context:
+│   - Item: item_id, item_type, source_container
+│   - Target: target_container, drop_position
+│   - Action: reorder, move, copy, link
+├─ Examples:
+│   - Kanban: card moved from "Todo" to "Done"
+│   - File upload: files dropped into upload zone
+│   - Reorder: list item moved from position 3 to 1
+└─ Extraction: Track source + destination + item metadata
+
+PATTERN 11: BULK ACTION → SELECTION SET + ACTION
+├─ Structure: Multi-select interface + batch action button
+├─ Trigger: Action button click with items selected
+├─ Context:
+│   - Selection: selected_ids[], selection_count, select_all_used
+│   - Action: action_type, confirmation_required
+│   - Scope: affected_count, scope_filters
+├─ Examples:
+│   - Bulk delete: 5 items selected → delete button
+│   - Bulk edit: 10 rows selected → change status
+│   - Bulk export: all filtered items → export CSV
+└─ Extraction: Capture selection state + action metadata
+
+PATTERN 12: PAGINATION/INFINITE SCROLL → NAVIGATION CONTEXT
+├─ Structure: Paginated list or infinite scroll container
+├─ Trigger: Page number click, next/prev, scroll threshold
+├─ Context:
+│   - Current: page_number, items_per_page, total_items
+│   - Navigation: previous_page, navigation_method
+│   - Performance: load_time, items_rendered
+├─ Examples:
+│   - Page navigation: click page 3, from page 1
+│   - Infinite scroll: scrolled to 80%, loaded next batch
+└─ Extraction: Track pagination state + performance metrics
+
+PATTERN 13: VALIDATION → FIELD + ERROR STATE
+├─ Structure: Input with validation, error messages
+├─ Trigger: Blur, real-time validation, submit attempt
+├─ Context:
+│   - Field: field_name, field_value, validation_rule
+│   - Error: error_type, error_message, is_blocking
+│   - Timing: validation_trigger, fix_attempts
+├─ Examples:
+│   - Email validation: invalid format → error shown
+│   - Required field: submit attempted → missing field error
+└─ Extraction: Track validation events + error patterns
+
+PATTERN 14: AUTOCOMPLETE/TYPEAHEAD → QUERY + SELECTION
+├─ Structure: Input with suggestions dropdown
+├─ Trigger: Text input, suggestion click
+├─ Context:
+│   - Input: partial_query, characters_typed
+│   - Suggestions: suggestions_shown, suggestion_count
+│   - Selection: selected_suggestion, selection_method (click/keyboard)
+├─ Examples:
+│   - Search autocomplete: type "ana" → select "Analytics"
+│   - Mention autocomplete: type "@jo" → select "@john"
+└─ Extraction: Query + suggestion list + final selection
+
+PATTERN 15: EXPAND/COLLAPSE → VISIBILITY STATE CHANGE
+├─ Structure: Collapsible sections, accordions, trees
+├─ Trigger: Click header, expand icon, keyboard
+├─ Context:
+│   - Item: section_id, section_name, nesting_level
+│   - State: was_expanded, now_expanded, siblings_state
+│   - Content: content_type, estimated_size
+├─ Examples:
+│   - Accordion: expand "Advanced Settings" section
+│   - Tree node: expand folder to show children
+└─ Extraction: Track expand/collapse with section context
+
+PATTERN 16: COPY/SHARE → CONTENT + METHOD
+├─ Structure: Copy button, share button, clipboard interaction
+├─ Trigger: Copy click, share dialog open
+├─ Context:
+│   - Content: content_type, content_id, content_preview
+│   - Method: clipboard, share_api, social_platform
+│   - Success: copy_successful, share_completed
+├─ Examples:
+│   - Copy URL: button click → clipboard success
+│   - Share dialog: share button → platform selected
+└─ Extraction: Track what was copied/shared + method
+
+PATTERN 17: KEYBOARD SHORTCUTS → COMMAND + CONTEXT
+├─ Structure: Global or context-specific keyboard handlers
+├─ Trigger: Key combination pressed
+├─ Context:
+│   - Command: shortcut_key, command_name, command_action
+│   - Context: active_element, page_section, modifier_keys
+│   - Outcome: action_executed, action_blocked
+├─ Examples:
+│   - Cmd+K: open command palette
+│   - Cmd+S: save current document
+└─ Extraction: Track keyboard commands + execution context
+
+PATTERN 18: FILE UPLOAD → FILE METADATA + PROGRESS
+├─ Structure: File input or drop zone
+├─ Trigger: File selected or dropped
+├─ Context:
+│   - Files: file_count, file_types[], total_size
+│   - Method: input_click, drag_drop, paste
+│   - Progress: upload_started, upload_completed, upload_failed
+├─ Examples:
+│   - Single file: select PDF via input
+│   - Multiple files: drag 5 images into drop zone
+└─ Extraction: Track file metadata + upload lifecycle
+
+PATTERN 19: DATE/TIME PICKER → SELECTION CONTEXT
+├─ Structure: Calendar, date picker, time selector
+├─ Trigger: Date/time selection
+├─ Context:
+│   - Selection: selected_date, selected_time, date_range
+│   - Method: calendar_click, text_input, preset_selection
+│   - Purpose: field_name, selection_type (start/end/single)
+├─ Examples:
+│   - Date range: select start date, then end date
+│   - Time picker: select hour and minute
+└─ Extraction: Capture date/time selections with context
+
+PATTERN 20: UNDO/REDO → ACTION HISTORY
+├─ Structure: Undo/redo buttons or keyboard shortcuts
+├─ Trigger: Undo/redo action
+├─ Context:
+│   - Action: action_being_undone, action_type
+│   - History: history_depth, can_redo
+│   - State: previous_state, new_state
+├─ Examples:
+│   - Undo delete: restore deleted item
+│   - Redo edit: reapply undone change
+└─ Extraction: Track action history + state changes
+
+=============================================================================
+PATTERN DETECTION METHODOLOGY
+=============================================================================
+
+FOR EVERY INTERACTIVE ELEMENT, ASK:
+
+1. **WHAT IS THE INTERACTION TYPE?**
+   - Click, change, submit, toggle, drag, type, focus, blur, hover
+   - This determines which pattern applies
+
+2. **WHAT IS THE CONTEXT CONTAINER?**
+   - Form, modal, panel, row, card, list, section
+   - Find with: element.closest('[relevant-selector]')
+
+3. **WHAT STATE EXISTS IN THAT CONTAINER?**
+   - Input values, data attributes, aria attributes, class state
+   - Enumerate ALL state sources
+
+4. **WHAT CHANGES ON INTERACTION?**
+   - New values, state transitions, visibility changes
+   - Track before → after
+
+5. **WHAT IS THE BUSINESS MEANING?**
+   - Look at labels, placeholders, data attributes, aria-labels
+   - Infer semantic meaning from naming
+
+6. **WHAT RELATED CONTEXT IS NEEDED?**
+   - Item IDs, parent relationships, user context
+   - Look for data-* attributes on ancestors
+
+7. **HOW DO WE EXTRACT IT?**
+   - querySelector patterns, attribute reads, property access
+   - Specify exact extraction method
+
+=============================================================================
+CONTEXT EXTRACTION STRATEGIES
+=============================================================================
+
+**Strategy: form_state**
+- Use when: Interactive element is inside <form>
+- Scope: element.closest('form')
+- Extract: All input/select/textarea values within form
+- Also capture: Form name, action, method
+
+**Strategy: parent_data**
+- Use when: Element is inside container with data-* attributes
+- Scope: element.closest('[data-item-id]') or similar
+- Extract: All data-* attributes from parent
+- Also capture: aria-* attributes, role
+
+**Strategy: sibling_state**
+- Use when: Related state exists in sibling elements
+- Scope: Parent container of element and siblings
+- Extract: State from siblings using selectors
+- Examples: Active tab sibling, selected radio sibling
+
+**Strategy: modal_scope**
+- Use when: Interaction happens within modal/dialog
+- Scope: element.closest('[role="dialog"]')
+- Extract: Modal content + trigger context
+- Also capture: Modal type, modal ID, entry point
+
+**Strategy: component_props**
+- Use when: Component state is in React/Vue/etc
+- Look for: data-state-*, aria-*, or observable class changes
+- Extract: Externalized state through attributes
+- Fallback: Track class names that indicate state
+
+**Strategy: global_context**
+- Use when: Need page-level or app-level context
+- Extract: URL params, localStorage, sessionStorage
+- Examples: Workspace ID, selected project, user role
+
+**Strategy: accumulated_state**
+- Use when: Multi-step or stateful flow
+- Maintain: Flow state across interactions
+- Extract: Current state + history
+- Examples: Wizard steps, form drafts, edit history
+
+=============================================================================
+OUTPUT SCHEMA (STRICT FORMAT)
+=============================================================================
+
+For EACH interactive component, return:
+
+{
+  "name": "ComponentNameFromCode",
+  "type": "button|input|select|toggle|link|tab|modal_trigger|drag_item|etc",
+  "selector_patterns": ["css.selector", "[data-specific]"],
+  "interaction_type": "click|change|submit|toggle|drag|focus|blur",
+  "pattern_type": "form_submission|item_selection|toggle_state|modal_lifecycle|multi_step_flow|tab_switch|inline_edit|search_filter|drag_drop|bulk_action|pagination|validation|autocomplete|expand_collapse|copy_share|keyboard_shortcut|file_upload|date_picker|undo_redo",
+  "likely_purpose": "Semantic description based on code analysis",
+  
+  "context_needed": [
+    "List of all fields/attributes to capture"
+  ],
+  
+  "context_collection": {
+    "strategy": "form_state|parent_data|sibling_state|modal_scope|component_props|global_context|accumulated_state",
+    "scope_selector": "CSS selector to find context container",
+    "fields": [
+      {
+        "field_name": "semantic_field_name",
+        "selector": "CSS selector within scope",
+        "extraction_method": "value|checked|textContent|data-attribute|aria-attribute|class-state|computed-style",
+        "data_type": "string|number|boolean|array|object",
+        "attribute_name": "if data-* or aria-*",
+        "required": true|false,
+        "description": "What this field represents"
+      }
+    ],
+    "state_tracking": {
+      "track_previous_value": true|false,
+      "track_change_delta": true|false,
+      "track_timing": true|false
+    },
+    "fallback_sources": ["Alternative extraction methods if primary fails"]
+  },
+  
+  "relationships": {
+    "triggers": ["What actions trigger this"],
+    "affects": ["What this interaction affects"],
+    "depends_on": ["What state this depends on"]
+  }
+}
+
+=============================================================================
+FRAMEWORK-AGNOSTIC PRINCIPLES
+=============================================================================
+
+These patterns work across ALL frameworks (React, Vue, Angular, Svelte, vanilla JS):
+
+✓ HTML structure is universal (forms, modals, lists)
+✓ DOM APIs are standard (querySelector, attributes, events)
+✓ State is readable through attributes (value, checked, data-*, aria-*)
+✓ Parent-child relationships are traversable (closest, querySelector)
+✓ Events bubble and can be captured (click, change, submit)
+✓ Patterns repeat regardless of framework (form submit, modal open, tab switch)
+
+The key is detecting the STRUCTURAL PATTERN, not framework-specific implementation.
+
+=============================================================================
+FRAMEWORK DETECTION
+=============================================================================
+
+- If you see file paths like "app/layout.tsx", "app/page.tsx" → "nextjs-app-router"
+- If you see file paths like "pages/_app.tsx", "pages/index.tsx" → "nextjs-pages-router"  
+- If you see file paths like "src/main.tsx" or "src/App.tsx" → "vite-react" or "create-react-app"
+- If you see imports like "from 'next/font/google'" → Next.js
+- Look at actual file paths provided
+
+=============================================================================
+CRITICAL INSTRUCTIONS
+=============================================================================
+
+1. **Identify ALL 20 patterns** in the codebase (don't stop at basic patterns)
+
+2. **For EVERY interactive element**, determine which pattern(s) apply
+
+3. **Map complete extraction strategy** - be specific about selectors and methods
+
+4. **Think structurally** - what container, what state, what changes
+
+5. **Infer semantics** - use naming to understand business meaning
+
+6. **Be exhaustive** - catalog every input, every data attribute, every state source
+
+7. **Track relationships** - what triggers what, what depends on what
+
+8. **Return ONLY valid JSON** - no markdown, no explanations outside JSON
+
+This analysis is CRITICAL - it determines the accuracy of the entire analytics system.
+
+Return this EXACT JSON structure:
 {
   "framework": "nextjs-app-router|nextjs-pages-router|vite-react|create-react-app|vue|angular|vanilla|unknown",
   "components": [
     {
       "name": "component_name_from_code",
       "type": "button|link|icon|form_input|toggle|selector|custom",
-      "selector_patterns": ["SPECIFIC CSS selectors - use classes, IDs, not just tag names"],
+      "selector_patterns": ["SPECIFIC CSS selectors"],
       "interaction_type": "click|change|toggle|submit|hover",
+      "pattern_type": "form_submission|item_selection|etc (can be comma-separated for multiple patterns)",
       "likely_purpose": "Be specific based on handler names and context",
       "context_needed": ["product_id", "selected_state", "form_data", "etc"],
-      "code_patterns": ["Actual patterns found in the code"],
-      "actual_values": ["Actual option values if it's a selector (colors, sizes, etc.)"]
+      "context_collection": {
+        "strategy": "form_state|parent_data|sibling_state|modal_scope|component_props|global_context|accumulated_state",
+        "scope_selector": "CSS selector to find context container",
+        "fields": [
+          {
+            "field_name": "semantic_field_name",
+            "selector": "CSS selector within scope",
+            "extraction_method": "value|checked|textContent|data-attribute|aria-attribute|class-state|computed-style|count",
+            "data_type": "string|number|boolean|array|object",
+            "attribute_name": "if data-* or aria-*",
+            "required": true|false,
+            "description": "What this field represents"
+          }
+        ],
+        "state_tracking": {
+          "track_previous_value": true|false,
+          "track_change_delta": true|false,
+          "track_timing": true|false
+        },
+        "fallback_sources": []
+      },
+      "relationships": {
+        "triggers": [],
+        "affects": [],
+        "depends_on": []
+      }
     }
   ]
 }
-
-Include ALL interactive elements found, both standard HTML and custom components.
-Make selectors SPECIFIC to avoid matching everything.
 
 CODE:
 ${codeContent}`;
 
     try {
+      console.log('🤖 Starting AI component discovery...');
+      console.log('📄 Analyzing', input.files.length, 'files');
+      
       const response = await this.anthropic.messages.create({
-        model: "claude-3-haiku-20240307",
-        max_tokens: CONFIG.LLM_MAX_TOKENS,
+        model: "claude-sonnet-4-5-20250929",  // Claude Sonnet 4.5 (latest, most capable model)
+        max_tokens: 64000,  // Use MAXIMUM output tokens!
         temperature: 0.1,
         system: systemPrompt,
         messages: [{
@@ -540,15 +939,43 @@ ${codeContent}`;
         }]
       });
 
-
       const content = response.content[0].type === 'text' ? response.content[0].text : '';
+      console.log('📝 AI Response length:', content.length, 'characters');
+      console.log('📝 First 200 chars:', content.substring(0, 200));
+      
+      // Save AI response for debugging
+      try {
+        const debugPath = path.join(CONFIG.OUTPUTS_DIR, 'debug-component-discovery.json');
+        await fs.writeFile(debugPath, JSON.stringify({
+          timestamp: new Date().toISOString(),
+          appKey: input.appKey,
+          filesAnalyzed: input.files.length,
+          responseLength: content.length,
+          rawResponse: content
+        }, null, 2));
+        console.log('💾 Saved AI response to:', debugPath);
+      } catch (e) {
+        console.debug('Failed to save debug file:', e);
+      }
+      
       const parsed = this.extractJSON(content);
+      
+      // Validate parsed result
+      if (!parsed || !parsed.components || parsed.components.length === 0) {
+        console.warn('⚠️ AI returned no components! Check response:');
+        console.warn('Parsed result:', JSON.stringify(parsed, null, 2));
+        console.warn('Full AI response:', content.substring(0, 1000));
+        console.warn('📁 Full response saved to: debug-component-discovery.json');
+      } else {
+        console.log('✅ Discovered', parsed.components.length, 'components');
+        console.log('🎯 Component names:', parsed.components.map((c: any) => c.name).join(', '));
+      }
 
       return parsed as ComponentDiscovery;
     } catch (error) {
       console.error('❌ Component discovery failed:', error);
+      console.error('Error details:', error instanceof Error ? error.message : String(error));
       return { components: [], framework: 'unknown' };
-
     }
 
   }
@@ -601,9 +1028,11 @@ CODE:
 ${codeContent}`;
 
     try {
+      console.log('🔍 Starting AI behavior analysis...');
+      
       const response = await this.anthropic.messages.create({
-        model: "claude-3-haiku-20240307",
-        max_tokens: CONFIG.LLM_MAX_TOKENS,
+        model: "claude-sonnet-4-5-20250929",  // Claude Sonnet 4.5 (latest, most capable model)
+        max_tokens: 64000,  // Use MAXIMUM output tokens!
         temperature: 0.1,
         system: systemPrompt,
         messages: [{
@@ -613,11 +1042,20 @@ ${codeContent}`;
       });
 
       const content = response.content[0].type === 'text' ? response.content[0].text : '';
+      console.log('📝 Behavior analysis response length:', content.length, 'characters');
+      
       const parsed = this.extractJSON(content);
+      
+      if (!parsed || !parsed.patterns || parsed.patterns.length === 0) {
+        console.warn('⚠️ AI returned no behavior patterns');
+      } else {
+        console.log('✅ Discovered', parsed.patterns.length, 'behavior patterns');
+      }
 
       return parsed as BehaviorAnalysis;
     } catch (error) {
       console.error('❌ Behavior analysis failed:', error);
+      console.error('Error details:', error instanceof Error ? error.message : String(error));
       return { patterns: [] };
     }
   }
@@ -647,7 +1085,7 @@ ${codeContent}`;
       {
         event_type: 'BUTTON_CLICK',
         data_fields: {
-          required: ['element_text', 'element_id', 'element_type', 'surface', 'page_path', 'is_primary_cta', 'cta_category']
+          required: ['element_text', 'element_id', 'element_type', 'surface', 'page_path', 'is_primary_cta', 'cta_category', 'pattern_type']
         },
         properties: {
           element_text: 'string',
@@ -656,7 +1094,9 @@ ${codeContent}`;
           surface: 'string',
           page_path: 'string',
           is_primary_cta: 'boolean',
-          cta_category: '"conversion" | "navigation" | "engagement"'
+          cta_category: '"conversion" | "navigation" | "engagement"',
+          pattern_type: 'string | null',
+          context: 'Record<string, any> | undefined  // Only present for forms, bulk actions, etc.'
         }
       },
       {
@@ -673,6 +1113,20 @@ ${codeContent}`;
           page_path: 'string',
           fields_total: 'number',
           fields_completed: 'number'
+        }
+      },
+      {
+        event_type: 'MODAL_INTERACTION',
+        data_fields: {
+          required: ['action', 'modal_name', 'modal_id', 'trigger_source', 'page_path', 'context']
+        },
+        properties: {
+          action: '"opened" | "closed" | "submitted" | "dismissed"',
+          modal_name: 'string',
+          modal_id: 'string | null',
+          trigger_source: '"button_click" | "auto_trigger" | "other"',
+          page_path: 'string',
+          context: 'Record<string, any>'
         }
       },
       {
@@ -847,9 +1301,11 @@ CODE TO ANALYZE:
 ${codeContent}`;
 
     try {
+      console.log('🗺️ Starting UI graph generation...');
+      
       const response = await this.anthropic.messages.create({
-        model: "claude-3-haiku-20240307",
-        max_tokens: CONFIG.LLM_MAX_TOKENS,
+        model: "claude-sonnet-4-5-20250929",  // Claude Sonnet 4.5 (latest, most capable model)
+        max_tokens: 64000,  // Use MAXIMUM output tokens!
         temperature: 0.1,
         system: systemPrompt,
         messages: [{
@@ -859,6 +1315,8 @@ ${codeContent}`;
       });
 
       const content = response.content[0].type === 'text' ? response.content[0].text : '';
+      console.log('📝 UI graph response length:', content.length, 'characters');
+      
       const parsed = this.extractJSON(content);
 
       // Validate and ensure required structure
@@ -1213,8 +1671,8 @@ ${codeContent}`;
 
     try {
       const response = await this.anthropic.messages.create({
-        model: "claude-3-5-haiku-20241022",
-        max_tokens: 8000,  // Haiku's maximum is 8192
+        model: "claude-sonnet-4-5-20250929",  // Claude Sonnet 4.5 (latest, most capable model)
+        max_tokens: 64000,  // Use MAXIMUM output tokens!  // Sonnet 4.5 max tokens
         temperature: 0.1,
         system: "You are a precise code editor. Make ONLY the necessary analytics changes. Preserve ALL existing code structure exactly. Return the complete file with minimal modifications.",
         messages: [{
@@ -1542,14 +2000,19 @@ ${safeContent}`
     // Generate component detectors from AI analysis
     const componentDetectors = analysis.discovery.components.map((comp: any) => {
       const pattern = analysis.behaviors.patterns.find((p: any) => p.component === comp.name);
+      // Use context_collection from component directly if available, otherwise from behavior pattern
+      const contextCollection = comp.context_collection || (pattern ? pattern.context_collection : null);
+      
       return `
         {
             name: '${comp.name}',
             type: '${comp.type}',
+            pattern_type: '${comp.pattern_type || 'unknown'}',
             selectors: ${JSON.stringify(comp.selector_patterns)},
             purpose: '${comp.likely_purpose}',
             contextNeeded: ${JSON.stringify(comp.context_needed)},
-            contextCollection: ${pattern ? JSON.stringify(pattern.context_collection) : 'null'}
+            context_collection: ${contextCollection ? JSON.stringify(contextCollection) : 'null'},
+            relationships: ${comp.relationships ? JSON.stringify(comp.relationships) : 'null'}
         }`;
     }).join(',\n');
 
@@ -1565,8 +2028,11 @@ ${safeContent}`
   
   // ============ USER ID GENERATOR ============
   class UserIdGenerator {
-    constructor() {
-      this.STORAGE_KEY = 'analytics_user_id';
+    constructor(appKey) {
+      // ✅ MULTI-TENANCY: Include app_key in storage key for isolation
+      // This ensures that multiple apps on the same domain have separate user IDs
+      this.appKey = appKey;
+      this.STORAGE_KEY = 'analytics_user_id_' + appKey;
       this.userId = null;
     }
 
@@ -1670,12 +2136,42 @@ ${safeContent}`
         appKey: '${appKey}',
         endpoint: '${endpoint}',
         batchSize: 10,
-        flushInterval: 30000
+        flushInterval: 10000  // Reduced to 10 seconds for faster event delivery
       };
+      
+      // Privacy controls
+      this.disabled = false;
+      
+      // Check Do Not Track
+      if (typeof navigator !== 'undefined' && navigator.doNotTrack === '1') {
+        console.log('📵 Analytics disabled: Do Not Track enabled');
+        this.disabled = true;
+        return;
+      }
+      
+      // Check consent
+      try {
+        this.hasConsent = localStorage.getItem('analytics_consent_' + this.config.appKey) === 'true';
+        
+        // Auto-accept for test app (remove in production or prompt user)
+        if (!this.hasConsent) {
+          localStorage.setItem('analytics_consent_' + this.config.appKey, 'true');
+          this.hasConsent = true;
+          console.log('✅ Analytics consent: auto-accepted for test');
+        }
+      } catch (e) {
+        this.hasConsent = false;
+      }
+      
+      if (!this.hasConsent) {
+        console.log('🚫 Analytics disabled: No consent');
+        this.disabled = true;
+        return;
+      }
       
       this.eventQueue = [];
       this.sessionId = this.getOrCreateSession();
-      this.userIdGenerator = new UserIdGenerator();
+      this.userIdGenerator = new UserIdGenerator(this.config.appKey);
       this.userId = this.userIdGenerator.init();
       this.pageLoadTime = Date.now();
       this.maxScrollDepth = 0;
@@ -1688,14 +2184,69 @@ ${safeContent}`
       this.visibleElements = new WeakMap();
       this.pageContext = {};
       
+      // Performance optimization: cache selector matches
+      this.selectorCache = new WeakMap();
+      
       // AI-discovered component patterns
       this.componentDetectors = [${componentDetectors}
       ];
+      
+      // Load persisted events from previous session
+      this.loadQueueFromStorage();
       
       if (typeof window !== 'undefined') {
         this.setupListeners();
         this.startFlushTimer();
         this.initAutoTracking();
+        
+        // Save queue on page unload
+        window.addEventListener('beforeunload', () => this.saveQueueToStorage());
+      }
+    }
+    
+    // Privacy: Opt out of tracking
+    optOut() {
+      try {
+        localStorage.removeItem('analytics_user_id_' + this.config.appKey);
+        localStorage.removeItem('analytics_consent_' + this.config.appKey);
+        this.disabled = true;
+        this.eventQueue = [];
+        console.log('📵 Analytics: Opted out');
+      } catch (e) {
+        console.error('Failed to opt out:', e);
+      }
+    }
+    
+    // Offline persistence: Save queue to localStorage
+    saveQueueToStorage() {
+      if (this.eventQueue.length === 0) return;
+      
+      try {
+        const queueKey = 'analytics_queue_' + this.config.appKey;
+        localStorage.setItem(queueKey, JSON.stringify(this.eventQueue));
+      } catch (e) {
+        // Silent fail
+      }
+    }
+    
+    // Offline persistence: Load queue from localStorage
+    loadQueueFromStorage() {
+      try {
+        const queueKey = 'analytics_queue_' + this.config.appKey;
+        const saved = localStorage.getItem(queueKey);
+        if (saved) {
+          const parsedQueue = JSON.parse(saved);
+          this.eventQueue = parsedQueue;
+          localStorage.removeItem(queueKey);
+          console.log('📦 Restored', parsedQueue.length, 'events from storage');
+          
+          // Flush restored events immediately
+          if (this.eventQueue.length > 0) {
+            setTimeout(() => this.flush(), 1000);
+          }
+        }
+      } catch (e) {
+        // Silent fail
       }
     }
 
@@ -1727,9 +2278,10 @@ ${safeContent}`
 
     // ============ AI-ENHANCED AUTO-TRACKING ============
     initAutoTracking() {
-      console.log('🤖 AI-Enhanced Analytics initialized for ${appKey}');
-      console.log('📊 Tracking ${analysis.discovery.components.length} discovered components');
-      console.log('🔑 User ID:', this.userId);
+      console.log('[${appKey}] 🤖 AI-Enhanced Analytics initialized');
+      console.log('[${appKey}] 📊 Tracking ${analysis.discovery.components.length} discovered components');
+      console.log('[${appKey}] 🔑 User ID:', this.userId);
+      console.log('[${appKey}] 📍 Session ID:', this.sessionId);
       
       this.trackPageView();
       this.trackAllClicks();
@@ -1755,6 +2307,328 @@ ${safeContent}`
       return null;
     }
 
+    // ============ ENHANCED CONTEXT EXTRACTION SYSTEM ============
+    extractContext(element, componentInfo) {
+      const context = {};
+      
+      // If no AI pattern matched, use smart fallbacks
+      if (!componentInfo || !componentInfo.context_collection) {
+        // Fallback 1: Extract from nearest form
+        const form = element.closest('form');
+        if (form) {
+          context.form_action = this.inferFormAction(form);
+          const formData = this.getFormFieldValues(form);
+          Object.assign(context, formData);
+        }
+        
+        // Fallback 2: Extract from URL parameters
+        const urlParams = this.getURLParams();
+        if (Object.keys(urlParams).length > 0) {
+          Object.assign(context, urlParams);
+        }
+        
+        // Fallback 3: Extract from page-level data attributes
+        if (document.body.dataset.pageType) {
+          context.page_type = document.body.dataset.pageType;
+        } else {
+          context.page_type = this.inferPageType();
+        }
+        
+        // Fallback 4: Extract from nearest container with data attributes
+        const container = element.closest('[data-item-id], [data-task-id], [data-project-id], [data-id]');
+        if (container) {
+          for (const attr of container.attributes) {
+            if (attr.name.startsWith('data-')) {
+              const key = attr.name.replace('data-', '');
+              context[key] = attr.value;
+            }
+          }
+        }
+        
+        return context;
+      }
+      
+      // Use AI-discovered pattern for extraction
+      const scope = this.findContextScope(element, componentInfo.context_collection.scope_selector);
+      if (!scope) return context;
+      
+      // Extract configured fields
+      for (const fieldConfig of componentInfo.context_collection.fields) {
+        try {
+          const value = this.extractFieldValue(scope, fieldConfig);
+          if (value !== null && value !== undefined) {
+            context[fieldConfig.field_name] = value;
+            
+            // Track previous value if configured
+            if (componentInfo.context_collection.state_tracking?.track_previous_value) {
+              const prevValue = this.getPreviousValue(scope, fieldConfig);
+              if (prevValue !== null) {
+                context[fieldConfig.field_name + '_previous'] = prevValue;
+              }
+            }
+          }
+        } catch (error) {
+          // Silent fail - fallbacks will handle it
+        }
+      }
+      
+      // Add timing if configured
+      if (componentInfo.context_collection.state_tracking?.track_timing) {
+        context._interaction_timestamp = Date.now();
+      }
+      
+      // Always add page type and URL params as supplementary context
+      context.page_type = context.page_type || this.inferPageType();
+      const urlParams = this.getURLParams();
+      if (Object.keys(urlParams).length > 0) {
+        context.url_params = urlParams;
+      }
+      
+      return context;
+    }
+
+    findContextScope(element, scopeSelector) {
+      if (!scopeSelector) return element;
+      
+      // Try exact scope first
+      let scope = element.closest(scopeSelector);
+      if (scope) return scope;
+      
+      // Fallback to common patterns
+      return element.closest('form') ||
+             element.closest('[role="dialog"]') ||
+             element.closest('[data-form]') ||
+             element.closest('[data-component]') ||
+             element.closest('[data-item-id]') ||
+             element.closest('tr') ||
+             element.closest('li') ||
+             element.closest('section') ||
+             element;
+    }
+
+    extractFieldValue(scope, fieldConfig) {
+      let targetElement;
+      
+      // Handle special 'count' extraction
+      if (fieldConfig.extraction_method === 'count') {
+        const elements = scope.querySelectorAll(fieldConfig.selector);
+        return elements.length;
+      }
+      
+      targetElement = scope.querySelector(fieldConfig.selector);
+      
+      // If selector failed, try flexible alternatives for form fields
+      if (!targetElement && fieldConfig.extraction_method === 'value') {
+        const fieldName = fieldConfig.field_name;
+        // Try: input[name], input[id], input[id*=contains], input[placeholder*=contains]
+        const flexibleSelector = \`input[name='\${fieldName}'], input[id='\${fieldName}'], input[id*='\${fieldName}'], input[placeholder*='\${fieldName}'], textarea[name='\${fieldName}'], textarea[id='\${fieldName}'], select[name='\${fieldName}'], select[id='\${fieldName}']\`;
+        targetElement = scope.querySelector(flexibleSelector);
+      }
+      
+      // Quick Win: Extract IDs from URLs if element still not found
+      if (!targetElement && fieldConfig.field_name.includes('_id')) {
+        const href = scope.getAttribute?.('href') || window.location.pathname;
+        const match = href.match(/\/(projects|tasks|team|activity)\/([a-f0-9-]+)/i);
+        if (match) return match[2];  // Return the UUID
+      }
+      
+      if (!targetElement) return null;
+      
+      switch (fieldConfig.extraction_method) {
+        case 'value':
+          return this.coerceType(targetElement.value, fieldConfig.data_type);
+        
+        case 'checked':
+          if (fieldConfig.data_type === 'array') {
+            // Multiple checkboxes - collect all checked values
+            const checked = scope.querySelectorAll(fieldConfig.selector + ':checked');
+            const values = Array.from(checked).map(el => {
+              return fieldConfig.attribute_name ? 
+                el.getAttribute(fieldConfig.attribute_name) : 
+                el.value;
+            });
+            return values;
+          }
+          return targetElement.checked;
+        
+        case 'textContent':
+          return targetElement.textContent.trim();
+        
+        case 'data-attribute':
+          const attrName = fieldConfig.attribute_name || 'data-value';
+          return this.coerceType(
+            targetElement.getAttribute(attrName), 
+            fieldConfig.data_type
+          );
+        
+        case 'aria-attribute':
+          const ariaAttr = 'aria-' + (fieldConfig.attribute_name || 'value');
+          return targetElement.getAttribute(ariaAttr);
+        
+        case 'class-state':
+          // Extract state from class names
+          const classes = Array.from(targetElement.classList);
+          if (fieldConfig.attribute_name) {
+            // Look for specific class pattern
+            const pattern = new RegExp(fieldConfig.attribute_name);
+            const match = classes.find(c => pattern.test(c));
+            return match || null;
+          }
+          return classes.join(' ');
+        
+        case 'computed-style':
+          const style = window.getComputedStyle(targetElement);
+          return style[fieldConfig.attribute_name || 'display'];
+        
+        default:
+          return targetElement.value || targetElement.textContent;
+      }
+    }
+
+    getPreviousValue(scope, fieldConfig) {
+      const el = scope.querySelector(fieldConfig.selector);
+      if (!el) return null;
+      
+      // Check for data-previous-value attribute
+      const prevAttr = el.getAttribute('data-previous-value');
+      if (prevAttr) return this.coerceType(prevAttr, fieldConfig.data_type);
+      
+      // Check for aria-valuenow vs aria-valuemin (state change)
+      const ariaNow = el.getAttribute('aria-valuenow');
+      if (ariaNow) return this.coerceType(ariaNow, fieldConfig.data_type);
+      
+      return null;
+    }
+
+    coerceType(value, dataType) {
+      if (value === null || value === undefined) return value;
+      if (!dataType) return value;
+      
+      switch (dataType) {
+        case 'number':
+          const num = Number(value);
+          return isNaN(num) ? null : num;
+        case 'boolean':
+          return value === 'true' || value === true || value === '1';
+        case 'array':
+          return Array.isArray(value) ? value : [value];
+        case 'object':
+          try {
+            return typeof value === 'string' ? JSON.parse(value) : value;
+          } catch {
+            return value;
+          }
+        default:
+          return String(value);
+      }
+    }
+
+    // ============ SMART CONTEXT FALLBACK HELPERS ============
+    
+    inferPageType() {
+      const path = window.location.pathname.toLowerCase();
+      if (path.includes('/pricing')) return 'pricing';
+      if (path.includes('/checkout')) return 'checkout';
+      if (path.includes('/dashboard')) return 'dashboard';
+      if (path.includes('/settings')) return 'settings';
+      if (path.includes('/team')) return 'team';
+      if (path.includes('/projects')) return 'projects';
+      if (path.includes('/tasks')) return 'tasks';
+      if (path.includes('/activity')) return 'activity';
+      if (path.includes('/billing')) return 'billing';
+      if (path === '/' || path === '') return 'home';
+      return 'other';
+    }
+    
+    getURLParams() {
+      const params = {};
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        for (const [key, value] of urlParams) {
+          params[key] = value;
+        }
+      } catch (e) {
+        // Silent fail
+      }
+      return params;
+    }
+    
+    inferFormAction(form) {
+      // Try to infer action from form attributes
+      if (form.action && form.action !== window.location.href) {
+        const actionPath = new URL(form.action, window.location.origin).pathname;
+        if (actionPath.includes('project')) return 'create_project';
+        if (actionPath.includes('task')) return 'create_task';
+        if (actionPath.includes('checkout')) return 'checkout';
+        if (actionPath.includes('payment')) return 'payment';
+        if (actionPath.includes('invite')) return 'invite_team';
+        if (actionPath.includes('settings')) return 'update_settings';
+        return actionPath;
+      }
+      
+      // Infer from form ID or name
+      const formId = (form.id || form.name || '').toLowerCase();
+      if (formId.includes('project')) return 'create_project';
+      if (formId.includes('task')) return 'create_task';
+      if (formId.includes('checkout')) return 'checkout';
+      if (formId.includes('payment')) return 'payment';
+      if (formId.includes('invite')) return 'invite_team';
+      if (formId.includes('login')) return 'login';
+      if (formId.includes('signup')) return 'signup';
+      if (formId.includes('settings')) return 'update_settings';
+      
+      // Infer from submit button text
+      const submitButton = form.querySelector('button[type="submit"], input[type="submit"]');
+      if (submitButton) {
+        const buttonText = (submitButton.textContent || submitButton.value || '').toLowerCase();
+        if (buttonText.includes('project')) return 'create_project';
+        if (buttonText.includes('task')) return 'create_task';
+        if (buttonText.includes('checkout') || buttonText.includes('pay')) return 'checkout';
+        if (buttonText.includes('invite')) return 'invite_team';
+        if (buttonText.includes('save')) return 'save_changes';
+      }
+      
+      return 'form_submit';
+    }
+    
+    getFormFieldValues(form) {
+      const data = {};
+      
+      try {
+        const formData = new FormData(form);
+        for (const [key, value] of formData) {
+          // Skip empty values and passwords
+          if (!value || key.toLowerCase().includes('password')) continue;
+          
+          // Sanitize sensitive fields
+          if (key.toLowerCase().includes('card') || key.toLowerCase().includes('cvv')) {
+            data[key] = '[REDACTED]';
+          } else if (key.toLowerCase().includes('email')) {
+            // Anonymize email
+            data[key] = this.anonymizeEmail(value);
+          } else {
+            // Truncate long values
+            data[key] = String(value).slice(0, 100);
+          }
+        }
+      } catch (e) {
+        // Silent fail
+      }
+      
+      return data;
+    }
+    
+    anonymizeEmail(email) {
+      try {
+        const [local, domain] = email.split('@');
+        if (!domain) return '[EMAIL]';
+        const maskedLocal = local.charAt(0) + '***' + local.charAt(local.length - 1);
+        return maskedLocal + '@' + domain;
+      } catch {
+        return '[EMAIL]';
+      }
+    }
+
     // Enhanced click tracking with new BUTTON_CLICK event
     trackAllClicks() {
       document.addEventListener('click', (e) => {
@@ -1777,15 +2651,27 @@ ${safeContent}`
         if (clickable || componentInfo) {
           const element = clickable || target;
           
-          this.trackEvent('BUTTON_CLICK', {
+          // Extract rich context using pattern-based extraction
+          const contextData = componentInfo ? this.extractContext(element, componentInfo) : {};
+          
+          // Build event data
+          const eventData = {
             element_text: this.getElementText(element).slice(0, 100),
             element_id: element.id || null,
             element_type: this.getButtonType(element),
             surface: this.getSurface(element),
             page_path: window.location.pathname,
             is_primary_cta: this.isPrimaryCTA(element),
-            cta_category: this.getCTACategory(element, componentInfo)
-          });
+            cta_category: this.getCTACategory(element, componentInfo),
+            pattern_type: componentInfo?.pattern_type || null
+          };
+          
+          // Only add context if it has meaningful data (not empty object)
+          if (contextData && Object.keys(contextData).length > 0) {
+            eventData.context = contextData;
+          }
+          
+          this.trackEvent('BUTTON_CLICK', eventData);
         }
       }, true);
     }
@@ -1835,6 +2721,26 @@ ${safeContent}`
           fields_completed: tracking ? tracking.fieldsInteracted.size : 0
         });
         
+        // If form is inside a modal, also track MODAL_INTERACTION with submitted action
+        const modal = form.closest('[role="dialog"]') || 
+                      form.closest('.modal') || 
+                      form.closest('[data-modal]') ||
+                      form.closest('[class*="modal"]');
+        
+        if (modal) {
+          const componentInfo = this.detectComponent(modal);
+          const context = componentInfo ? this.extractContext(modal, componentInfo) : {};
+          
+          this.trackEvent('MODAL_INTERACTION', {
+            action: 'submitted',
+            modal_name: this.getElementName(modal),
+            modal_id: modal.id || null,
+            trigger_source: 'button_click',
+            page_path: window.location.pathname,
+            context: context
+          });
+        }
+        
         this.formTracking.delete(form);
       });
 
@@ -1858,13 +2764,17 @@ ${safeContent}`
     }
 
     trackElementVisibility() {
-      // Track modal/popup/dialog visibility
-      const observer = new MutationObserver((mutations) => {
+      // Track modal/popup/dialog visibility with debouncing for performance
+      let mutationTimer;
+      const debouncedHandler = (mutations) => {
+        clearTimeout(mutationTimer);
+        mutationTimer = setTimeout(() => {
         mutations.forEach((mutation) => {
           if (mutation.type === 'attributes' && 
               (mutation.attributeName === 'class' || 
                mutation.attributeName === 'style' || 
-               mutation.attributeName === 'aria-hidden')) {
+                 mutation.attributeName === 'aria-hidden' ||
+                 mutation.attributeName === 'data-state')) {
             
             const element = mutation.target;
             const isOverlay = this.isOverlayElement(element);
@@ -1872,39 +2782,76 @@ ${safeContent}`
             if (isOverlay) {
               const isVisible = this.isElementVisible(element);
               const wasVisible = this.visibleElements.get(element);
+                const overlayType = this.getOverlayType(element);
+                const isModal = overlayType === 'modal' || element.getAttribute('role') === 'dialog';
               
               if (isVisible && !wasVisible) {
                 this.visibleElements.set(element, true);
+                
+                // Use MODAL_INTERACTION for modals, ELEMENT_VISIBILITY for others
+                if (isModal) {
+                  const componentInfo = this.detectComponent(element);
+                  const context = componentInfo ? this.extractContext(element, componentInfo) : {};
+                  
+                  this.trackEvent('MODAL_INTERACTION', {
+                    action: 'opened',
+                    modal_name: this.getElementName(element),
+                    modal_id: element.id || null,
+                    trigger_source: 'button_click',
+                    page_path: window.location.pathname,
+                    context: context
+                  });
+                } else {
                 this.trackEvent('ELEMENT_VISIBILITY', {
                   action: 'shown',
-                  element_type: this.getOverlayType(element),
+                    element_type: overlayType,
                   element_name: this.getElementName(element),
                   element_id: element.id || null,
                   trigger_source: 'auto_trigger',
                   page_path: window.location.pathname,
                   has_cta: this.hasCallToAction(element)
                 });
+                }
               } else if (!isVisible && wasVisible) {
                 this.visibleElements.set(element, false);
+                
+                // Use MODAL_INTERACTION for modals, ELEMENT_VISIBILITY for others
+                if (isModal) {
+                  const componentInfo = this.detectComponent(element);
+                  const context = componentInfo ? this.extractContext(element, componentInfo) : {};
+                  
+                  this.trackEvent('MODAL_INTERACTION', {
+                    action: 'closed',
+                    modal_name: this.getElementName(element),
+                    modal_id: element.id || null,
+                    trigger_source: 'button_click',
+                    page_path: window.location.pathname,
+                    context: context
+                  });
+                } else {
                 this.trackEvent('ELEMENT_VISIBILITY', {
                   action: 'hidden',
-                  element_type: this.getOverlayType(element),
+                    element_type: overlayType,
                   element_name: this.getElementName(element),
                   element_id: element.id || null,
                   trigger_source: 'button_click',
                   page_path: window.location.pathname,
                   has_cta: this.hasCallToAction(element)
                 });
+                }
               }
             }
           }
         });
-      });
+        }, 50);  // 50ms debounce
+      };
+      
+      const observer = new MutationObserver(debouncedHandler);
 
       observer.observe(document.body, {
         attributes: true,
         subtree: true,
-        attributeFilter: ['class', 'style', 'aria-hidden']
+        attributeFilter: ['class', 'style', 'aria-hidden', 'data-state']
       });
     }
 
@@ -2112,6 +3059,9 @@ ${safeContent}`
     }
 
     trackEvent(eventType, data = {}) {
+      // Check if tracking is disabled
+      if (this.disabled) return;
+      
       // All 6 base fields are REQUIRED and NEVER null
       const event = {
         id: this.generateUUID(),                  // Always generated, never null
@@ -2170,9 +3120,20 @@ ${safeContent}`
           events: batch
         }),
         keepalive: true
-      }).catch(err => {
-        console.error('Analytics flush error:', err);
+      })
+      .then(response => {
+        if (!response.ok) {
+          console.error('[${appKey}] Analytics flush failed:', response.status);
+          // Re-add to queue and persist on failure
         this.eventQueue.unshift(...batch);
+          this.saveQueueToStorage();
+        }
+      })
+      .catch(err => {
+        console.error('[${appKey}] Analytics flush error:', err);
+        // Re-add to queue and persist on failure
+        this.eventQueue.unshift(...batch);
+        this.saveQueueToStorage();
       });
     }
   }
@@ -2180,7 +3141,7 @@ ${safeContent}`
   // Auto-initialize
   if (typeof window !== 'undefined' && !window.analytics) {
     window.analytics = new AnalyticsTracker();
-    console.log('✅ AI-Enhanced Analytics tracker with new event schema initialized');
+    console.log('[${appKey}] ✅ AI-Enhanced Analytics tracker with new event schema initialized');
   }
 
   return AnalyticsTracker;
@@ -2194,48 +3155,173 @@ ${safeContent}`
    * Helper to extract JSON from LLM response with repair attempts
    */
   private extractJSON(content: string): any {
-
-
     // Strategy 1: Look for markdown code blocks
     const codeBlockMatch = content.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
     if (codeBlockMatch) {
-      console.log('Found JSON object, attempting parse...');
+      console.log('📦 Found markdown code block, extracting...');
       try {
-        const parsed = JSON.parse(codeBlockMatch[1]);
-        console.log('✅ Successfully parsed JSON object');
+        const jsonContent = codeBlockMatch[1].trim();
+        const parsed = JSON.parse(jsonContent);
+        console.log('✅ Successfully parsed JSON from code block');
+        console.log('📊 Result:', {
+          framework: parsed.framework,
+          componentCount: parsed.components?.length || 0
+        });
         return parsed;
       } catch (e: any) {
-        console.log('❌ JSON object extraction failed:', e.message);
-        console.log('Code block content:', codeBlockMatch[1].substring(0, 200));
+        console.log('❌ Code block parse failed:', e.message);
+        console.log('🔍 First 500 chars of code block:', codeBlockMatch[1].substring(0, 500));
+        
+        // Try to fix common issues
+        try {
+          let fixed = codeBlockMatch[1].trim();
+          // Remove trailing commas before closing brackets
+          fixed = fixed.replace(/,(\s*[}\]])/g, '$1');
+          // Remove comments
+          fixed = fixed.replace(/\/\/.*$/gm, '');
+          // Fix unescaped quotes in strings
+          fixed = fixed.replace(/(['"])(.*?)\1/g, (match, quote, content) => {
+            const escaped = content.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+            return quote + escaped + quote;
+          });
+          
+          const parsed = JSON.parse(fixed);
+          console.log('✅ Successfully parsed after auto-fix');
+          return parsed;
+        } catch (e2: any) {
+          console.log('❌ Auto-fix failed:', e2.message);
+        }
       }
     }
 
-    // Strategy 2: Find JSON by structure
+    // Strategy 2: Find JSON by structure (starting with { and proper depth tracking)
     try {
       const jsonObj = this.extractJSONObject(content);
       if (jsonObj) {
-        console.log('Found JSON object, attempting parse...');
+        console.log('📦 Found JSON object by structure...');
         const parsed = JSON.parse(jsonObj);
         console.log('✅ Successfully parsed JSON object');
         return parsed;
       }
     } catch (e: any) {
-      console.log('❌ JSON object extraction failed:', e.message);
+      console.log('❌ Structural JSON extraction failed:', e.message);
     }
 
     // Strategy 3: Try to fix and parse
     try {
       const fixed = this.fixMalformedJSON(content);
-      console.log('Attempting to parse fixed JSON...');
+      console.log('🔧 Attempting to parse fixed JSON...');
       const parsed = JSON.parse(fixed);
       console.log('✅ Successfully parsed after fixing');
       return parsed;
     } catch (e: any) {
       console.log('❌ Fixed JSON parse failed:', e.message);
+      console.log('🔍 Error at position:', (e as any).position || 'unknown');
     }
 
-    // Final fallback
-    console.warn('⚠️ All parsing methods failed, using fallback structure');
+    // Strategy 4: Try more aggressive cleaning
+    try {
+      console.log('🔨 Attempting aggressive JSON repair...');
+      let cleaned = content;
+      
+      // Remove everything before first {
+      const firstBrace = cleaned.indexOf('{');
+      if (firstBrace > 0) {
+        cleaned = cleaned.substring(firstBrace);
+      }
+      
+      // Remove everything after last }
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (lastBrace > 0) {
+        cleaned = cleaned.substring(0, lastBrace + 1);
+      }
+      
+      // Remove trailing commas
+      cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
+      
+      // Remove line comments
+      cleaned = cleaned.replace(/\/\/.*$/gm, '');
+      
+      // Remove block comments
+      cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, '');
+      
+      // Fix invalid pseudo-selectors (AI sometimes creates these)
+      cleaned = cleaned.replace(/"selector":\s*"(state|props|searchParams|context):([^"]+)"/g, 
+        '"selector": "[data-$1-$2]"');
+      
+      const parsed = JSON.parse(cleaned);
+      console.log('✅ Successfully parsed with aggressive cleaning');
+      console.log('📊 Found:', parsed.components?.length || 0, 'components');
+      return parsed;
+    } catch (e: any) {
+      console.log('❌ Aggressive repair failed:', e.message);
+      console.log('🔍 Parse error position:', e.message.match(/position (\d+)/)?.[1] || 'unknown');
+    }
+
+    // Strategy 5: Complete truncated JSON (AI hit token limit)
+    try {
+      console.log('🩹 Attempting to complete truncated JSON...');
+      let cleaned = content;
+      
+      // Remove markdown wrapper
+      cleaned = cleaned.replace(/```(?:json)?\s*\n?/g, '');
+      
+      // Remove everything before first {
+      const firstBrace = cleaned.indexOf('{');
+      if (firstBrace > 0) {
+        cleaned = cleaned.substring(firstBrace);
+      }
+      
+      // Check for incomplete fields at the end
+      // Common patterns: "field": or "field": [ or "field": {
+      const incompletePatterns = [
+        /,?\s*"[^"]+"\s*:\s*$/,           // "field":
+        /,?\s*"[^"]+"\s*:\s*\[?\s*$/,    // "field": [
+        /,?\s*"[^"]+"\s*:\s*\{?\s*$/     // "field": {
+      ];
+      
+      for (const pattern of incompletePatterns) {
+        if (pattern.test(cleaned)) {
+          console.log('🔍 Detected incomplete field, removing...');
+          cleaned = cleaned.replace(pattern, '');
+        }
+      }
+      
+      // Count open vs closed brackets
+      const openBraces = (cleaned.match(/\{/g) || []).length;
+      const closeBraces = (cleaned.match(/\}/g) || []).length;
+      const openBrackets = (cleaned.match(/\[/g) || []).length;
+      const closeBrackets = (cleaned.match(/\]/g) || []).length;
+      
+      console.log('🔍 Bracket count:', {
+        braces: { open: openBraces, close: closeBraces, missing: openBraces - closeBraces },
+        brackets: { open: openBrackets, close: closeBrackets, missing: openBrackets - closeBrackets }
+      });
+      
+      // Close any open brackets/braces
+      for (let i = 0; i < (openBrackets - closeBrackets); i++) {
+        cleaned += '\n]';
+      }
+      for (let i = 0; i < (openBraces - closeBraces); i++) {
+        cleaned += '\n}';
+      }
+      
+      // Remove trailing commas
+      cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1');
+      
+      const parsed = JSON.parse(cleaned);
+      console.log('✅ Successfully completed and parsed truncated JSON!');
+      console.log('📊 Recovered:', parsed.components?.length || 0, 'components');
+      return parsed;
+    } catch (e: any) {
+      console.log('❌ JSON completion failed:', e.message);
+    }
+
+    // Final fallback - save raw response for manual inspection
+    console.error('⚠️ All parsing methods failed!');
+    console.error('📄 Response length:', content.length);
+    console.error('📝 First 1000 chars:', content.substring(0, 1000));
+    console.error('📝 Last 500 chars:', content.substring(content.length - 500));
     return { framework: 'unknown', components: [] };
   }
   private extractJSONObject(content: string): string | null {
@@ -2828,6 +3914,8 @@ export interface ButtonClickEvent extends BaseEvent {
     page_path: string;
     is_primary_cta: boolean;
     cta_category: 'conversion' | 'navigation' | 'engagement';
+    pattern_type: string | null;
+    context?: Record<string, any>;  // Optional - only for forms, bulk actions, state changes
   };
 }
 
@@ -2842,6 +3930,18 @@ export interface FormInteractionEvent extends BaseEvent {
     page_path: string;
     fields_total: number;
     fields_completed: number;
+  };
+}
+
+export interface ModalInteractionEvent extends BaseEvent {
+  event_type: 'MODAL_INTERACTION';
+  data: {
+    action: 'opened' | 'closed' | 'submitted' | 'dismissed';
+    modal_name: string;
+    modal_id: string | null;
+    trigger_source: 'button_click' | 'auto_trigger' | 'other';
+    page_path: string;
+    context: Record<string, any>;
   };
 }
 
@@ -2873,6 +3973,7 @@ export type AnalyticsEvent =
   | PageViewEvent 
   | ButtonClickEvent 
   | FormInteractionEvent 
+  | ModalInteractionEvent
   | ElementVisibilityEvent 
   | ScrollInteractionEvent;
 
@@ -2917,8 +4018,13 @@ Tracks all clickable elements with fields: element_text, element_id, element_typ
 ### FORM_INTERACTION
 Tracks form interactions with fields: action, form_name, form_id, form_type, surface, page_path, fields_total, fields_completed
 
+### MODAL_INTERACTION
+Tracks modal dialogs specifically with fields: action (opened/closed/submitted/dismissed), modal_name, modal_id, trigger_source, page_path, context
+- Automatically captures context from the modal (form fields, product info, etc.)
+- Distinguishes between opened, closed, submitted, and dismissed actions
+
 ### ELEMENT_VISIBILITY
-Tracks modal/popup visibility with fields: action, element_type, element_name, element_id, trigger_source, page_path, has_cta
+Tracks other overlay elements (popups, tooltips, dropdowns) with fields: action, element_type, element_name, element_id, trigger_source, page_path, has_cta
 
 ### SCROLL_INTERACTION
 Tracks scroll depth with fields: action, depth_percentage, milestone, page_path, direction

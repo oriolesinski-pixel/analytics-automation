@@ -229,10 +229,13 @@ export function UIGraphVisualization({ uiGraph }: UIGraphProps) {
         // Calculate viewBox to ensure everything is centered and visible
         const allX = Object.values(positions).map(p => p.x);
         const allY = Object.values(positions).map(p => p.y);
-        const minX = Math.min(...allX) - 100;
-        const maxX = Math.max(...allX) + 100;
-        const minY = Math.min(...allY) - 50;
-        const maxY = Math.max(...allY) + 100;
+        
+        // Add more padding for better visibility
+        const padding = 150;
+        const minX = Math.min(...allX) - padding;
+        const maxX = Math.max(...allX) + padding;
+        const minY = Math.min(...allY) - padding;
+        const maxY = Math.max(...allY) + padding;
 
         return {
             positions,
@@ -266,14 +269,14 @@ export function UIGraphVisualization({ uiGraph }: UIGraphProps) {
                     </button>
                 </div>
 
-                {/* SVG Container */}
-                <div className="h-[600px] bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg overflow-auto">
+                {/* SVG Container - Auto-fits all nodes */}
+                <div className="h-[600px] bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg overflow-hidden">
                     <svg
                         width="100%"
                         height="100%"
                         viewBox={viewBox}
                         preserveAspectRatio="xMidYMid meet"
-                        style={{ minWidth: width, minHeight: Math.max(600, height) }}
+                        className="w-full h-full"
                     >
                         {/* Define arrow markers */}
                         <defs>
