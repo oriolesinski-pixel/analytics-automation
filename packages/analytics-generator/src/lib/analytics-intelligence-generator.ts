@@ -1481,40 +1481,156 @@ ${codeContent}`;
   }
 
   /**
-   * Detect import pattern used in the codebase
+   * Detect import pattern used in the codebase - AIR TIGHT detection from actual files
    */
   private detectImportPattern(files: FileContent[]): DetectedImportPattern {
+    console.log('\n🔍 === AIR TIGHT PATH DETECTION ===');
+    console.log('📂 Analyzing', files.length, 'files for component directory structure...');
+    
+    // STRATEGY 1: Analyze actual imports in the codebase (most reliable)
     const allImports = files.flatMap(f => {
       const matches = f.content.match(/import\s+(?:[\s\S]*?)\s+from\s+['"](.*)['"];/g) || [];
-      return matches.map(m => m.match(/from\s+['"](.*?)['"]/)?.[1]).filter(Boolean);
+      return matches.map(m => {
+        const path = m.match(/from\s+['"](.*?)['"]/)?.[1];
+        return path;
+      }).filter(Boolean);
     });
 
     const componentImports = allImports.filter(imp => 
       imp && (imp.includes('/components/') || imp.includes('components/'))
     ) as string[];
 
-    let prefix = './';
-    let componentsPath = 'src/components';  // Default to src/components for Next.js
+    console.log('📥 Found', componentImports.length, 'component imports');
+    if (componentImports.length > 0) {
+      console.log('📝 Sample imports:', componentImports.slice(0, 3));
+    }
 
+    // STRATEGY 2: Analyze actual file paths (physical directory structure)
+    const componentFiles = files.filter(f => 
+      f.path.includes('/components/') || f.path.endsWith('/components')
+    );
+    
+    console.log('📁 Found', componentFiles.length, 'files in components directories');
+    if (componentFiles.length > 0) {
+      console.log('📝 Sample paths:', componentFiles.slice(0, 3).map(f => f.path));
+    }
+
+    // STRATEGY 3: Extract all unique component directory patterns
+    const componentDirPatterns = new Set<string>();
+    componentFiles.forEach(f => {
+      // Extract the components directory path
+      // e.g., "src/app/dashboard/page.tsx" → skip
+      // e.g., "src/components/Button.tsx" → "src/components"
+      // e.g., "app/components/ui/card.tsx" → "app/components"
+      const match = f.path.match(/^(.*\/components)/);
+      if (match) {
+        componentDirPatterns.add(match[1]);
+      }
+    });
+
+    console.log('🎯 Detected component directory patterns:', Array.from(componentDirPatterns));
+
+    // STRATEGY 4: Determine prefix and path based on evidence
+    let prefix = '@/';  // Default to alias (most common in modern frameworks)
+    let componentsPath = '';
+
+    // Priority 1: Check imports for @/app/components (Next.js App Router with app dir components)
     if (componentImports.some(i => i?.startsWith('@/app/components'))) {
       prefix = '@/';
       componentsPath = 'app/components';
-    } else if (componentImports.some(i => i?.startsWith('@/components'))) {
+      console.log('✅ Detected pattern: @/app/components (from imports)');
+    }
+    // Priority 2: Check imports for @/components
+    else if (componentImports.some(i => i?.startsWith('@/components'))) {
       prefix = '@/';
-      componentsPath = 'src/components';  // Fixed: @/ maps to src/ in Next.js
-    } else if (files.some(f => f.path.startsWith('app/components'))) {
+      // Need to determine if it's src/components or just components
+      if (componentDirPatterns.has('src/components')) {
+        componentsPath = 'src/components';
+        console.log('✅ Detected pattern: @/components → src/components (from file structure)');
+      } else if (componentDirPatterns.has('components')) {
+        componentsPath = 'components';
+        console.log('✅ Detected pattern: @/components → components/ (root level)');
+      } else {
+        // Check tsconfig or next.config for @ mapping
+        const hasNextConfig = files.some(f => f.path.includes('next.config'));
+        const hasTsConfig = files.some(f => f.path.includes('tsconfig.json'));
+        
+        if (hasNextConfig || hasTsConfig) {
+          componentsPath = 'src/components';  // Next.js default
+          console.log('✅ Detected Next.js project, using src/components');
+        } else {
+          componentsPath = 'components';
+          console.log('⚠️ Ambiguous, defaulting to root components/');
+        }
+      }
+    }
+    // Priority 3: Check imports for ../components or ./components (relative imports)
+    else if (componentImports.some(i => i?.includes('../components') || i?.includes('./components'))) {
+      prefix = './';
+      if (componentDirPatterns.has('src/components')) {
+        componentsPath = 'src/components';
+        console.log('✅ Detected pattern: relative imports with src/components');
+      } else {
+        componentsPath = 'components';
+        console.log('✅ Detected pattern: relative imports with root components');
+      }
+    }
+    // Priority 4: No imports found, use file structure only
+    else if (componentDirPatterns.size > 0) {
       prefix = '@/';
-      componentsPath = 'app/components';
-    } else if (files.some(f => f.path.startsWith('src/components'))) {
+      // Use the most common pattern (first one found)
+      const firstPattern = Array.from(componentDirPatterns)[0];
+      componentsPath = firstPattern;
+      console.log('✅ No imports found, using file structure:', componentsPath);
+    }
+    // Priority 5: Check for specific directories in file paths
+    else if (files.some(f => f.path.startsWith('src/components/') || f.path.includes('/src/components/'))) {
       prefix = '@/';
       componentsPath = 'src/components';
+      console.log('✅ Detected src/components from file paths');
+    }
+    else if (files.some(f => f.path.startsWith('app/components/') || f.path.includes('/app/components/'))) {
+      prefix = '@/';
+      componentsPath = 'app/components';
+      console.log('✅ Detected app/components from file paths');
+    }
+    else if (files.some(f => f.path.startsWith('components/') && !f.path.startsWith('src/') && !f.path.startsWith('app/'))) {
+      prefix = '@/';
+      componentsPath = 'components';
+      console.log('✅ Detected root-level components/ from file paths');
+    }
+    // Priority 6: Framework-based intelligent fallback
+    else {
+      const hasAppDir = files.some(f => f.path.includes('/app/'));
+      const hasSrcDir = files.some(f => f.path.startsWith('src/'));
+      const isPagesRouter = files.some(f => f.path.includes('/pages/'));
+      
+      prefix = '@/';
+      
+      if (hasAppDir && !hasSrcDir) {
+        componentsPath = 'app/components';  // Next.js App Router without src
+        console.log('⚠️ Fallback: app/ directory detected, using app/components');
+      } else if (hasSrcDir) {
+        componentsPath = 'src/components';  // Most common: src/components
+        console.log('⚠️ Fallback: src/ directory detected, using src/components');
+      } else {
+        componentsPath = 'components';  // Root level fallback
+        console.log('⚠️ Final fallback: using root components/');
+      }
     }
 
-    return { 
+    const result = { 
       prefix, 
       componentsPath, 
-      providerImport: `${prefix}${componentsPath}/AnalyticsProvider` 
+      providerImport: `${prefix}${componentsPath}/AnalyticsProvider`.replace(/\/\//g, '/') // Remove double slashes
     };
+
+    console.log('🎯 FINAL DETECTION RESULT:', result);
+    console.log('   Provider file will be created at:', result.componentsPath + '/AnalyticsProvider.tsx');
+    console.log('   Import statement will be:', result.providerImport);
+    console.log('=================================\n');
+
+    return result;
   }
 
   /**
