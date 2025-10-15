@@ -2558,7 +2558,7 @@ ${safeContent}`
       // Quick Win: Extract IDs from URLs if element still not found
       if (!targetElement && fieldConfig.field_name.includes('_id')) {
         const href = scope.getAttribute?.('href') || window.location.pathname;
-        const match = href.match(/\/(projects|tasks|team|activity)\/([a-f0-9-]+)/i);
+        const match = href.match(/\\/(projects|tasks|team|activity)\\/([a-f0-9-]+)/i);
         if (match) return match[2];  // Return the UUID
       }
       
