@@ -1494,17 +1494,20 @@ ${codeContent}`;
     ) as string[];
 
     let prefix = './';
-    let componentsPath = 'components';
+    let componentsPath = 'src/components';  // Default to src/components for Next.js
 
     if (componentImports.some(i => i?.startsWith('@/app/components'))) {
       prefix = '@/';
       componentsPath = 'app/components';
     } else if (componentImports.some(i => i?.startsWith('@/components'))) {
       prefix = '@/';
-      componentsPath = 'components';
+      componentsPath = 'src/components';  // Fixed: @/ maps to src/ in Next.js
     } else if (files.some(f => f.path.startsWith('app/components'))) {
       prefix = '@/';
       componentsPath = 'app/components';
+    } else if (files.some(f => f.path.startsWith('src/components'))) {
+      prefix = '@/';
+      componentsPath = 'src/components';
     }
 
     return { 
