@@ -1619,15 +1619,26 @@ ${codeContent}`;
       }
     }
 
+    // Separate physical file path from import path
+    // In Next.js: @/ maps to src/, so @/components means src/components physically
+    let importPath = componentsPath;
+    
+    // If using @/ prefix and path starts with src/, remove src/ from import
+    if (prefix === '@/' && componentsPath.startsWith('src/')) {
+      importPath = componentsPath.replace(/^src\//, '');  // src/components → components
+      console.log('🔧 Adjusted import path: @/ maps to src/, so import uses:', importPath);
+    }
+
     const result = { 
       prefix, 
-      componentsPath, 
-      providerImport: `${prefix}${componentsPath}/AnalyticsProvider`.replace(/\/\//g, '/') // Remove double slashes
+      componentsPath,  // Physical path: src/components
+      providerImport: `${prefix}${importPath}/AnalyticsProvider`.replace(/\/\//g, '/') // Import: @/components
     };
 
-    console.log('🎯 FINAL DETECTION RESULT:', result);
-    console.log('   Provider file will be created at:', result.componentsPath + '/AnalyticsProvider.tsx');
-    console.log('   Import statement will be:', result.providerImport);
+    console.log('🎯 FINAL DETECTION RESULT:');
+    console.log('   Physical file path:', result.componentsPath + '/AnalyticsProvider.tsx');
+    console.log('   Import statement:', result.providerImport);
+    console.log('   Prefix:', result.prefix);
     console.log('=================================\n');
 
     return result;
