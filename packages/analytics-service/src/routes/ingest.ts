@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import crypto from 'node:crypto';
 import { logAnalyticsEvent } from '../utils/event-logger';
 import { insertEvents } from '../utils/supabase';
+import { processEvents } from '../utils/event-processor';
 import { broadcast } from '../utils/event-bus';
 import { validateIngestRequest, AnalyticsEvent } from '../utils/validation';
 
@@ -97,12 +98,15 @@ export default async function ingestRoutes(app: FastifyInstance) {
         data: Record<string, any>;
       }>;
 
-      // Insert into database
-      const result = await insertEvents(processedEvents);
+      // Process events with deduplication
+      const result = await processEvents(processedEvents);
 
-      // Broadcast to SSE clients (even if DB insert failed, for real-time monitoring)
-      processedEvents.forEach(event => {
-        broadcast(event);
+      // Broadcast to SSE clients (for real-time monitoring)
+      // Only broadcast inserted events, not deduplicated ones
+      processedEvents.forEach((event, idx) => {
+        if (result.details[idx]?.status === 'success') {
+          broadcast(event);
+        }
       });
 
       // Log the events with beautiful formatting (if available)
@@ -110,14 +114,15 @@ export default async function ingestRoutes(app: FastifyInstance) {
         logAnalyticsEvent(processedEvents, app_key);
       }
 
-      // Return response
-      if (!result.success) {
+      // Return response with deduplication stats
+      if (!result.success && result.errors.length > 0) {
         return reply.code(500).send({
           ok: false,
           received: events.length,
           stored: result.inserted,
+          deduplicated: result.deduplicated,
           errors: result.errors,
-          message: `Stored ${result.inserted}/${events.length} events`,
+          message: `Stored ${result.inserted}/${events.length} events (${result.deduplicated} deduplicated)`,
         });
       }
 
@@ -125,8 +130,9 @@ export default async function ingestRoutes(app: FastifyInstance) {
         ok: true,
         received: events.length,
         stored: result.inserted,
+        deduplicated: result.deduplicated,
         errors: [],
-        message: `Successfully stored ${result.inserted} events`,
+        message: `Successfully stored ${result.inserted} events${result.deduplicated > 0 ? ` (${result.deduplicated} deduplicated)` : ''}`,
       });
 
     } catch (error: any) {

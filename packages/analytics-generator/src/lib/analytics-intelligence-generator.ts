@@ -41,10 +41,28 @@ const REQUIRED_BASE_FIELDS = ['id', 'ts', 'app_key', 'session_id', 'user_id', 'e
 
 interface EventSchema {
   event_type: string;
-  data_fields: {
-    required: string[];
+  description: string;
+  base_structure: {
+    id: string;
+    ts: string;
+    app_key: string;
+    session_id: string;
+    user_id: string;
+    event_type: string;
+    data: string;
   };
-  properties?: Record<string, any>;
+  data_field_variants: Array<{
+    component: string;
+    locations: string[];
+    pattern_type: string | null;
+    semantic_action?: string;
+    conversion_relevance?: string;
+    journey_stage?: string;
+    form_purpose?: string;
+    data_structure: Record<string, any>;
+    extraction_strategy: any;
+    pattern_metadata?: any;
+  }>;
 }
 
 interface FileContent {
@@ -134,6 +152,59 @@ interface ContextCollection {
   fallback_sources?: string[];
 }
 
+interface SemanticEnrichment {
+  semantic_action?: string;
+  conversion_relevance?: 'high' | 'medium' | 'low' | 'none';
+  journey_stage?: 'acquisition' | 'activation' | 'engagement' | 'monetization' | 'retention' | 'unknown';
+  page_category?: 'landing' | 'authentication' | 'application' | 'monetization' | 'configuration';
+  surface_inferred?: string;
+  form_purpose?: 'authentication' | 'payment' | 'content_creation' | 'profile_update' | 'search' | 'filter';
+}
+
+interface ComponentSchema {
+  // Core identification
+  element_id?: string;
+  name?: string;
+  element_text?: string;
+  element_type?: string;
+  type?: string;
+  page_path?: string;
+  selectors?: string[];
+  selector_patterns?: string[];
+  
+  // Semantic enrichment
+  semantic_enrichment?: SemanticEnrichment;
+  
+  // UI context
+  surface?: string;
+  pattern_type?: string;
+  is_primary_cta?: boolean;
+  cta_category?: string;
+  
+  // Sensitive data
+  anonymize?: boolean;
+  data_type?: 'pci' | 'pii' | 'safe';
+  field_purpose?: string;
+  
+  // Form metadata
+  form_purpose?: string;
+  fields?: {
+    element_id: string;
+    field_label: string;
+    field_purpose: string;
+    field_type: string;
+    is_required?: boolean;
+    anonymize?: boolean;
+  }[];
+  
+  // Existing fields
+  interaction_type?: string;
+  likely_purpose?: string;
+  context_needed?: string[];
+  context_collection?: ContextCollection;
+  relationships?: ComponentRelationships;
+}
+
 interface ComponentDiscovery {
   components: Array<{
     name: string;
@@ -145,6 +216,7 @@ interface ComponentDiscovery {
     context_needed: string[];
     context_collection?: ContextCollection;
     relationships?: ComponentRelationships;
+    semantic_enrichment?: SemanticEnrichment;
   }>;
   framework: string;
 }
@@ -814,7 +886,9 @@ For EACH interactive component, return:
         "data_type": "string|number|boolean|array|object",
         "attribute_name": "if data-* or aria-*",
         "required": true|false,
-        "description": "What this field represents"
+        "description": "What this field represents",
+        "field_purpose": "authentication_credential|pci_protected|pii|preference|metadata (REQUIRED for sensitive fields)",
+        "anonymize": true|false
       }
     ],
     "state_tracking": {
@@ -823,6 +897,14 @@ For EACH interactive component, return:
       "track_timing": true|false
     },
     "fallback_sources": ["Alternative extraction methods if primary fails"]
+  },
+  
+  "semantic_enrichment": {
+    "semantic_action": "What this accomplishes semantically (for buttons/actions)",
+    "conversion_relevance": "high|medium|low|none",
+    "journey_stage": "acquisition|activation|engagement|monetization|retention|unknown",
+    "surface_inferred": "Surface location inferred from path/context",
+    "form_purpose": "authentication|payment|content_creation|profile_update|search|filter (for forms)"
   },
   
   "relationships": {
@@ -858,6 +940,77 @@ FRAMEWORK DETECTION
 - Look at actual file paths provided
 
 =============================================================================
+ANALYTICS DATA QUALITY GUIDELINES
+=============================================================================
+
+These guidelines ensure high-quality, privacy-compliant analytics data:
+
+**1. SEMANTIC INFERENCE - Infer Meaningful Values**
+- When element_id indicates purpose (e.g., "email", "password"), derive semantic labels
+- When path indicates page type (e.g., "/login", "/checkout"), categorize accordingly
+- When element_text is "Unknown" but element_id is present, infer meaningful description
+- Example: element_id="email" → element_text="Email Address Input", field_purpose="authentication_credential"
+
+**2. SENSITIVE DATA PROTECTION (CRITICAL)**
+- NEVER capture raw payment data (card numbers, CVV, expiry dates) as field values
+- Instead, use anonymized flags: payment_fields_completed: ["card_number", "cvv"], has_validation_errors: false
+- Replace actual form values with field completion indicators
+- Use field_purpose: "pci_protected" or "pii" to mark sensitive fields
+
+**3. SURFACE & LOCATION INFERENCE**
+- Path="/login" → surface="auth_modal" or "auth_page"
+- Path="/checkout" → surface="payment_form"
+- Path="/dashboard" → surface="main_content"
+- Pattern_type includes "modal" → surface="modal"
+- Element_type="link" AND not in main content → surface="nav"
+- NEVER mark surface as "unknown" when path context exists
+
+**4. PATTERN SIMPLIFICATION**
+- Use SINGLE most relevant pattern_type, not comma-separated lists
+- Priority taxonomy: "form_field_focus", "modal_trigger", "navigation", "item_selection", "form_submission"
+- Example: Instead of "form_submission,multi_step_flow,modal_lifecycle" → use "form_submission"
+
+**5. TOGGLE & DROPDOWN RECOGNITION**
+- When element_text contains state values like "on"/"off", recognize as toggle_switch
+- Add toggle_state and toggle_options fields
+- When element_text contains newline separators or lists options, recognize as select_dropdown
+- Parse options into structured array and extract selected_value
+
+**6. FIELD ENHANCEMENT - Add Analytical Metadata**
+For buttons: Add semantic_action (what it accomplishes), conversion_relevance (high/medium/low), interaction_pattern
+For forms: Add form_purpose (authentication, payment, content_creation), validation_errors count
+For pages: Categorize into journey_stage (acquisition, activation, engagement, monetization, retention)
+
+**7. FORM FLOW OPTIMIZATION**
+- DON'T fire individual BUTTON_CLICK for each form field focus
+- Instead: Single FORM_INTERACTION with action="started" and another with action="submitted"
+- Include fields_interacted array and completion_time_ms
+- Only BUTTON_CLICK for final submit button
+
+**8. REDUNDANCY ELIMINATION**
+- If timestamp exists at event level, DON'T include additional timestamps in nested objects
+- If page path derivable from URL, DON'T create separate "page_type" fields
+- If element behavior determinable from element_id, DON'T include redundant descriptors
+- Example: Avoid both "ts": timestamp AND "context._interaction_timestamp": timestamp
+
+**9. DEDUPLICATION STRATEGY** 
+The tracker should handle these patterns:
+- Same-timestamp, same-element clicks → aggregate into single event with correction_count metadata
+- Duplicate page views at same timestamp → merge into single event
+- Toggle/radio multiple clicks before form submit → only capture final selection state
+- Form field progression → consolidate into form-level interactions with field metadata
+
+**10. IMPLEMENTATION PRIORITY**
+Apply in order:
+1. Remove redundant fields that duplicate existing data
+2. Mark sensitive fields (payment, PII) as anonymized with field_purpose tags
+3. Infer semantic labels from element_ids, paths, and context
+4. Enhance with computed metadata (journey_stage, semantic_action, conversion_relevance)
+5. Categorize pages and actions into user journey stages
+6. Simplify pattern_type to single most relevant value
+7. Infer surface/location instead of "unknown"
+
+=============================================================================
 CRITICAL INSTRUCTIONS
 =============================================================================
 
@@ -885,10 +1038,10 @@ Return this EXACT JSON structure:
   "components": [
     {
       "name": "component_name_from_code",
-      "type": "button|link|icon|form_input|toggle|selector|custom",
+      "type": "button|link|icon|form_input|toggle|selector|toggle_switch|select_dropdown|custom",
       "selector_patterns": ["SPECIFIC CSS selectors"],
       "interaction_type": "click|change|toggle|submit|hover",
-      "pattern_type": "form_submission|item_selection|etc (can be comma-separated for multiple patterns)",
+      "pattern_type": "SINGLE value: form_submission|item_selection|toggle_state|modal_lifecycle|multi_step_flow|tab_switch|etc",
       "likely_purpose": "Be specific based on handler names and context",
       "context_needed": ["product_id", "selected_state", "form_data", "etc"],
       "context_collection": {
@@ -902,7 +1055,9 @@ Return this EXACT JSON structure:
             "data_type": "string|number|boolean|array|object",
             "attribute_name": "if data-* or aria-*",
             "required": true|false,
-            "description": "What this field represents"
+            "description": "What this field represents",
+            "field_purpose": "authentication_credential|pci_protected|pii|preference|metadata",
+            "anonymize": true|false
           }
         ],
         "state_tracking": {
@@ -911,6 +1066,13 @@ Return this EXACT JSON structure:
           "track_timing": true|false
         },
         "fallback_sources": []
+      },
+      "semantic_enrichment": {
+        "semantic_action": "authenticate|purchase|navigate|configure|search|filter|submit|etc",
+        "conversion_relevance": "high|medium|low|none",
+        "journey_stage": "acquisition|activation|engagement|monetization|retention|unknown",
+        "surface_inferred": "Inferred from path context (auth_page|payment_form|dashboard|nav|modal|etc)",
+        "form_purpose": "authentication|payment|content_creation|profile_update|search|filter"
       },
       "relationships": {
         "triggers": [],
@@ -969,8 +1131,22 @@ ${codeContent}`;
       } else {
         console.log('✅ Discovered', parsed.components.length, 'components');
         console.log('🎯 Component names:', parsed.components.map((c: any) => c.name).join(', '));
+        
+        // Log LLM inference quality
+        const stats = this.calculateInferenceStats(parsed);
+        console.log('\n🔍 LLM Inference Quality:');
+        console.log(`   Components discovered: ${stats.total}`);
+        console.log(`   With semantic_action: ${stats.withSemanticAction} (${stats.semanticPct}%)`);
+        console.log(`   With journey_stage: ${stats.withJourneyStage} (${stats.journeyPct}%)`);
+        console.log(`   With conversion_relevance: ${stats.withConversion} (${stats.conversionPct}%)`);
+        if (stats.sensitiveTotal > 0) {
+          console.log(`   Sensitive fields marked: ${stats.sensitiveMarked}/${stats.sensitiveTotal}`);
+        }
       }
 
+      // VALIDATION ONLY: Error if LLM didn't follow guidelines (don't auto-fix)
+      this.validateSchemaQuality(parsed);
+      
       return parsed as ComponentDiscovery;
     } catch (error) {
       console.error('❌ Component discovery failed:', error);
@@ -980,6 +1156,221 @@ ${codeContent}`;
 
   }
 
+  /**
+   * Calculate inference quality statistics from LLM output
+   */
+  private calculateInferenceStats(discovery: any) {
+    let total = discovery.components?.length || 0;
+    let withSemanticAction = 0;
+    let withJourneyStage = 0;
+    let withConversion = 0;
+    let sensitiveTotal = 0;
+    let sensitiveMarked = 0;
+    
+    if (!discovery.components) {
+      return {
+        total: 0,
+        withSemanticAction: 0,
+        withJourneyStage: 0,
+        withConversion: 0,
+        sensitiveTotal: 0,
+        sensitiveMarked: 0,
+        semanticPct: 0,
+        journeyPct: 0,
+        conversionPct: 0
+      };
+    }
+    
+    discovery.components.forEach((comp: any) => {
+      if (comp.semantic_enrichment?.semantic_action) withSemanticAction++;
+      if (comp.semantic_enrichment?.journey_stage) withJourneyStage++;
+      if (comp.semantic_enrichment?.conversion_relevance) withConversion++;
+      
+      const sensitivePatterns = ['card', 'cvv', 'password', 'ssn', 'pin', 'credit', 'cvc', 'expir'];
+      const elementStr = (comp.element_id || comp.name || '').toLowerCase();
+      const isSensitive = sensitivePatterns.some(p => elementStr.includes(p));
+      
+      if (isSensitive) {
+        sensitiveTotal++;
+        if (comp.anonymize) sensitiveMarked++;
+      }
+      
+      // Check fields within context_collection
+      if (comp.context_collection && comp.context_collection.fields) {
+        comp.context_collection.fields.forEach((field: any) => {
+          const fieldName = (field.field_name || '').toLowerCase();
+          const isFieldSensitive = sensitivePatterns.some(p => fieldName.includes(p));
+          if (isFieldSensitive) {
+            sensitiveTotal++;
+            if (field.anonymize) sensitiveMarked++;
+          }
+        });
+      }
+    });
+    
+    return {
+      total,
+      withSemanticAction,
+      withJourneyStage,
+      withConversion,
+      sensitiveTotal,
+      sensitiveMarked,
+      semanticPct: total > 0 ? Math.round((withSemanticAction / total) * 100) : 0,
+      journeyPct: total > 0 ? Math.round((withJourneyStage / total) * 100) : 0,
+      conversionPct: total > 0 ? Math.round((withConversion / total) * 100) : 0
+    };
+  }
+
+  /**
+   * Validation ONLY - errors if LLM didn't follow guidelines (doesn't auto-fix)
+   * If validation fails, improve the LLM prompt instead of fixing here.
+   */
+  private validateSchemaQuality(discovery: any): void {
+    console.log('\n🔍 Validating schema quality...');
+    
+    if (!discovery || !discovery.components) {
+      console.log('⚠️ No components to validate');
+      return;
+    }
+    
+    const warnings: string[] = [];
+    const errors: string[] = [];
+    
+    // Quality metrics
+    let semanticActionCount = 0;
+    let journeyStageCount = 0;
+    let interactiveElements = 0;
+    let placeholderCount = 0;
+    let unknownSurfaceCount = 0;
+    
+    discovery.components.forEach((comp: any, index: number) => {
+      const componentLabel = `Component ${index} (${comp.name})`;
+      
+      // Critical: Sensitive fields MUST be marked
+      if (comp.context_collection && comp.context_collection.fields) {
+        comp.context_collection.fields.forEach((field: any) => {
+          const fieldName = field.field_name.toLowerCase();
+          const isSensitive = ['card', 'cvv', 'cvc', 'expir', 'password', 'pin', 'ssn', 'social', 'credit'].some(
+            pattern => fieldName.includes(pattern)
+          );
+          
+          if (isSensitive && !field.anonymize) {
+            errors.push(
+              `${componentLabel}: Sensitive field "${field.field_name}" ` +
+              `MUST have anonymize: true for PCI/GDPR compliance`
+            );
+          }
+        });
+      }
+      
+      // Quality: Interactive elements should have semantic data
+      if (comp.type && ['button', 'link', 'form'].includes(comp.type)) {
+        interactiveElements++;
+        
+        // Check semantic_action
+        if (comp.semantic_enrichment?.semantic_action) {
+          semanticActionCount++;
+        } else {
+          warnings.push(
+            `${componentLabel}: ${comp.type} "${comp.name}" ` +
+            `missing semantic_action (consider improving LLM prompt)`
+          );
+        }
+        
+        // Check journey_stage
+        if (comp.semantic_enrichment?.journey_stage) {
+          journeyStageCount++;
+        }
+      }
+      
+      // Quality: Check for comma-separated pattern_type (should be single value)
+      if (comp.pattern_type && comp.pattern_type.includes(',')) {
+        warnings.push(
+          `${componentLabel}: pattern_type contains commas "${comp.pattern_type}". ` +
+          `Prompt should produce single value.`
+        );
+      }
+      
+      // Quality: No placeholder values
+      if (comp.element_text === 'Unknown' || comp.name === 'Unknown') {
+        placeholderCount++;
+        warnings.push(
+          `${componentLabel}: Placeholder "Unknown" should be inferred from context`
+        );
+      }
+      
+      // Quality: Surfaces should be inferred
+      if (comp.surface === 'unknown') {
+        unknownSurfaceCount++;
+        warnings.push(
+          `${componentLabel}: surface="unknown" should be inferred from page structure`
+        );
+      }
+    });
+    
+    // Calculate quality score
+    const semanticCoverage = interactiveElements > 0 
+      ? (semanticActionCount / interactiveElements) * 100 
+      : 0;
+    
+    const journeyCoverage = interactiveElements > 0
+      ? (journeyStageCount / interactiveElements) * 100
+      : 0;
+    
+    const placeholderPenalty = (placeholderCount / discovery.components.length) * 100;
+    const unknownSurfacePenalty = (unknownSurfaceCount / discovery.components.length) * 100;
+    
+    // Overall quality score (0-100)
+    const qualityScore = Math.max(0, 
+      (semanticCoverage * 0.5 + journeyCoverage * 0.5) - placeholderPenalty - unknownSurfacePenalty
+    );
+    
+    // Throw on critical errors
+    if (errors.length > 0) {
+      console.error('\n❌ Schema validation failed:');
+      errors.slice(0, 5).forEach(e => console.error(`   ${e}`));
+      if (errors.length > 5) {
+        console.error(`   ... and ${errors.length - 5} more errors`);
+      }
+      throw new Error(
+        `Schema validation failed with ${errors.length} critical errors. ` +
+        `Improve LLM prompt to handle these cases.`
+      );
+    }
+    
+    // Display results
+    console.log('✅ Schema validation passed');
+    console.log(`📊 Quality Score: ${Math.round(qualityScore)}%`);
+    console.log(`   - ${semanticActionCount}/${interactiveElements} buttons/links have semantic_action`);
+    console.log(`   - ${journeyStageCount}/${interactiveElements} have journey_stage`);
+    
+    if (placeholderCount > 0) {
+      console.log(`   - ${placeholderCount} "Unknown" placeholders found`);
+    }
+    if (unknownSurfaceCount > 0) {
+      console.log(`   - ${unknownSurfaceCount} unknown surfaces`);
+    }
+    
+    // Log warnings
+    if (warnings.length > 0) {
+      console.log(`\n⚠️  ${warnings.length} quality warnings:`);
+      warnings.slice(0, 3).forEach(w => console.log(`   ${w}`));
+      if (warnings.length > 3) {
+        console.log(`   ... and ${warnings.length - 3} more (run with --verbose for all)`);
+      }
+      console.log('\n   💡 Tip: Improve LLM prompt to eliminate warnings');
+    }
+    
+    // Warn on low quality (but don't block)
+    if (qualityScore < 50) {
+      console.warn(
+        `\n⚠️  Warning: Quality score below 50%. ` +
+        `Consider improving component analysis prompt.`
+      );
+    }
+    
+    console.log(''); // Empty line for readability
+  }
 
   /**
    * AI-driven behavior analysis
@@ -1061,105 +1452,541 @@ ${codeContent}`;
   }
 
   /**
-   * Generate events schema from AI analysis with new format
+   * Generate events schema aligned with runtime 7-field structure
+   * Documents what tracker puts in event.data field
    */
   private async generateEventsFromAnalysis(
     discovery: ComponentDiscovery,
     behaviors: BehaviorAnalysis
   ): Promise<EventSchema[]> {
+    
+    // Build component-specific data field variants with deduplication
+    const buttonClickVariants = this.deduplicateVariants(this.buildButtonClickVariants(discovery));
+    const formInteractionVariants = this.deduplicateVariants(this.buildFormInteractionVariants(discovery));
+    const modalInteractionVariants = this.deduplicateVariants(this.buildModalInteractionVariants(discovery));
+    
+    // Validate determinism
+    console.log('\n🔍 Validating schema determinism...');
+    this.validateVariantDeterminism(buttonClickVariants, 'BUTTON_CLICK');
+    this.validateVariantDeterminism(formInteractionVariants, 'FORM_INTERACTION');
+    this.validateVariantDeterminism(modalInteractionVariants, 'MODAL_INTERACTION');
+    
     const events: EventSchema[] = [
       {
         event_type: 'PAGE_VIEW',
-        data_fields: {
-          required: ['url', 'path', 'title', 'referrer', 'is_first_view', 'entry_type']
+        description: 'Tracks page loads and navigation',
+        base_structure: {
+          id: 'string (uuid)',
+          ts: 'number (unix timestamp)',
+          app_key: 'string',
+          session_id: 'string',
+          user_id: 'string',
+          event_type: 'PAGE_VIEW',
+          data: 'Object containing page view fields'
         },
-        properties: {
-          url: 'string',
-          path: 'string',
-          title: 'string',
-          referrer: 'string | null',
-          is_first_view: 'boolean',
-          entry_type: '"navigation" | "reload" | "back_forward" | "spa_transition"'
-        }
+        data_field_variants: [{
+          component: 'PageView',
+          locations: ['/all'],
+          pattern_type: null,
+          data_structure: {
+            url: 'string (window.location.href)',
+            path: 'string (window.location.pathname)',
+            title: 'string (document.title)',
+            referrer: 'string | null (document.referrer)',
+            is_first_view: 'boolean (session flag)',
+            entry_type: 'navigation | reload | back_forward | spa_transition'
+          },
+          extraction_strategy: {
+            strategy: 'global_context',
+            scope_selector: 'window',
+            field_extraction: []
+          }
+        }]
       },
       {
         event_type: 'BUTTON_CLICK',
-        data_fields: {
-          required: ['element_text', 'element_id', 'element_type', 'surface', 'page_path', 'is_primary_cta', 'cta_category', 'pattern_type']
+        description: 'Tracks button/link clicks with component-specific context',
+        base_structure: {
+          id: 'string (uuid)',
+          ts: 'number (unix timestamp)',
+          app_key: 'string',
+          session_id: 'string',
+          user_id: 'string',
+          event_type: 'BUTTON_CLICK',
+          data: 'Object containing button click fields and optional context'
         },
-        properties: {
-          element_text: 'string',
-          element_id: 'string | null',
-          element_type: '"button" | "link" | "icon" | "tab"',
-          surface: 'string',
-          page_path: 'string',
-          is_primary_cta: 'boolean',
-          cta_category: '"conversion" | "navigation" | "engagement"',
-          pattern_type: 'string | null',
-          context: 'Record<string, any> | undefined  // Only present for forms, bulk actions, etc.'
-        }
+        data_field_variants: buttonClickVariants
       },
       {
         event_type: 'FORM_INTERACTION',
-        data_fields: {
-          required: ['action', 'form_name', 'form_id', 'form_type', 'surface', 'page_path', 'fields_total', 'fields_completed']
+        description: 'Tracks form lifecycle (started/submitted/abandoned) with form-specific context',
+        base_structure: {
+          id: 'string (uuid)',
+          ts: 'number (unix timestamp)',
+          app_key: 'string',
+          session_id: 'string',
+          user_id: 'string',
+          event_type: 'FORM_INTERACTION',
+          data: 'Object containing form interaction fields and form context'
         },
-        properties: {
-          action: '"started" | "submitted" | "abandoned"',
-          form_name: 'string',
-          form_id: 'string | null',
-          form_type: '"contact" | "signup" | "login" | "checkout" | "newsletter" | "other"',
-          surface: 'string',
-          page_path: 'string',
-          fields_total: 'number',
-          fields_completed: 'number'
-        }
+        data_field_variants: formInteractionVariants
       },
       {
         event_type: 'MODAL_INTERACTION',
-        data_fields: {
-          required: ['action', 'modal_name', 'modal_id', 'trigger_source', 'page_path', 'context']
+        description: 'Tracks modal lifecycle (opened/closed/submitted/dismissed) with modal-specific context',
+        base_structure: {
+          id: 'string (uuid)',
+          ts: 'number (unix timestamp)',
+          app_key: 'string',
+          session_id: 'string',
+          user_id: 'string',
+          event_type: 'MODAL_INTERACTION',
+          data: 'Object containing modal interaction fields and modal context'
         },
-        properties: {
-          action: '"opened" | "closed" | "submitted" | "dismissed"',
-          modal_name: 'string',
-          modal_id: 'string | null',
-          trigger_source: '"button_click" | "auto_trigger" | "other"',
-          page_path: 'string',
-          context: 'Record<string, any>'
-        }
+        data_field_variants: modalInteractionVariants
       },
       {
         event_type: 'ELEMENT_VISIBILITY',
-        data_fields: {
-          required: ['action', 'element_type', 'element_name', 'element_id', 'trigger_source', 'page_path', 'has_cta']
+        description: 'Tracks element visibility changes (shown/hidden/dismissed)',
+        base_structure: {
+          id: 'string (uuid)',
+          ts: 'number (unix timestamp)',
+          app_key: 'string',
+          session_id: 'string',
+          user_id: 'string',
+          event_type: 'ELEMENT_VISIBILITY',
+          data: 'Object containing element visibility fields'
         },
-        properties: {
-          action: '"shown" | "hidden" | "dismissed"',
-          element_type: '"modal" | "popup" | "drawer" | "tooltip" | "dropdown" | "toast" | "unknown"',
-          element_name: 'string',
-          element_id: 'string | null',
-          trigger_source: '"button_click" | "auto_trigger" | "scroll_trigger" | "unknown"',
-          page_path: 'string',
-          has_cta: 'boolean'
-        }
+        data_field_variants: [{
+          component: 'VisibilityTracking',
+          locations: ['/all'],
+          pattern_type: 'expand_collapse',
+          data_structure: {
+            action: 'shown | hidden | dismissed',
+            element_type: 'modal | popup | drawer | tooltip | dropdown | toast | unknown',
+            element_name: 'string',
+            element_id: 'string | null',
+            trigger_source: 'button_click | auto_trigger | scroll_trigger | unknown',
+            page_path: 'string',
+            has_cta: 'boolean'
+          },
+          extraction_strategy: {
+            strategy: 'component_props',
+            scope_selector: '[role], .modal, .popup, .drawer',
+            field_extraction: []
+          }
+        }]
       },
       {
         event_type: 'SCROLL_INTERACTION',
-        data_fields: {
-          required: ['action', 'depth_percentage', 'milestone', 'page_path', 'direction']
+        description: 'Tracks scroll depth milestones',
+        base_structure: {
+          id: 'string (uuid)',
+          ts: 'number (unix timestamp)',
+          app_key: 'string',
+          session_id: 'string',
+          user_id: 'string',
+          event_type: 'SCROLL_INTERACTION',
+          data: 'Object containing scroll interaction fields'
         },
-        properties: {
-          action: '"depth_reached"',
-          depth_percentage: 'number',
-          milestone: '"25%" | "50%" | "75%" | "90%" | "100%" | "none"',
-          page_path: 'string',
-          direction: '"up" | "down"'
-        }
+        data_field_variants: [{
+          component: 'ScrollTracking',
+          locations: ['/all'],
+          pattern_type: null,
+          data_structure: {
+            action: 'depth_reached',
+            depth_percentage: 'number (0-100)',
+            milestone: '25% | 50% | 75% | 90% | 100% | none',
+            page_path: 'string',
+            direction: 'up | down'
+          },
+          extraction_strategy: {
+            strategy: 'global_context',
+            scope_selector: 'window',
+            field_extraction: []
+          }
+        }]
       }
     ];
 
     return events;
+  }
+
+  /**
+   * Build component-specific variants for BUTTON_CLICK events
+   * Returns variants with data_structure showing what goes in event.data at runtime
+   */
+  private buildButtonClickVariants(discovery: ComponentDiscovery): any[] {
+    const variants: any[] = [];
+    
+    discovery.components.forEach(comp => {
+      if (!['button', 'link', 'icon'].includes(comp.type) && 
+          comp.interaction_type !== 'click') {
+        return;
+      }
+      
+      const location = this.inferComponentLocation(comp);
+      
+      // Build data_structure showing what goes in event.data at runtime
+      const dataStructure: Record<string, any> = {
+        element_text: 'string (innerText or aria-label)',
+        element_id: 'string | null',
+        element_type: comp.type,
+        surface: 'string (header|nav|main|footer|modal)',
+        page_path: 'string (window.location.pathname)',
+        location: 'string (page path where interaction occurred)',
+        is_primary_cta: 'boolean',
+        cta_category: 'conversion | navigation | engagement',
+        pattern_type: comp.pattern_type || null
+      };
+      
+      // Add context structure if component has context collection
+      if (comp.context_collection?.fields && comp.context_collection.fields.length > 0) {
+        const contextStructure: Record<string, string> = {};
+        
+        comp.context_collection.fields.forEach((field: any) => {
+          const typeDesc = `${field.data_type || 'string'} (from ${field.extraction_method}: ${field.selector})`;
+          contextStructure[field.field_name] = typeDesc;
+        });
+        
+        dataStructure.context = contextStructure;
+      }
+      
+      variants.push({
+        component: comp.name,
+        location: location,
+        pattern_type: comp.pattern_type,
+        semantic_action: (comp as any).semantic_enrichment?.semantic_action,
+        conversion_relevance: (comp as any).semantic_enrichment?.conversion_relevance,
+        journey_stage: (comp as any).semantic_enrichment?.journey_stage,
+        data_structure: dataStructure,
+        extraction_strategy: comp.context_collection ? {
+          strategy: comp.context_collection.strategy,
+          scope_selector: comp.context_collection.scope_selector,
+          state_tracking: comp.context_collection.state_tracking,
+          field_extraction: comp.context_collection.fields.map((f: any) => ({
+            field_name: f.field_name,
+            extraction_method: f.extraction_method,
+            selector: f.selector,
+            data_type: f.data_type
+          }))
+        } : null,
+        pattern_metadata: this.getMicroPatternMetadata(comp.pattern_type || null)
+      });
+    });
+    
+    return variants;
+  }
+
+  /**
+   * Build component-specific variants for FORM_INTERACTION events
+   */
+  private buildFormInteractionVariants(discovery: ComponentDiscovery): any[] {
+    const variants: any[] = [];
+    
+    discovery.components.forEach(comp => {
+      if (comp.type !== 'form' && !comp.pattern_type?.includes('form')) {
+        return;
+      }
+      
+      const location = this.inferComponentLocation(comp);
+      
+      // Build data_structure showing what goes in event.data at runtime
+      const dataStructure: Record<string, any> = {
+        action: 'started | submitted | abandoned',
+        form_name: 'string',
+        form_id: 'string | null',
+        form_type: (comp as any).semantic_enrichment?.form_purpose || 'other',
+        surface: 'string',
+        page_path: 'string',
+        location: 'string (page path where form interaction occurred)',
+        fields_total: 'number',
+        fields_completed: 'number'
+      };
+      
+      // Add form context if available
+      if (comp.context_collection?.fields && comp.context_collection.fields.length > 0) {
+        const contextStructure: Record<string, string> = {};
+        
+        comp.context_collection.fields.forEach((field: any) => {
+          const anonymize = field.anonymize ? ' [ANONYMIZED]' : '';
+          const typeDesc = `${field.data_type || 'string'} (${field.extraction_method})${anonymize}`;
+          contextStructure[field.field_name] = typeDesc;
+        });
+        
+        dataStructure.context = contextStructure;
+      }
+      
+      variants.push({
+        component: comp.name,
+        location: location,
+        pattern_type: comp.pattern_type,
+        form_purpose: (comp as any).semantic_enrichment?.form_purpose,
+        data_structure: dataStructure,
+        extraction_strategy: {
+          strategy: 'form_state',
+          scope_selector: comp.context_collection?.scope_selector || 'form',
+          serialization: 'all_inputs_at_submission',
+          field_extraction: comp.context_collection?.fields?.map((f: any) => ({
+            field_name: f.field_name,
+            extraction_method: f.extraction_method,
+            selector: f.selector,
+            data_type: f.data_type,
+            anonymize: f.anonymize,
+            field_purpose: f.field_purpose
+          })) || []
+        }
+      });
+    });
+    
+    return variants;
+  }
+
+  /**
+   * Build component-specific variants for MODAL_INTERACTION events
+   */
+  private buildModalInteractionVariants(discovery: ComponentDiscovery): any[] {
+    const variants: any[] = [];
+    
+    discovery.components.forEach(comp => {
+      if (!comp.pattern_type?.includes('modal')) {
+        return;
+      }
+      
+      const location = this.inferComponentLocation(comp);
+      
+      // Build data_structure showing what goes in event.data at runtime
+      const dataStructure: Record<string, any> = {
+        action: 'opened | closed | submitted | dismissed',
+        modal_name: 'string',
+        modal_id: 'string | null',
+        trigger_source: 'button_click | auto_trigger | other',
+        page_path: 'string',
+        location: 'string (page path where modal interaction occurred)'
+      };
+      
+      // Add modal context structure
+      if (comp.context_collection?.fields && comp.context_collection.fields.length > 0) {
+        const contextStructure: Record<string, string> = {};
+        
+        comp.context_collection.fields.forEach((field: any) => {
+          const typeDesc = `${field.data_type || 'string'} (${field.extraction_method}: ${field.selector})`;
+          contextStructure[field.field_name] = typeDesc;
+        });
+        
+        dataStructure.context = contextStructure;
+      }
+      
+      variants.push({
+        component: comp.name,
+        location: location,
+        pattern_type: comp.pattern_type,
+        data_structure: dataStructure,
+        extraction_strategy: {
+          strategy: 'modal_scope',
+          scope_selector: comp.context_collection?.scope_selector || '[role="dialog"]',
+          lifecycle_tracking: {
+            on_open: 'capture_trigger_and_initial_state',
+            on_interact: 'capture_form_changes',
+            on_close: 'capture_outcome_and_final_state'
+          },
+          field_extraction: comp.context_collection?.fields?.map((f: any) => ({
+            field_name: f.field_name,
+            extraction_method: f.extraction_method,
+            selector: f.selector,
+            data_type: f.data_type
+          })) || []
+        }
+      });
+    });
+    
+    return variants;
+  }
+
+  /**
+   * Deduplicate variants - group identical components by structure, aggregate locations
+   */
+  private deduplicateVariants(variants: any[]): any[] {
+    const variantMap = new Map<string, any>();
+    
+    variants.forEach(variant => {
+      // Create deterministic key based on component structure
+      const key = this.generateVariantKey(variant);
+      
+      if (variantMap.has(key)) {
+        // Component already exists - add location to existing variant
+        const existing = variantMap.get(key);
+        
+        // Ensure locations is an array
+        if (!Array.isArray(existing.locations)) {
+          existing.locations = [existing.location];
+          delete existing.location;
+        }
+        
+        // Add new location if not already present
+        if (!existing.locations.includes(variant.location)) {
+          existing.locations.push(variant.location);
+          existing.locations.sort(); // Keep sorted for determinism
+        }
+      } else {
+        // New component - initialize with single location
+        variant.locations = [variant.location];
+        delete variant.location;
+        variantMap.set(key, variant);
+      }
+    });
+    
+    return Array.from(variantMap.values());
+  }
+
+  /**
+   * Generate deterministic key for component variant
+   * Same structure = same key, regardless of location
+   */
+  private generateVariantKey(variant: any): string {
+    // Extract context field names for comparison
+    const contextFields = variant.data_structure?.context 
+      ? Object.keys(variant.data_structure.context).sort()
+      : [];
+    
+    const keyParts = [
+      variant.component,
+      variant.pattern_type || 'none',
+      variant.semantic_action || 'none',
+      variant.form_purpose || 'none',
+      JSON.stringify(contextFields)
+    ];
+    
+    return keyParts.join('::');
+  }
+
+  /**
+   * Validate that variants are deterministic and properly deduplicated
+   */
+  private validateVariantDeterminism(variants: any[], eventType: string): void {
+    const componentNames = new Set<string>();
+    const duplicates: string[] = [];
+    
+    variants.forEach(variant => {
+      const name = variant.component;
+      
+      if (componentNames.has(name)) {
+        duplicates.push(name);
+      }
+      componentNames.add(name);
+    });
+    
+    if (duplicates.length > 0) {
+      console.warn(`⚠️  Schema Determinism Warning (${eventType}): Duplicate components found:`, duplicates);
+      console.warn('   These should have been deduplicated with multiple locations.');
+    } else {
+      console.log(`✅ ${eventType} schema determinism validated: ${variants.length} unique components`);
+    }
+    
+    // Log multi-location components
+    const multiLocationVariants = variants.filter(v => v.locations?.length > 1);
+    if (multiLocationVariants.length > 0) {
+      console.log(`📍 Found ${multiLocationVariants.length} ${eventType} components in multiple locations:`);
+      multiLocationVariants.forEach(v => {
+        console.log(`   - ${v.component}: [${v.locations.join(', ')}]`);
+      });
+    }
+  }
+
+  /**
+   * Infer component location from selector patterns, surface, and code structure
+   */
+  private inferComponentLocation(comp: any): string {
+    // Priority 1: Check selector patterns for explicit page indicators
+    const selectors = comp.selector_patterns || [];
+    
+    for (const selector of selectors) {
+      const pageMatch = selector.match(/data-page=['"]([^'"]+)['"]/);
+      if (pageMatch) return pageMatch[1];
+      
+      const routeMatch = selector.match(/\.(page-|route-)([a-z-]+)/);
+      if (routeMatch) return `/${routeMatch[2]}`;
+    }
+    
+    // Priority 2: Extract from surface inference
+    if ((comp as any).semantic_enrichment?.surface_inferred) {
+      const surface = (comp as any).semantic_enrichment.surface_inferred;
+      
+      if (surface.includes('auth')) return '/auth';
+      if (surface.includes('dashboard')) return '/dashboard';
+      if (surface.includes('settings')) return '/settings';
+      if (surface.includes('project')) return '/projects';
+      if (surface.includes('task')) return '/tasks';
+      if (surface.includes('team')) return '/team';
+      if (surface.includes('billing')) return '/billing';
+      
+      return `/${surface}`;
+    }
+    
+    // Priority 3: Infer from component name
+    const name = comp.name.toLowerCase();
+    if (name.includes('login') || name.includes('signup')) return '/auth';
+    if (name.includes('project')) return '/projects';
+    if (name.includes('task')) return '/tasks';
+    if (name.includes('team')) return '/team';
+    if (name.includes('setting')) return '/settings';
+    if (name.includes('dashboard')) return '/dashboard';
+    
+    // Priority 4: Check for form purpose
+    if ((comp as any).semantic_enrichment?.form_purpose) {
+      const purpose = (comp as any).semantic_enrichment.form_purpose;
+      if (purpose === 'authentication') return '/auth';
+      if (purpose === 'payment') return '/checkout';
+      if (purpose === 'profile_update') return '/settings';
+    }
+    
+    // Default: global component
+    return '/global';
+  }
+
+  /**
+   * Get micro-pattern metadata for documentation
+   */
+  private getMicroPatternMetadata(patternType: string | null): any {
+    const patterns: Record<string, any> = {
+      'item_selection': {
+        description: 'Extracts item context from parent container',
+        expected_data_context: 'Item ID and metadata from data-* attributes'
+      },
+      'form_submission': {
+        description: 'Serializes entire form state at submission',
+        expected_data_context: 'All input values within form scope'
+      },
+      'toggle_state': {
+        description: 'Tracks state change with before/after values',
+        expected_data_context: 'previous_value, new_value, toggle_target'
+      },
+      'modal_lifecycle': {
+        description: 'Tracks modal open/interact/close with accumulated context',
+        expected_data_context: 'trigger_element, form_data, exit_outcome'
+      },
+      'bulk_action': {
+        description: 'Captures selection set before action execution',
+        expected_data_context: 'selected_ids[], selection_count, action_type'
+      },
+      'multi_step_flow': {
+        description: 'Maintains accumulated state across wizard steps',
+        expected_data_context: 'step_number, current_step_data, all_previous_steps'
+      },
+      'search_filter': {
+        description: 'Captures search query, filters, and result metadata',
+        expected_data_context: 'search_query, applied_filters, results_count'
+      },
+      'inline_edit': {
+        description: 'Tracks before/after values and edit duration',
+        expected_data_context: 'field_name, original_value, new_value'
+      }
+    };
+    
+    return patterns[patternType || ''] || {
+      description: 'Generic interaction pattern',
+      expected_data_context: 'Context based on component structure'
+    };
   }
 
   /**
@@ -2091,8 +2918,9 @@ ${safeContent}`
         },
         events: events.map(e => ({
           event_type: e.event_type,
-          data_fields: e.data_fields.required,
-          properties: e.properties || {}
+          description: e.description,
+          base_structure: e.base_structure,
+          data_field_variants: e.data_field_variants
         })),
         ai_components: analysis.discovery.components,
         ai_patterns: analysis.behaviors.patterns
@@ -2317,9 +3145,12 @@ ${safeContent}`
       // Performance optimization: cache selector matches
       this.selectorCache = new WeakMap();
       
-      // AI-discovered component patterns
+      // AI-discovered component patterns with pre-computed metadata
       this.componentDetectors = [${componentDetectors}
       ];
+      
+      // Build component lookup map for fast access
+      this.componentMap = this.buildComponentMap();
       
       // Load persisted events from previous session
       this.loadQueueFromStorage();
@@ -3188,9 +4019,53 @@ ${safeContent}`
       });
     }
 
+    // Build component lookup map from AI-discovered components
+    buildComponentMap() {
+      const map = {};
+      this.componentDetectors.forEach(comp => {
+        // Index by element selectors for fast lookup
+        if (comp.selectors && comp.selectors.length > 0) {
+          comp.selectors.forEach(selector => {
+            map[selector] = comp;
+          });
+        }
+        // Also index by component name if it matches element ID pattern
+        if (comp.name) {
+          map[comp.name] = comp;
+        }
+      });
+      return map;
+    }
+    
+    // Get pre-computed metadata for an element
+    getComponentMetadata(element) {
+      // Try to match element to AI-discovered component
+      if (element.id && this.componentMap[element.id]) {
+        return this.componentMap[element.id];
+      }
+      
+      // Try CSS selectors
+      for (const [selector, metadata] of Object.entries(this.componentMap)) {
+        try {
+          if (element.matches && element.matches(selector)) {
+            return metadata;
+          }
+        } catch (e) {
+          // Invalid selector, skip
+        }
+      }
+      
+      // Return minimal metadata if no match
+      return null;
+    }
+    
     trackEvent(eventType, data = {}) {
       // Check if tracking is disabled
       if (this.disabled) return;
+      
+      // SIMPLIFIED: Just add runtime context, no inference/deduplication
+      // Schema already contains semantic_action, conversion_relevance, etc.
+      // Server handles deduplication
       
       // All 6 base fields are REQUIRED and NEVER null
       const event = {
@@ -3200,7 +4075,7 @@ ${safeContent}`
         session_id: this.sessionId,              // Generated on init, never null
         user_id: this.userId,                    // Generated/retrieved on init, never null
         event_type: eventType,                   // Passed parameter, never null
-        data: data                               // Event-specific data object
+        data: data                               // Event-specific data (already has schema metadata)
       };
       
       this.eventQueue.push(event);
