@@ -36,10 +36,12 @@ export async function processEvent(event: AnalyticsEvent): Promise<ProcessResult
   try {
     // 1. Check for duplicate in last 5 seconds
     // Uses index: idx_events_dedup on (user_id, event_type, ts DESC)
+    // Also filter by session_id for better deduplication accuracy
     const { data: existingEvents, error: selectError } = await client
       .from('analytics_product_events')
       .select('id, data')
       .eq('user_id', event.user_id)
+      .eq('session_id', event.session_id)
       .eq('event_type', event.event_type)
       .gte('ts', fiveSecondsAgo)
       .lte('ts', event.ts)
@@ -60,11 +62,22 @@ export async function processEvent(event: AnalyticsEvent): Promise<ProcessResult
         if (elementId && e.data?.element_id) {
           return e.data.element_id === elementId;
         }
-        // For events without element_id (e.g., PAGE_VIEW), match on path or url
+        // For events without element_id (e.g., PAGE_VIEW), only deduplicate exact duplicates
+        // NOTE: We query events within 5-second window, but PAGE_VIEW should only dedupe if truly identical
+        // (same path/url within < 500ms = accidental double-fire, not legitimate SPA navigation)
         if (event.event_type === 'PAGE_VIEW') {
           const samePath = e.data?.path && event.data?.path && e.data.path === event.data.path;
           const sameUrl = e.data?.url && event.data?.url && e.data.url === event.data.url;
-          return samePath || sameUrl;
+          const sameTitle = e.data?.title === event.data?.title;
+          // Only deduplicate if exact match (path, url, title)
+          return samePath && sameUrl && sameTitle;
+        }
+        // For BUTTON_CLICK, match on element_text + page_path + component_name
+        if (event.event_type === 'BUTTON_CLICK') {
+          const sameText = e.data?.element_text === event.data?.element_text;
+          const samePath = e.data?.page_path === event.data?.page_path;
+          const sameComponent = e.data?.component_name === event.data?.component_name;
+          return sameText && samePath && (sameComponent || !event.data?.component_name);
         }
         return false;
       });
