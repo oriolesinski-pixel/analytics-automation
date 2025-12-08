@@ -7,3 +7,4 @@ export default async function deployRoutes(app: FastifyInstance) {
   // Deploy functionality has been moved to analytics-generator
 }
 
+

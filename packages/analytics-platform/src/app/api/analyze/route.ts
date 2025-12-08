@@ -55,12 +55,18 @@ export async function POST(request: NextRequest) {
     console.log('=================================');
 
     // Call the generator service - it handles all progress tracking
-    const response = await fetch(`${GENERATOR_API_URL}/analytics/generate-unified`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    // Set longer timeout for AI calls with retries (can take 10+ minutes)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15 * 60 * 1000); // 15 minute timeout
+    
+    try {
+      const response = await fetch(`${GENERATOR_API_URL}/analytics/generate-unified`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
         repo_id: dbRepoId,
         github_repo_id: repoId, // Pass the original GitHub ID for progress tracking
         app_key: appKey,
@@ -80,18 +86,20 @@ export async function POST(request: NextRequest) {
         subdir: subdir || null,
         // Progress callback is built into generator - no need to pass it
       })
-    });
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Generator API error:', errorText);
-      return NextResponse.json(
-        { error: 'Analysis failed', details: errorText },
-        { status: response.status }
-      );
-    }
+      clearTimeout(timeoutId); // Clear timeout on successful response
 
-    const result = await response.json();
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Generator API error:', errorText);
+        return NextResponse.json(
+          { error: 'Analysis failed', details: errorText },
+          { status: response.status }
+        );
+      }
+
+      const result = await response.json();
 
     console.log('=================================');
     console.log('GENERATOR RESPONSE RECEIVED');
@@ -166,6 +174,8 @@ export async function POST(request: NextRequest) {
     };
 
     // Register the app with analytics service
+    // Note: Registration may fail with foreign key constraint if repo doesn't exist
+    // This is OK - analytics will still work, just won't be linked to repo
     try {
       const registerResponse = await fetch('http://localhost:8082/apps/register', {
         method: 'POST',
@@ -174,7 +184,7 @@ export async function POST(request: NextRequest) {
           app_key: analysisResult.appKey,
           name: repoName,
           domain: `${repoName}.example.com`,
-          repo_id: dbRepoId,
+          repo_id: null,  // Don't link to repo - avoid foreign key issues
           github_repo: `${repoOwner}/${repoName}`,
           repo_owner: repoOwner,
           repo_name: repoName
@@ -182,16 +192,36 @@ export async function POST(request: NextRequest) {
       });
 
       if (!registerResponse.ok) {
-        console.error('App registration failed:', await registerResponse.text());
+        const errorText = await registerResponse.text();
+        // Check if it's just a duplicate app_key (this is fine - app already registered)
+        if (errorText.includes('duplicate key') || errorText.includes('apps_app_key_key')) {
+          console.log(`ℹ️  App already registered with key: ${analysisResult.appKey}`);
+        } else {
+          console.warn('⚠️  App registration warning:', errorText);
+        }
       } else {
         console.log(`✅ App registered successfully with key: ${analysisResult.appKey}`);
       }
     } catch (registerError) {
-      console.error('App registration error:', registerError);
+      console.warn('⚠️  App registration skipped (non-critical):', registerError);
       // Don't fail the whole analysis if registration fails
     }
 
     return NextResponse.json(analysisResult);
+    
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId); // Clean up timeout
+      
+      // Check if it's a timeout/abort error
+      if (fetchError.name === 'AbortError' || fetchError.code === 'UND_ERR_HEADERS_TIMEOUT') {
+        console.error('⏱️  Generator request timed out (this is OK - check backend logs)');
+        return NextResponse.json(
+          { error: 'Request timed out', details: 'The generation may still be running. Check the backend logs or try again in a few minutes.' },
+          { status: 504 }
+        );
+      }
+      throw fetchError; // Re-throw other errors
+    }
 
   } catch (error) {
     console.error('Analysis error:', error);

@@ -7,3 +7,4 @@ export default async function mergeRoutes(app: FastifyInstance) {
   // Merge functionality has been moved to analytics-generator
 }
 
+

@@ -48,6 +48,37 @@ export async function POST(request: NextRequest) {
 
     const octokit = new Octokit({ auth: authToken });
     
+    // Validate token before proceeding
+    try {
+      const { data: user } = await octokit.rest.users.getAuthenticated();
+      console.log(`✅ Authenticated as: ${user.login}`);
+      
+      // Verify access to the specific repo
+      await octokit.repos.get({ owner, repo });
+      console.log(`✅ Has access to: ${owner}/${repo}`);
+    } catch (authError: any) {
+      console.error('GitHub auth error:', authError.message);
+      if (authError.status === 401) {
+        return NextResponse.json(
+          { error: 'GitHub token is invalid or expired. Please re-authenticate by clearing your browser storage and entering a fresh token.' },
+          { status: 401 }
+        );
+      }
+      if (authError.status === 403) {
+        return NextResponse.json(
+          { error: 'GitHub token lacks required permissions. Ensure it has "repo" scope.' },
+          { status: 403 }
+        );
+      }
+      if (authError.status === 404) {
+        return NextResponse.json(
+          { error: `Repository ${owner}/${repo} not found or you don't have access to it.` },
+          { status: 404 }
+        );
+      }
+      throw authError;
+    }
+    
     // Case 1: If PR exists and hasn't been merged yet, just close it and delete the branch
     if (prNumber && !isMerged) {
       console.log(`Closing unmerged PR #${prNumber} and deleting branch...`);

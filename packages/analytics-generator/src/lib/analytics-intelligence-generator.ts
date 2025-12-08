@@ -41,28 +41,10 @@ const REQUIRED_BASE_FIELDS = ['id', 'ts', 'app_key', 'session_id', 'user_id', 'e
 
 interface EventSchema {
   event_type: string;
-  description: string;
-  base_structure: {
-    id: string;
-    ts: string;
-    app_key: string;
-    session_id: string;
-    user_id: string;
-    event_type: string;
-    data: string;
+  data_fields: {
+    required: string[];
   };
-  data_field_variants: Array<{
-    component: string;
-    locations: string[];
-    pattern_type: string | null;
-    semantic_action?: string;
-    conversion_relevance?: string;
-    journey_stage?: string;
-    form_purpose?: string;
-    data_structure: Record<string, any>;
-    extraction_strategy: any;
-    pattern_metadata?: any;
-  }>;
+  properties?: Record<string, any>;
 }
 
 interface FileContent {
@@ -152,59 +134,6 @@ interface ContextCollection {
   fallback_sources?: string[];
 }
 
-interface SemanticEnrichment {
-  semantic_action?: string;
-  conversion_relevance?: 'high' | 'medium' | 'low' | 'none';
-  journey_stage?: 'acquisition' | 'activation' | 'engagement' | 'monetization' | 'retention' | 'unknown';
-  page_category?: 'landing' | 'authentication' | 'application' | 'monetization' | 'configuration';
-  surface_inferred?: string;
-  form_purpose?: 'authentication' | 'payment' | 'content_creation' | 'profile_update' | 'search' | 'filter';
-}
-
-interface ComponentSchema {
-  // Core identification
-  element_id?: string;
-  name?: string;
-  element_text?: string;
-  element_type?: string;
-  type?: string;
-  page_path?: string;
-  selectors?: string[];
-  selector_patterns?: string[];
-  
-  // Semantic enrichment
-  semantic_enrichment?: SemanticEnrichment;
-  
-  // UI context
-  surface?: string;
-  pattern_type?: string;
-  is_primary_cta?: boolean;
-  cta_category?: string;
-  
-  // Sensitive data
-  anonymize?: boolean;
-  data_type?: 'pci' | 'pii' | 'safe';
-  field_purpose?: string;
-  
-  // Form metadata
-  form_purpose?: string;
-  fields?: {
-    element_id: string;
-    field_label: string;
-    field_purpose: string;
-    field_type: string;
-    is_required?: boolean;
-    anonymize?: boolean;
-  }[];
-  
-  // Existing fields
-  interaction_type?: string;
-  likely_purpose?: string;
-  context_needed?: string[];
-  context_collection?: ContextCollection;
-  relationships?: ComponentRelationships;
-}
-
 interface ComponentDiscovery {
   components: Array<{
     name: string;
@@ -216,7 +145,6 @@ interface ComponentDiscovery {
     context_needed: string[];
     context_collection?: ContextCollection;
     relationships?: ComponentRelationships;
-    semantic_enrichment?: SemanticEnrichment;
   }>;
   framework: string;
 }
@@ -1131,17 +1059,6 @@ ${codeContent}`;
       } else {
         console.log('✅ Discovered', parsed.components.length, 'components');
         console.log('🎯 Component names:', parsed.components.map((c: any) => c.name).join(', '));
-        
-        // Log LLM inference quality
-        const stats = this.calculateInferenceStats(parsed);
-        console.log('\n🔍 LLM Inference Quality:');
-        console.log(`   Components discovered: ${stats.total}`);
-        console.log(`   With semantic_action: ${stats.withSemanticAction} (${stats.semanticPct}%)`);
-        console.log(`   With journey_stage: ${stats.withJourneyStage} (${stats.journeyPct}%)`);
-        console.log(`   With conversion_relevance: ${stats.withConversion} (${stats.conversionPct}%)`);
-        if (stats.sensitiveTotal > 0) {
-          console.log(`   Sensitive fields marked: ${stats.sensitiveMarked}/${stats.sensitiveTotal}`);
-        }
       }
 
       // VALIDATION ONLY: Error if LLM didn't follow guidelines (don't auto-fix)
@@ -1154,71 +1071,6 @@ ${codeContent}`;
       return { components: [], framework: 'unknown' };
     }
 
-  }
-
-  /**
-   * Calculate inference quality statistics from LLM output
-   */
-  private calculateInferenceStats(discovery: any) {
-    let total = discovery.components?.length || 0;
-    let withSemanticAction = 0;
-    let withJourneyStage = 0;
-    let withConversion = 0;
-    let sensitiveTotal = 0;
-    let sensitiveMarked = 0;
-    
-    if (!discovery.components) {
-      return {
-        total: 0,
-        withSemanticAction: 0,
-        withJourneyStage: 0,
-        withConversion: 0,
-        sensitiveTotal: 0,
-        sensitiveMarked: 0,
-        semanticPct: 0,
-        journeyPct: 0,
-        conversionPct: 0
-      };
-    }
-    
-    discovery.components.forEach((comp: any) => {
-      if (comp.semantic_enrichment?.semantic_action) withSemanticAction++;
-      if (comp.semantic_enrichment?.journey_stage) withJourneyStage++;
-      if (comp.semantic_enrichment?.conversion_relevance) withConversion++;
-      
-      const sensitivePatterns = ['card', 'cvv', 'password', 'ssn', 'pin', 'credit', 'cvc', 'expir'];
-      const elementStr = (comp.element_id || comp.name || '').toLowerCase();
-      const isSensitive = sensitivePatterns.some(p => elementStr.includes(p));
-      
-      if (isSensitive) {
-        sensitiveTotal++;
-        if (comp.anonymize) sensitiveMarked++;
-      }
-      
-      // Check fields within context_collection
-      if (comp.context_collection && comp.context_collection.fields) {
-        comp.context_collection.fields.forEach((field: any) => {
-          const fieldName = (field.field_name || '').toLowerCase();
-          const isFieldSensitive = sensitivePatterns.some(p => fieldName.includes(p));
-          if (isFieldSensitive) {
-            sensitiveTotal++;
-            if (field.anonymize) sensitiveMarked++;
-          }
-        });
-      }
-    });
-    
-    return {
-      total,
-      withSemanticAction,
-      withJourneyStage,
-      withConversion,
-      sensitiveTotal,
-      sensitiveMarked,
-      semanticPct: total > 0 ? Math.round((withSemanticAction / total) * 100) : 0,
-      journeyPct: total > 0 ? Math.round((withJourneyStage / total) * 100) : 0,
-      conversionPct: total > 0 ? Math.round((withConversion / total) * 100) : 0
-    };
   }
 
   /**
@@ -1452,541 +1304,232 @@ ${codeContent}`;
   }
 
   /**
-   * Generate events schema aligned with runtime 7-field structure
-   * Documents what tracker puts in event.data field
+   * Generate events schema from AI analysis with new format
+   * ENRICHED: Now uses component discovery and behavior analysis
    */
   private async generateEventsFromAnalysis(
     discovery: ComponentDiscovery,
     behaviors: BehaviorAnalysis
   ): Promise<EventSchema[]> {
-    
-    // Build component-specific data field variants with deduplication
-    const buttonClickVariants = this.deduplicateVariants(this.buildButtonClickVariants(discovery));
-    const formInteractionVariants = this.deduplicateVariants(this.buildFormInteractionVariants(discovery));
-    const modalInteractionVariants = this.deduplicateVariants(this.buildModalInteractionVariants(discovery));
-    
-    // Validate determinism
-    console.log('\n🔍 Validating schema determinism...');
-    this.validateVariantDeterminism(buttonClickVariants, 'BUTTON_CLICK');
-    this.validateVariantDeterminism(formInteractionVariants, 'FORM_INTERACTION');
-    this.validateVariantDeterminism(modalInteractionVariants, 'MODAL_INTERACTION');
-    
+    // Base events (keep structure unchanged)
     const events: EventSchema[] = [
       {
         event_type: 'PAGE_VIEW',
-        description: 'Tracks page loads and navigation',
-        base_structure: {
-          id: 'string (uuid)',
-          ts: 'number (unix timestamp)',
-          app_key: 'string',
-          session_id: 'string',
-          user_id: 'string',
-          event_type: 'PAGE_VIEW',
-          data: 'Object containing page view fields'
+        data_fields: {
+          required: ['url', 'path', 'page_name', 'previous_page', 'is_first_view', 'entry_type']
         },
-        data_field_variants: [{
-          component: 'PageView',
-          locations: ['/all'],
-          pattern_type: null,
-          data_structure: {
-            url: 'string (window.location.href)',
-            path: 'string (window.location.pathname)',
-            title: 'string (document.title)',
-            referrer: 'string | null (document.referrer)',
-            is_first_view: 'boolean (session flag)',
-            entry_type: 'navigation | reload | back_forward | spa_transition'
-          },
-          extraction_strategy: {
-            strategy: 'global_context',
-            scope_selector: 'window',
-            field_extraction: []
-          }
-        }]
+        properties: {
+          url: 'string',
+          path: 'string',
+          page_name: 'string',
+          previous_page: 'string | null',
+          is_first_view: 'boolean',
+          entry_type: '"navigation" | "reload" | "back_forward" | "spa_transition"'
+        }
       },
       {
         event_type: 'BUTTON_CLICK',
-        description: 'Tracks button/link clicks with component-specific context',
-        base_structure: {
-          id: 'string (uuid)',
-          ts: 'number (unix timestamp)',
-          app_key: 'string',
-          session_id: 'string',
-          user_id: 'string',
-          event_type: 'BUTTON_CLICK',
-          data: 'Object containing button click fields and optional context'
+        data_fields: {
+          required: ['element_text', 'element_type', 'surface', 'page_path', 'component_name']
         },
-        data_field_variants: buttonClickVariants
+        properties: {
+          element_text: 'string',
+          element_type: '"button" | "link" | "icon" | "tab"',
+          surface: 'string',
+          page_path: 'string',
+          component_name: 'string',
+          context: 'Record<string, any> | undefined  // Only present for forms, bulk actions, etc.'
+        }
       },
       {
         event_type: 'FORM_INTERACTION',
-        description: 'Tracks form lifecycle (started/submitted/abandoned) with form-specific context',
-        base_structure: {
-          id: 'string (uuid)',
-          ts: 'number (unix timestamp)',
-          app_key: 'string',
-          session_id: 'string',
-          user_id: 'string',
-          event_type: 'FORM_INTERACTION',
-          data: 'Object containing form interaction fields and form context'
+        data_fields: {
+          required: ['action', 'form_name', 'surface', 'page_path', 'fields_total', 'fields_completed']
         },
-        data_field_variants: formInteractionVariants
+        properties: {
+          action: '"started" | "submitted" | "abandoned"',
+          form_name: 'string',
+          surface: 'string',
+          page_path: 'string',
+          fields_total: 'number',
+          fields_completed: 'number'
+        }
       },
       {
         event_type: 'MODAL_INTERACTION',
-        description: 'Tracks modal lifecycle (opened/closed/submitted/dismissed) with modal-specific context',
-        base_structure: {
-          id: 'string (uuid)',
-          ts: 'number (unix timestamp)',
-          app_key: 'string',
-          session_id: 'string',
-          user_id: 'string',
-          event_type: 'MODAL_INTERACTION',
-          data: 'Object containing modal interaction fields and modal context'
+        data_fields: {
+          required: ['action', 'modal_name', 'trigger_source', 'page_path']
         },
-        data_field_variants: modalInteractionVariants
+        properties: {
+          action: '"opened" | "closed" | "submitted" | "dismissed"',
+          modal_name: 'string',
+          trigger_source: '"button_click" | "auto_trigger" | "other"',
+          page_path: 'string',
+          form_data: 'Record<string, any> | undefined  // Only present on submitted action'
+        }
       },
       {
         event_type: 'ELEMENT_VISIBILITY',
-        description: 'Tracks element visibility changes (shown/hidden/dismissed)',
-        base_structure: {
-          id: 'string (uuid)',
-          ts: 'number (unix timestamp)',
-          app_key: 'string',
-          session_id: 'string',
-          user_id: 'string',
-          event_type: 'ELEMENT_VISIBILITY',
-          data: 'Object containing element visibility fields'
+        data_fields: {
+          required: ['action', 'element_type', 'element_name', 'element_id', 'trigger_source', 'page_path', 'has_cta']
         },
-        data_field_variants: [{
-          component: 'VisibilityTracking',
-          locations: ['/all'],
-          pattern_type: 'expand_collapse',
-          data_structure: {
-            action: 'shown | hidden | dismissed',
-            element_type: 'modal | popup | drawer | tooltip | dropdown | toast | unknown',
+        properties: {
+          action: '"shown" | "hidden" | "dismissed"',
+          element_type: '"modal" | "popup" | "drawer" | "tooltip" | "dropdown" | "toast" | "unknown"',
             element_name: 'string',
             element_id: 'string | null',
-            trigger_source: 'button_click | auto_trigger | scroll_trigger | unknown',
+          trigger_source: '"button_click" | "auto_trigger" | "scroll_trigger" | "unknown"',
             page_path: 'string',
             has_cta: 'boolean'
-          },
-          extraction_strategy: {
-            strategy: 'component_props',
-            scope_selector: '[role], .modal, .popup, .drawer',
-            field_extraction: []
           }
-        }]
       },
       {
         event_type: 'SCROLL_INTERACTION',
-        description: 'Tracks scroll depth milestones',
-        base_structure: {
-          id: 'string (uuid)',
-          ts: 'number (unix timestamp)',
-          app_key: 'string',
-          session_id: 'string',
-          user_id: 'string',
-          event_type: 'SCROLL_INTERACTION',
-          data: 'Object containing scroll interaction fields'
+        data_fields: {
+          required: ['action', 'depth_percentage', 'milestone', 'page_path', 'direction']
         },
-        data_field_variants: [{
-          component: 'ScrollTracking',
-          locations: ['/all'],
-          pattern_type: null,
-          data_structure: {
-            action: 'depth_reached',
-            depth_percentage: 'number (0-100)',
-            milestone: '25% | 50% | 75% | 90% | 100% | none',
+        properties: {
+          action: '"depth_reached"',
+          depth_percentage: 'number',
+          milestone: '"25%" | "50%" | "75%" | "90%" | "100%" | "none"',
             page_path: 'string',
-            direction: 'up | down'
-          },
-          extraction_strategy: {
-            strategy: 'global_context',
-            scope_selector: 'window',
-            field_extraction: []
-          }
-        }]
+          direction: '"up" | "down"'
+        }
       }
     ];
+
+    // === ENRICHMENT PHASE: Use component discovery data ===
+    
+    // ENRICHMENT 1: Add component-specific context to BUTTON_CLICK
+    const buttonClickEvent = events.find(e => e.event_type === 'BUTTON_CLICK');
+    if (buttonClickEvent && discovery.components.length > 0) {
+      // Extract all context fields from discovered components
+      const allContextFields = new Set<string>();
+    discovery.components.forEach(comp => {
+        comp.context_needed?.forEach(field => allContextFields.add(field));
+      });
+      
+      // Extract extraction strategies from components with context collection
+      const extractionStrategies = discovery.components
+        .filter(c => c.context_collection)
+        .map(c => ({
+          component: c.name,
+          strategy: c.context_collection!.strategy,
+          fields: c.context_collection!.fields.map(f => ({
+            name: f.field_name,
+            selector: f.selector,
+            extraction_method: f.extraction_method,
+            data_type: f.data_type,
+            required: f.required || false
+          })),
+          scope_selector: c.context_collection!.scope_selector || null
+        }));
+      
+      // Enrich the properties with component intelligence
+      if (allContextFields.size > 0 || extractionStrategies.length > 0) {
+        buttonClickEvent.properties = {
+          ...buttonClickEvent.properties,
+          ai_component_context: {
+            type: 'object',
+            description: 'Component-specific context discovered by AI analysis',
+            possible_fields: Array.from(allContextFields),
+            extraction_strategies: extractionStrategies,
+            discovered_components: discovery.components.map(c => ({
+              name: c.name,
+              type: c.type,
+              purpose: c.likely_purpose,
+              interaction_type: c.interaction_type
+            }))
+          }
+        };
+      }
+    }
+    
+    // ENRICHMENT 2: Add form-specific metadata if forms discovered
+    const formComponents = discovery.components.filter(c => 
+      c.type === 'form' || 
+      c.pattern_type?.includes('form') || 
+      c.interaction_type === 'submit'
+    );
+    
+    const formEvent = events.find(e => e.event_type === 'FORM_INTERACTION');
+    if (formEvent && formComponents.length > 0) {
+      formEvent.properties = {
+        ...formEvent.properties,
+        ai_discovered_forms: {
+          type: 'array',
+          description: 'Forms discovered by AI analysis',
+          forms: formComponents.map(f => ({
+            name: f.name,
+            purpose: f.likely_purpose,
+            context_fields: f.context_needed,
+            context_strategy: f.context_collection?.strategy || 'form_state',
+            selector_patterns: f.selector_patterns
+          }))
+        }
+      };
+    }
+    
+    // ENRICHMENT 3: Add modal-specific metadata if modals discovered
+    const modalComponents = discovery.components.filter(c =>
+      c.pattern_type?.includes('modal') || 
+      c.type === 'modal' ||
+      c.type === 'popup' ||
+      c.type === 'drawer'
+    );
+    
+    const modalEvent = events.find(e => e.event_type === 'MODAL_INTERACTION');
+    if (modalEvent && modalComponents.length > 0) {
+      modalEvent.properties = {
+        ...modalEvent.properties,
+        ai_discovered_modals: {
+          type: 'array',
+          description: 'Modals/popups discovered by AI analysis',
+          modals: modalComponents.map(m => ({
+            name: m.name,
+            purpose: m.likely_purpose,
+            context_strategy: m.context_collection?.strategy || 'modal_scope',
+            captured_fields: m.context_needed,
+            selector_patterns: m.selector_patterns
+          }))
+        }
+      };
+    }
+    
+    // ENRICHMENT 4: Add behavior pattern metadata to relevant events
+    if (behaviors.patterns.length > 0) {
+      // Add behavioral insights to BUTTON_CLICK
+      if (buttonClickEvent) {
+        const behaviorInsights = behaviors.patterns.map(p => ({
+          component: p.component,
+          context_collection: p.context_collection,
+          state_changes: p.state_changes
+        }));
+        
+        buttonClickEvent.properties = {
+          ...buttonClickEvent.properties,
+          ai_behavior_patterns: {
+            type: 'array',
+            description: 'Behavioral patterns discovered by AI analysis',
+            patterns: behaviorInsights
+          }
+        };
+      }
+    }
+    
+    // Add global metadata about AI analysis
+    events.forEach(event => {
+      event.properties = {
+        ...event.properties,
+        ai_metadata: {
+          framework: discovery.framework,
+          components_analyzed: discovery.components.length,
+          patterns_detected: behaviors.patterns.length
+        }
+      };
+    });
 
     return events;
-  }
-
-  /**
-   * Build component-specific variants for BUTTON_CLICK events
-   * Returns variants with data_structure showing what goes in event.data at runtime
-   */
-  private buildButtonClickVariants(discovery: ComponentDiscovery): any[] {
-    const variants: any[] = [];
-    
-    discovery.components.forEach(comp => {
-      if (!['button', 'link', 'icon'].includes(comp.type) && 
-          comp.interaction_type !== 'click') {
-        return;
-      }
-      
-      const location = this.inferComponentLocation(comp);
-      
-      // Build data_structure showing what goes in event.data at runtime
-      const dataStructure: Record<string, any> = {
-        element_text: 'string (innerText or aria-label)',
-        element_id: 'string | null',
-        element_type: comp.type,
-        surface: 'string (header|nav|main|footer|modal)',
-        page_path: 'string (window.location.pathname)',
-        location: 'string (page path where interaction occurred)',
-        is_primary_cta: 'boolean',
-        cta_category: 'conversion | navigation | engagement',
-        pattern_type: comp.pattern_type || null
-      };
-      
-      // Add context structure if component has context collection
-      if (comp.context_collection?.fields && comp.context_collection.fields.length > 0) {
-        const contextStructure: Record<string, string> = {};
-        
-        comp.context_collection.fields.forEach((field: any) => {
-          const typeDesc = `${field.data_type || 'string'} (from ${field.extraction_method}: ${field.selector})`;
-          contextStructure[field.field_name] = typeDesc;
-        });
-        
-        dataStructure.context = contextStructure;
-      }
-      
-      variants.push({
-        component: comp.name,
-        location: location,
-        pattern_type: comp.pattern_type,
-        semantic_action: (comp as any).semantic_enrichment?.semantic_action,
-        conversion_relevance: (comp as any).semantic_enrichment?.conversion_relevance,
-        journey_stage: (comp as any).semantic_enrichment?.journey_stage,
-        data_structure: dataStructure,
-        extraction_strategy: comp.context_collection ? {
-          strategy: comp.context_collection.strategy,
-          scope_selector: comp.context_collection.scope_selector,
-          state_tracking: comp.context_collection.state_tracking,
-          field_extraction: comp.context_collection.fields.map((f: any) => ({
-            field_name: f.field_name,
-            extraction_method: f.extraction_method,
-            selector: f.selector,
-            data_type: f.data_type
-          }))
-        } : null,
-        pattern_metadata: this.getMicroPatternMetadata(comp.pattern_type || null)
-      });
-    });
-    
-    return variants;
-  }
-
-  /**
-   * Build component-specific variants for FORM_INTERACTION events
-   */
-  private buildFormInteractionVariants(discovery: ComponentDiscovery): any[] {
-    const variants: any[] = [];
-    
-    discovery.components.forEach(comp => {
-      if (comp.type !== 'form' && !comp.pattern_type?.includes('form')) {
-        return;
-      }
-      
-      const location = this.inferComponentLocation(comp);
-      
-      // Build data_structure showing what goes in event.data at runtime
-      const dataStructure: Record<string, any> = {
-        action: 'started | submitted | abandoned',
-        form_name: 'string',
-        form_id: 'string | null',
-        form_type: (comp as any).semantic_enrichment?.form_purpose || 'other',
-        surface: 'string',
-        page_path: 'string',
-        location: 'string (page path where form interaction occurred)',
-        fields_total: 'number',
-        fields_completed: 'number'
-      };
-      
-      // Add form context if available
-      if (comp.context_collection?.fields && comp.context_collection.fields.length > 0) {
-        const contextStructure: Record<string, string> = {};
-        
-        comp.context_collection.fields.forEach((field: any) => {
-          const anonymize = field.anonymize ? ' [ANONYMIZED]' : '';
-          const typeDesc = `${field.data_type || 'string'} (${field.extraction_method})${anonymize}`;
-          contextStructure[field.field_name] = typeDesc;
-        });
-        
-        dataStructure.context = contextStructure;
-      }
-      
-      variants.push({
-        component: comp.name,
-        location: location,
-        pattern_type: comp.pattern_type,
-        form_purpose: (comp as any).semantic_enrichment?.form_purpose,
-        data_structure: dataStructure,
-        extraction_strategy: {
-          strategy: 'form_state',
-          scope_selector: comp.context_collection?.scope_selector || 'form',
-          serialization: 'all_inputs_at_submission',
-          field_extraction: comp.context_collection?.fields?.map((f: any) => ({
-            field_name: f.field_name,
-            extraction_method: f.extraction_method,
-            selector: f.selector,
-            data_type: f.data_type,
-            anonymize: f.anonymize,
-            field_purpose: f.field_purpose
-          })) || []
-        }
-      });
-    });
-    
-    return variants;
-  }
-
-  /**
-   * Build component-specific variants for MODAL_INTERACTION events
-   */
-  private buildModalInteractionVariants(discovery: ComponentDiscovery): any[] {
-    const variants: any[] = [];
-    
-    discovery.components.forEach(comp => {
-      if (!comp.pattern_type?.includes('modal')) {
-        return;
-      }
-      
-      const location = this.inferComponentLocation(comp);
-      
-      // Build data_structure showing what goes in event.data at runtime
-      const dataStructure: Record<string, any> = {
-        action: 'opened | closed | submitted | dismissed',
-        modal_name: 'string',
-        modal_id: 'string | null',
-        trigger_source: 'button_click | auto_trigger | other',
-        page_path: 'string',
-        location: 'string (page path where modal interaction occurred)'
-      };
-      
-      // Add modal context structure
-      if (comp.context_collection?.fields && comp.context_collection.fields.length > 0) {
-        const contextStructure: Record<string, string> = {};
-        
-        comp.context_collection.fields.forEach((field: any) => {
-          const typeDesc = `${field.data_type || 'string'} (${field.extraction_method}: ${field.selector})`;
-          contextStructure[field.field_name] = typeDesc;
-        });
-        
-        dataStructure.context = contextStructure;
-      }
-      
-      variants.push({
-        component: comp.name,
-        location: location,
-        pattern_type: comp.pattern_type,
-        data_structure: dataStructure,
-        extraction_strategy: {
-          strategy: 'modal_scope',
-          scope_selector: comp.context_collection?.scope_selector || '[role="dialog"]',
-          lifecycle_tracking: {
-            on_open: 'capture_trigger_and_initial_state',
-            on_interact: 'capture_form_changes',
-            on_close: 'capture_outcome_and_final_state'
-          },
-          field_extraction: comp.context_collection?.fields?.map((f: any) => ({
-            field_name: f.field_name,
-            extraction_method: f.extraction_method,
-            selector: f.selector,
-            data_type: f.data_type
-          })) || []
-        }
-      });
-    });
-    
-    return variants;
-  }
-
-  /**
-   * Deduplicate variants - group identical components by structure, aggregate locations
-   */
-  private deduplicateVariants(variants: any[]): any[] {
-    const variantMap = new Map<string, any>();
-    
-    variants.forEach(variant => {
-      // Create deterministic key based on component structure
-      const key = this.generateVariantKey(variant);
-      
-      if (variantMap.has(key)) {
-        // Component already exists - add location to existing variant
-        const existing = variantMap.get(key);
-        
-        // Ensure locations is an array
-        if (!Array.isArray(existing.locations)) {
-          existing.locations = [existing.location];
-          delete existing.location;
-        }
-        
-        // Add new location if not already present
-        if (!existing.locations.includes(variant.location)) {
-          existing.locations.push(variant.location);
-          existing.locations.sort(); // Keep sorted for determinism
-        }
-      } else {
-        // New component - initialize with single location
-        variant.locations = [variant.location];
-        delete variant.location;
-        variantMap.set(key, variant);
-      }
-    });
-    
-    return Array.from(variantMap.values());
-  }
-
-  /**
-   * Generate deterministic key for component variant
-   * Same structure = same key, regardless of location
-   */
-  private generateVariantKey(variant: any): string {
-    // Extract context field names for comparison
-    const contextFields = variant.data_structure?.context 
-      ? Object.keys(variant.data_structure.context).sort()
-      : [];
-    
-    const keyParts = [
-      variant.component,
-      variant.pattern_type || 'none',
-      variant.semantic_action || 'none',
-      variant.form_purpose || 'none',
-      JSON.stringify(contextFields)
-    ];
-    
-    return keyParts.join('::');
-  }
-
-  /**
-   * Validate that variants are deterministic and properly deduplicated
-   */
-  private validateVariantDeterminism(variants: any[], eventType: string): void {
-    const componentNames = new Set<string>();
-    const duplicates: string[] = [];
-    
-    variants.forEach(variant => {
-      const name = variant.component;
-      
-      if (componentNames.has(name)) {
-        duplicates.push(name);
-      }
-      componentNames.add(name);
-    });
-    
-    if (duplicates.length > 0) {
-      console.warn(`⚠️  Schema Determinism Warning (${eventType}): Duplicate components found:`, duplicates);
-      console.warn('   These should have been deduplicated with multiple locations.');
-    } else {
-      console.log(`✅ ${eventType} schema determinism validated: ${variants.length} unique components`);
-    }
-    
-    // Log multi-location components
-    const multiLocationVariants = variants.filter(v => v.locations?.length > 1);
-    if (multiLocationVariants.length > 0) {
-      console.log(`📍 Found ${multiLocationVariants.length} ${eventType} components in multiple locations:`);
-      multiLocationVariants.forEach(v => {
-        console.log(`   - ${v.component}: [${v.locations.join(', ')}]`);
-      });
-    }
-  }
-
-  /**
-   * Infer component location from selector patterns, surface, and code structure
-   */
-  private inferComponentLocation(comp: any): string {
-    // Priority 1: Check selector patterns for explicit page indicators
-    const selectors = comp.selector_patterns || [];
-    
-    for (const selector of selectors) {
-      const pageMatch = selector.match(/data-page=['"]([^'"]+)['"]/);
-      if (pageMatch) return pageMatch[1];
-      
-      const routeMatch = selector.match(/\.(page-|route-)([a-z-]+)/);
-      if (routeMatch) return `/${routeMatch[2]}`;
-    }
-    
-    // Priority 2: Extract from surface inference
-    if ((comp as any).semantic_enrichment?.surface_inferred) {
-      const surface = (comp as any).semantic_enrichment.surface_inferred;
-      
-      if (surface.includes('auth')) return '/auth';
-      if (surface.includes('dashboard')) return '/dashboard';
-      if (surface.includes('settings')) return '/settings';
-      if (surface.includes('project')) return '/projects';
-      if (surface.includes('task')) return '/tasks';
-      if (surface.includes('team')) return '/team';
-      if (surface.includes('billing')) return '/billing';
-      
-      return `/${surface}`;
-    }
-    
-    // Priority 3: Infer from component name
-    const name = comp.name.toLowerCase();
-    if (name.includes('login') || name.includes('signup')) return '/auth';
-    if (name.includes('project')) return '/projects';
-    if (name.includes('task')) return '/tasks';
-    if (name.includes('team')) return '/team';
-    if (name.includes('setting')) return '/settings';
-    if (name.includes('dashboard')) return '/dashboard';
-    
-    // Priority 4: Check for form purpose
-    if ((comp as any).semantic_enrichment?.form_purpose) {
-      const purpose = (comp as any).semantic_enrichment.form_purpose;
-      if (purpose === 'authentication') return '/auth';
-      if (purpose === 'payment') return '/checkout';
-      if (purpose === 'profile_update') return '/settings';
-    }
-    
-    // Default: global component
-    return '/global';
-  }
-
-  /**
-   * Get micro-pattern metadata for documentation
-   */
-  private getMicroPatternMetadata(patternType: string | null): any {
-    const patterns: Record<string, any> = {
-      'item_selection': {
-        description: 'Extracts item context from parent container',
-        expected_data_context: 'Item ID and metadata from data-* attributes'
-      },
-      'form_submission': {
-        description: 'Serializes entire form state at submission',
-        expected_data_context: 'All input values within form scope'
-      },
-      'toggle_state': {
-        description: 'Tracks state change with before/after values',
-        expected_data_context: 'previous_value, new_value, toggle_target'
-      },
-      'modal_lifecycle': {
-        description: 'Tracks modal open/interact/close with accumulated context',
-        expected_data_context: 'trigger_element, form_data, exit_outcome'
-      },
-      'bulk_action': {
-        description: 'Captures selection set before action execution',
-        expected_data_context: 'selected_ids[], selection_count, action_type'
-      },
-      'multi_step_flow': {
-        description: 'Maintains accumulated state across wizard steps',
-        expected_data_context: 'step_number, current_step_data, all_previous_steps'
-      },
-      'search_filter': {
-        description: 'Captures search query, filters, and result metadata',
-        expected_data_context: 'search_query, applied_filters, results_count'
-      },
-      'inline_edit': {
-        description: 'Tracks before/after values and edit duration',
-        expected_data_context: 'field_name, original_value, new_value'
-      }
-    };
-    
-    return patterns[patternType || ''] || {
-      description: 'Generic interaction pattern',
-      expected_data_context: 'Context based on component structure'
-    };
   }
 
   /**
@@ -2918,9 +2461,8 @@ ${safeContent}`
         },
         events: events.map(e => ({
           event_type: e.event_type,
-          description: e.description,
-          base_structure: e.base_structure,
-          data_field_variants: e.data_field_variants
+          data_fields: e.data_fields.required,
+          properties: e.properties || {}
         })),
         ai_components: analysis.discovery.components,
         ai_patterns: analysis.behaviors.patterns
@@ -3141,6 +2683,7 @@ ${safeContent}`
       this.clickedElements = new WeakSet();
       this.visibleElements = new WeakMap();
       this.pageContext = {};
+      this.previousPage = null;  // Track previous page for SPA navigation/journey analysis
       
       // Performance optimization: cache selector matches
       this.selectorCache = new WeakMap();
@@ -3615,16 +3158,13 @@ ${safeContent}`
           // Extract rich context using pattern-based extraction
           const contextData = componentInfo ? this.extractContext(element, componentInfo) : {};
           
-          // Build event data
+          // Build event data - cleaner schema without redundant fields
           const eventData = {
             element_text: this.getElementText(element).slice(0, 100),
-            element_id: element.id || null,
             element_type: this.getButtonType(element),
             surface: this.getSurface(element),
             page_path: window.location.pathname,
-            is_primary_cta: this.isPrimaryCTA(element),
-            cta_category: this.getCTACategory(element, componentInfo),
-            pattern_type: componentInfo?.pattern_type || null
+            component_name: componentInfo?.name || this.inferComponentName(element)
           };
           
           // Only add context if it has meaningful data (not empty object)
@@ -3649,16 +3189,22 @@ ${safeContent}`
             fieldsInteracted: new Set()
           });
           
-          this.trackEvent('FORM_INTERACTION', {
-            action: 'started',
-            form_name: this.getFormName(form),
-            form_id: form.id || null,
-            form_type: this.getFormType(form),
-            surface: this.getSurface(form),
-            page_path: window.location.pathname,
-            fields_total: form.elements ? form.elements.length : 0,
-            fields_completed: 0
-          });
+          // Skip FORM_INTERACTION for forms inside modals (handled by MODAL_INTERACTION)
+          const isInModal = form.closest('[role="dialog"]') || 
+                           form.closest('.modal') || 
+                           form.closest('[data-modal]') ||
+                           form.closest('[class*="modal"]');
+          
+          if (!isInModal) {
+            this.trackEvent('FORM_INTERACTION', {
+              action: 'started',
+              form_name: this.getFormName(form),
+              surface: this.getSurface(form),
+              page_path: window.location.pathname,
+              fields_total: form.elements ? form.elements.length : 0,
+              fields_completed: 0
+            });
+          }
         }
         
         if (form && this.formTracking.has(form)) {
@@ -3671,49 +3217,50 @@ ${safeContent}`
         const form = e.target;
         const tracking = this.formTracking.get(form);
         
-        this.trackEvent('FORM_INTERACTION', {
-          action: 'submitted',
-          form_name: this.getFormName(form),
-          form_id: form.id || null,
-          form_type: this.getFormType(form),
-          surface: this.getSurface(form),
-          page_path: window.location.pathname,
-          fields_total: form.elements ? form.elements.length : 0,
-          fields_completed: tracking ? tracking.fieldsInteracted.size : 0
-        });
-        
-        // If form is inside a modal, also track MODAL_INTERACTION with submitted action
+        // Check if form is inside a modal
         const modal = form.closest('[role="dialog"]') || 
                       form.closest('.modal') || 
                       form.closest('[data-modal]') ||
                       form.closest('[class*="modal"]');
         
         if (modal) {
-          const componentInfo = this.detectComponent(modal);
-          const context = componentInfo ? this.extractContext(modal, componentInfo) : {};
+          // For modal forms: track MODAL_INTERACTION with form_data (skip FORM_INTERACTION)
+          const formData = this.captureFormData(form);
           
           this.trackEvent('MODAL_INTERACTION', {
             action: 'submitted',
-            modal_name: this.getElementName(modal),
-            modal_id: modal.id || null,
+            modal_name: this.getModalTitle(modal),
             trigger_source: 'button_click',
             page_path: window.location.pathname,
-            context: context
+            form_data: formData
+          });
+        } else {
+          // For standalone forms: track FORM_INTERACTION only
+          this.trackEvent('FORM_INTERACTION', {
+            action: 'submitted',
+            form_name: this.getFormName(form),
+            surface: this.getSurface(form),
+            page_path: window.location.pathname,
+            fields_total: form.elements ? form.elements.length : 0,
+            fields_completed: tracking ? tracking.fieldsInteracted.size : 0
           });
         }
         
         this.formTracking.delete(form);
       });
 
-      // Track form abandonment
+      // Track form abandonment (only for non-modal forms)
       window.addEventListener('beforeunload', () => {
         this.formTracking.forEach((tracking, form) => {
-          if (tracking.started && Date.now() - tracking.startTime > 1000) {
+          const isInModal = form.closest('[role="dialog"]') || 
+                           form.closest('.modal') || 
+                           form.closest('[data-modal]') ||
+                           form.closest('[class*="modal"]');
+          
+          if (!isInModal && tracking.started && Date.now() - tracking.startTime > 1000) {
             this.trackEvent('FORM_INTERACTION', {
               action: 'abandoned',
               form_name: this.getFormName(form),
-              form_id: form.id || null,
-              form_type: this.getFormType(form),
               surface: this.getSurface(form),
               page_path: window.location.pathname,
               fields_total: form.elements ? form.elements.length : 0,
@@ -3751,16 +3298,11 @@ ${safeContent}`
                 
                 // Use MODAL_INTERACTION for modals, ELEMENT_VISIBILITY for others
                 if (isModal) {
-                  const componentInfo = this.detectComponent(element);
-                  const context = componentInfo ? this.extractContext(element, componentInfo) : {};
-                  
                   this.trackEvent('MODAL_INTERACTION', {
                     action: 'opened',
-                    modal_name: this.getElementName(element),
-                    modal_id: element.id || null,
+                    modal_name: this.getModalTitle(element),
                     trigger_source: 'button_click',
-                    page_path: window.location.pathname,
-                    context: context
+                    page_path: window.location.pathname
                   });
                 } else {
                 this.trackEvent('ELEMENT_VISIBILITY', {
@@ -3778,16 +3320,11 @@ ${safeContent}`
                 
                 // Use MODAL_INTERACTION for modals, ELEMENT_VISIBILITY for others
                 if (isModal) {
-                  const componentInfo = this.detectComponent(element);
-                  const context = componentInfo ? this.extractContext(element, componentInfo) : {};
-                  
                   this.trackEvent('MODAL_INTERACTION', {
                     action: 'closed',
-                    modal_name: this.getElementName(element),
-                    modal_id: element.id || null,
+                    modal_name: this.getModalTitle(element),
                     trigger_source: 'button_click',
-                    page_path: window.location.pathname,
-                    context: context
+                    page_path: window.location.pathname
                   });
                 } else {
                 this.trackEvent('ELEMENT_VISIBILITY', {
@@ -3898,11 +3435,168 @@ ${safeContent}`
              'unnamed';
     }
 
+    // Get a meaningful page name from H1 or path
+    getPageName() {
+      // Try to find main heading
+      const h1 = document.querySelector('main h1, [role="main"] h1, h1');
+      if (h1 && h1.textContent) {
+        return h1.textContent.trim().slice(0, 80);
+      }
+      
+      // Parse from path: /dashboard/settings → "Settings"
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
+      if (pathParts.length > 0) {
+        const lastPart = pathParts[pathParts.length - 1];
+        // Handle UUIDs and numeric IDs - go back one level
+        if (/^[a-f0-9-]{20,}$/i.test(lastPart) || /^\\d+$/.test(lastPart)) {
+          if (pathParts.length > 1) {
+            const secondLast = pathParts[pathParts.length - 2];
+            return secondLast.charAt(0).toUpperCase() + secondLast.slice(1).replace(/-/g, ' ') + ' Detail';
+          }
+        }
+        return lastPart.charAt(0).toUpperCase() + lastPart.slice(1).replace(/-/g, ' ');
+      }
+      
+      return 'Home';
+    }
+
+    // Get modal title from heading or aria attributes
+    getModalTitle(modal) {
+      // Try to find modal heading/title
+      const heading = modal.querySelector('[role="heading"], h1, h2, h3, [data-dialog-title], [class*="title"], [class*="Title"]');
+      if (heading && heading.textContent) {
+        return heading.textContent.trim().slice(0, 50);
+      }
+      
+      // Try aria-labelledby reference
+      const labelledBy = modal.getAttribute('aria-labelledby');
+      if (labelledBy) {
+        const labelEl = document.getElementById(labelledBy);
+        if (labelEl && labelEl.textContent) {
+          return labelEl.textContent.trim().slice(0, 50);
+        }
+      }
+      
+      // Try aria-label
+      const ariaLabel = modal.getAttribute('aria-label');
+      if (ariaLabel) {
+        return ariaLabel.slice(0, 50);
+      }
+      
+      // Fallback: look for any text in the first part of modal
+      const firstText = modal.querySelector('p, span, div');
+      if (firstText && firstText.textContent) {
+        const text = firstText.textContent.trim();
+        if (text.length > 0 && text.length < 50) {
+          return text;
+        }
+      }
+      
+      return 'Modal';
+    }
+
+    // Infer component name from element attributes and text
+    inferComponentName(element) {
+      // Try data attributes
+      if (element.dataset.component) return element.dataset.component;
+      if (element.dataset.testid) return element.dataset.testid;
+      if (element.dataset.cy) return element.dataset.cy;
+      
+      // Try id (but not Radix auto-generated ones)
+      if (element.id && !element.id.startsWith('radix-') && !element.id.startsWith(':r')) {
+        return element.id;
+      }
+      
+      // Build from element text + type
+      const text = this.getElementText(element).slice(0, 30).replace(/\\s+/g, '');
+      const type = this.getButtonType(element);
+      if (text && text !== 'Unknown') {
+        return text + type.charAt(0).toUpperCase() + type.slice(1);
+      }
+      
+      return 'UnknownComponent';
+    }
+
     getFormName(form) {
       return form.getAttribute('name') || 
              form.getAttribute('aria-label') ||
              form.id ||
              'form';
+    }
+
+    // Capture form field values (sanitized for analytics)
+    captureFormData(form) {
+      const formData = {};
+      
+      // Sensitive field patterns to skip entirely
+      const sensitivePatterns = /password|pwd|secret|token|cvv|cvc|ssn|social.*security|card.*number|credit.*card/i;
+      
+      // Fields to anonymize (show partial value)
+      const anonymizePatterns = /email|phone|tel|mobile/i;
+      
+      try {
+        const elements = form.elements || [];
+        
+        for (let i = 0; i < elements.length; i++) {
+          const el = elements[i];
+          const name = el.name || el.id;
+          
+          // Skip unnamed fields, buttons, and hidden fields
+          if (!name || el.type === 'submit' || el.type === 'button' || el.type === 'hidden') {
+            continue;
+          }
+          
+          // Skip sensitive fields entirely
+          if (sensitivePatterns.test(name)) {
+            continue;
+          }
+          
+          let value = null;
+          
+          // Get value based on element type
+          if (el.type === 'checkbox') {
+            value = el.checked;
+          } else if (el.type === 'radio') {
+            if (el.checked) {
+              value = el.value;
+            } else {
+              continue; // Skip unchecked radio buttons
+            }
+          } else if (el.tagName === 'SELECT') {
+            const selected = el.options[el.selectedIndex];
+            value = selected ? (selected.text || selected.value) : null;
+          } else if (el.value) {
+            value = el.value;
+          }
+          
+          // Skip empty values
+          if (value === null || value === '' || value === undefined) {
+            continue;
+          }
+          
+          // Anonymize email/phone fields
+          if (anonymizePatterns.test(name) && typeof value === 'string') {
+            if (name.toLowerCase().includes('email') && value.includes('@')) {
+              const [local, domain] = value.split('@');
+              value = local.charAt(0) + '***@' + domain;
+            } else {
+              // Phone/other: show last 4 chars
+              value = '***' + value.slice(-4);
+            }
+          }
+          
+          // Truncate long values
+          if (typeof value === 'string' && value.length > 100) {
+            value = value.slice(0, 100) + '...';
+          }
+          
+          formData[name] = value;
+        }
+      } catch (e) {
+        // Silent fail - return whatever we captured
+      }
+      
+      return Object.keys(formData).length > 0 ? formData : null;
     }
 
     getEntryType() {
@@ -3920,13 +3614,27 @@ ${safeContent}`
     }
 
     getSurface(element) {
-      const section = element.closest('header, nav, main, footer, aside, section[data-component], [data-surface]');
-      if (section) {
-        return section.dataset.surface || 
-               section.dataset.component ||
-               section.tagName.toLowerCase();
+      // 1. Try semantic elements first
+      const semantic = element.closest('header, nav, main, footer, aside, [data-surface]');
+      if (semantic) {
+        return semantic.dataset.surface || semantic.tagName.toLowerCase();
       }
-      return 'unknown';
+      
+      // 2. Try class-based detection
+      const classContainer = element.closest('[class*="header"], [class*="Header"], [class*="nav"], [class*="Nav"], [class*="sidebar"], [class*="Sidebar"], [class*="footer"], [class*="Footer"], [class*="modal"], [class*="Modal"], [class*="dialog"], [class*="Dialog"]');
+      if (classContainer) {
+        const classes = (classContainer.className || '').toString().toLowerCase();
+        if (classes.includes('header')) return 'header';
+        if (classes.includes('sidebar') || classes.includes('nav')) return 'nav';
+        if (classes.includes('footer')) return 'footer';
+        if (classes.includes('modal') || classes.includes('dialog')) return 'modal';
+      }
+      
+      // 3. Check if inside modal/dialog
+      if (element.closest('[role="dialog"]')) return 'modal';
+      
+      // 4. Default to 'main' instead of 'unknown'
+      return 'main';
     }
 
     getButtonType(element) {
@@ -4089,15 +3797,19 @@ ${safeContent}`
       this.maxScrollDepth = 0;
       this.pageLoadTime = Date.now();
       
+      const currentPath = window.location.pathname;
+      
       this.trackEvent('PAGE_VIEW', {
         url: page?.url || window.location.href,
-        path: window.location.pathname,
-        title: page?.title || document.title,
-        referrer: document.referrer || null,
+        path: currentPath,
+        page_name: this.getPageName(),
+        previous_page: this.previousPage,
         is_first_view: !this.hasViewedPage,
         entry_type: this.getEntryType()
       });
       
+      // Store current path for next navigation (journey tracking)
+      this.previousPage = currentPath;
       this.hasViewedPage = true;
     }
 

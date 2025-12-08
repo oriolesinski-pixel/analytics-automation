@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Activity, Database } from 'lucide-react';
+import { Activity, Database, Plus } from 'lucide-react';
 import LiveEventFeed from '@/components/LiveEventFeed';
 import SQLSandbox from '@/components/SQLSandbox';
 
@@ -94,8 +94,19 @@ export default function EventsPage() {
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="px-8 py-6">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Events & SQL</h1>
-          <p className="text-gray-600 dark:text-gray-400">Monitor live events and query your data</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Events & SQL</h1>
+              <p className="text-gray-600 dark:text-gray-400">Monitor live events and query your data</p>
+            </div>
+            <Link
+              href="/onboarding"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded-lg transition-colors font-medium text-sm shadow-sm hover:shadow-md"
+            >
+              <Plus className="w-4 h-4" />
+              Add Analytics
+            </Link>
+          </div>
         </div>
 
         {/* Sub-navigation Tabs */}

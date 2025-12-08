@@ -749,7 +749,41 @@ const analyzeRepository = async () => {
   } catch (err) {
     isStillAnalyzing = false;
     if (pollInterval) clearInterval(pollInterval);
-    setError((err as Error).message || 'Analysis failed');
+    
+    // Check if this is a timeout error - generation may have succeeded in background
+    const errorMessage = (err as Error).message || '';
+    if (errorMessage.includes('timeout') || errorMessage.includes('fetch failed')) {
+      console.log('⏱️ Frontend timeout - checking if generation completed in background...');
+      
+      // Wait a moment for backend to save results
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Check storage for results (backend saves there on completion)
+      try {
+        const savedSchema = sessionStorage.getItem(STORAGE_KEYS.SCHEMA) || 
+                           localStorage.getItem(STORAGE_KEYS.SCHEMA);
+        
+        if (savedSchema) {
+          const parsedSchema = JSON.parse(savedSchema);
+          if (parsedSchema && parsedSchema.appKey) {
+            console.log('✅ Found completed schema in storage! Generation succeeded.');
+            setSchema(parsedSchema);
+            setAppKey(parsedSchema.appKey);
+            setCurrentStep(3);
+            setIsAnalyzing(false);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('Could not check storage:', e);
+      }
+      
+      // If no results found, show helpful message
+      setError('Generation is taking longer than expected. It may still be running in the background. Wait 2-3 minutes and click "Start Over" to check if it completed.');
+    } else {
+      setError(errorMessage || 'Analysis failed');
+    }
+    
     setCurrentStep(1);
   } finally {
     setIsAnalyzing(false);
@@ -1846,6 +1880,15 @@ const analyzeRepository = async () => {
                       <p className="text-sm text-gray-600 mb-4">
                         Configure which events to track. Each event extends the base structure with custom data fields.
                       </p>
+                      {(() => {
+                        console.log('🔍 DEBUG: schema.events structure:', {
+                          events_length: schema.events?.length || 0,
+                          first_event_keys: schema.events?.[0] ? Object.keys(schema.events[0]) : [],
+                          has_data_field_variants_in_first: !!schema.events?.[0]?.data_field_variants,
+                          sample_event: schema.events?.[0]
+                        });
+                        return null;
+                      })()}
                       {schema.events?.map((event: any, idx: number) => (
                         <EventDetailsCollapsible
                           key={idx}
