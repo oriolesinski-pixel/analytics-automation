@@ -3201,7 +3201,7 @@ ${safeContent}`
               form_name: this.getFormName(form),
               surface: this.getSurface(form),
               page_path: window.location.pathname,
-              fields_total: form.elements ? form.elements.length : 0,
+              fields_total: this.countFormFields(form),
               fields_completed: 0
             });
           }
@@ -3241,7 +3241,7 @@ ${safeContent}`
             form_name: this.getFormName(form),
             surface: this.getSurface(form),
             page_path: window.location.pathname,
-            fields_total: form.elements ? form.elements.length : 0,
+            fields_total: this.countFormFields(form),
             fields_completed: tracking ? tracking.fieldsInteracted.size : 0
           });
         }
@@ -3263,7 +3263,7 @@ ${safeContent}`
               form_name: this.getFormName(form),
               surface: this.getSurface(form),
               page_path: window.location.pathname,
-              fields_total: form.elements ? form.elements.length : 0,
+              fields_total: this.countFormFields(form),
               fields_completed: tracking.fieldsInteracted.size
             });
           }
@@ -3522,6 +3522,33 @@ ${safeContent}`
              form.getAttribute('aria-label') ||
              form.id ||
              'form';
+    }
+
+    // Count only visible/fillable form fields (exclude buttons, hidden, submit)
+    countFormFields(form) {
+      if (!form || !form.elements) return 0;
+      
+      let count = 0;
+      const elements = form.elements;
+      
+      for (let i = 0; i < elements.length; i++) {
+        const el = elements[i];
+        const type = (el.type || '').toLowerCase();
+        const tagName = (el.tagName || '').toLowerCase();
+        
+        // Skip buttons, hidden fields, and submit inputs
+        if (type === 'submit' || type === 'button' || type === 'hidden' || type === 'reset') {
+          continue;
+        }
+        if (tagName === 'button') {
+          continue;
+        }
+        
+        // Count this as a fillable field
+        count++;
+      }
+      
+      return count;
     }
 
     // Capture form field values (sanitized for analytics)
