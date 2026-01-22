@@ -4,13 +4,21 @@ import fs from 'node:fs';
 import { z } from 'zod';
 import { Octokit } from '@octokit/rest';
 import { createAppAuth } from '@octokit/auth-app';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// ---------- Supabase ----------
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// ---------- Supabase (lazy initialization) ----------
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _supabase: SupabaseClient<any>;
+function getSupabase() {
+  if (!_supabase) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    _supabase = createClient<any>(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+  }
+  return _supabase;
+}
 
 // ---------- Schemas ----------
 const FullRepo = z.string().regex(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/);
@@ -44,6 +52,7 @@ function branchNameFromCommit(sha: string) { return `aa/analytics-auto-${sha.sli
 function commitMessage(sha: string) { return `chore(analytics): add auto instrumentation for ${sha.slice(0,12)}`; }
 
 async function getRepoRow(owner: string, name: string) {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('repos')
     .select('id, installation_id, default_branch')
@@ -54,6 +63,7 @@ async function getRepoRow(owner: string, name: string) {
 }
 
 async function latestSchemaEvent(repoId: string) {
+  const supabase = getSupabase();
   const { data } = await supabase
     .from('events')
     .select('commit_sha, ts, metadata')
@@ -130,6 +140,8 @@ async function upsertFile(octokit: Octokit, opts: {
 }
 
 export default async function schemaRoutes(app: FastifyInstance) {
+  const supabase = getSupabase();
+  
   // GET /schema/latest?full=owner/name
   app.get('/schema/latest', async (req: FastifyRequest, reply: FastifyReply) => {
     try {

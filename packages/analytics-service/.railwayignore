@@ -1,2 +1,7 @@
-dist/routes/deploy.js
-dist/routes/merge.js
+node_modules
+.git
+*.log
+.env
+.DS_Store
+dist
+

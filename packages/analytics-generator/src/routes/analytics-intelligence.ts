@@ -8,11 +8,20 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-);
+// Lazy-initialized Supabase client (env vars loaded by the time routes are registered)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _supabase: ReturnType<typeof createClient<any>> | null = null;
+function getSupabase() {
+    if (!_supabase) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        _supabase = createClient<any>(
+            process.env.SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            { auth: { persistSession: false } }
+        );
+    }
+    return _supabase;
+}
 
 // Default backend URL configuration
 const DEFAULT_BACKEND_URL = process.env.ANALYTICS_BACKEND_URL || 'https://analytics-service-production-0f0c.up.railway.app/ingest/analytics';
@@ -185,7 +194,7 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
             console.log('  - use_local_repo:', use_local_repo);
 
             // Handle repo record in database
-            let { data: repo } = await supabase
+            let { data: repo } = await getSupabase()
                 .from('repos')
                 .select('*')
                 .eq('id', repo_id)
@@ -204,7 +213,7 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
                     console.log(`Generated new UUID for repo: ${validRepoId}`);
                 }
 
-                const { data: createdRepo, error: createError } = await supabase
+                const { data: createdRepo, error: createError } = await getSupabase()
                     .from('repos')
                     .insert({
                         id: validRepoId,
@@ -219,7 +228,7 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
                 if (createError) {
                     console.error('Failed to create repo:', createError);
                     // Try to find by owner/name as fallback
-                    const { data: existingRepo } = await supabase
+                    const { data: existingRepo } = await getSupabase()
                         .from('repos')
                         .select('*')
                         .eq('owner', repo_owner)
@@ -357,7 +366,7 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
             console.log('🔍 Ready to scan file structure');
 
             // Get latest analyzer run for framework detection (if exists)
-            const { data: latestRun } = await supabase
+            const { data: latestRun } = await getSupabase()
                 .from('analyzer_runs')
                 .select('summary')
                 .eq('repo_id', actualRepoId)
@@ -440,7 +449,7 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
         try {
             const { repo_id } = req.params as any;
 
-            const { data: latest } = await supabase
+            const { data: latest } = await getSupabase()
                 .from('events')
                 .select('metadata, ts')
                 .eq('repo_id', repo_id)
@@ -478,7 +487,7 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
                 files_found: files.length,
                 file_paths: files.map((f: any) => f.path),
                 sample_content: files[0]?.content?.slice(0, 500),
-                repo_path_checked: `/Users/oriolesinski/analytics-automation/examples/demo-next`
+                repo_path_checked: `/Users/oriolesinski/main-project-repo/analytics-automation/examples/demo-next`
             });
         } catch (error: any) {
             return reply.code(500).send({

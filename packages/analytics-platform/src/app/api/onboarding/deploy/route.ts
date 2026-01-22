@@ -1,4 +1,4 @@
-///Users/oriolesinski/analytics-automation/packages/analytics-platform/src/app/api/onboarding/deploy/route.ts
+///Users/oriolesinski/main-project-repo/analytics-automation/packages/analytics-platform/src/app/api/onboarding/deploy/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { Octokit } from '@octokit/rest';
 

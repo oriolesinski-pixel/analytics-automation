@@ -227,14 +227,14 @@ export default function WorkspacePage() {
                     <p className="text-sm text-gray-500 dark:text-gray-400">{tile.description}</p>
                   )}
                   <div className="flex items-center space-x-2 mt-2 text-xs text-gray-400">
-                    {tile.config?.measures?.[0]?.label && (
+                    {'measures' in tile.config && tile.config.measures?.[0]?.label && (
                       <>
                         <span>{tile.config.measures[0].label}</span>
                         <span>•</span>
                       </>
                     )}
-                    <span>{tile.config.chartType || 'chart'}</span>
-                    {tile.config.eventType && (
+                    <span>{'chartType' in tile.config ? tile.config.chartType : 'chart'}</span>
+                    {'eventType' in tile.config && tile.config.eventType && (
                       <>
                         <span>•</span>
                         <span>{tile.config.eventType}</span>

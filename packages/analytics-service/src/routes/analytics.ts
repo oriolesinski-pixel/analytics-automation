@@ -1,231 +1,128 @@
-import type { FastifyInstance } from 'fastify';
-import fp from 'fastify-plugin';
-import { z } from 'zod';
+/**
+ * Analytics Query Routes - Public (no auth required)
+ * 
+ * Basic analytics endpoints for querying event data.
+ * For secured multi-tenant endpoints, see routes-secured/analytics.ts
+ */
+
+import { FastifyInstance } from 'fastify';
 import { createClient } from '@supabase/supabase-js';
-import { logAnalyticsEvent } from '../utils/event-logger';
 
-const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-);
-
-async function analyticsRoutes(app: FastifyInstance) {
-
-    // REMOVED: /analytics/overview endpoint - now handled by ingest.ts
-    // The overview endpoint is in ingest.ts to work with the new table structure
-
-    // Funnel analysis endpoint
-    app.post('/analytics/funnel/graph', async (req, reply) => {
-        try {
-            const query = z.object({
-                app_key: z.string().min(1).optional(),
-                full: z.string().min(1).optional()
-            }).parse((req as any).query);
-
-            // Support both app_key and full format
-            let repo_id: string | null = null;
-
-            if (query.app_key) {
-                // Get repo_id from app_key
-                const app = await supabase
-                    .from('apps')
-                    .select('repo_id')
-                    .eq('app_key', query.app_key)
-                    .single();
-
-                if (app.error) {
-                    return reply.code(404).send({ ok: false, error: 'App not found' });
-                }
-                repo_id = app.data.repo_id;
-            } else if (query.full) {
-                // Parse owner/name from full parameter
-                const [owner, name] = query.full.split('/');
-                if (!owner || !name) {
-                    return reply.code(400).send({ ok: false, error: 'Invalid repo format. Use owner/name' });
-                }
-
-                // Get repo_id from owner/name
-                const repo = await supabase
-                    .from('repos')
-                    .select('id')
-                    .eq('provider', 'github')
-                    .eq('owner', owner)
-                    .eq('name', name)
-                    .single();
-
-                if (repo.error) {
-                    return reply.code(404).send({ ok: false, error: 'Repository not found' });
-                }
-                repo_id = repo.data.id;
-            } else {
-                return reply.code(400).send({ ok: false, error: 'Provide either app_key or full parameter' });
-            }
-
-            // Get events from analytics_product_events table
-            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
-            const { data: events, error } = await supabase
-                .from('analytics_product_events')
-                .select('event_type, user_id, ts')
-                .gte('ts', thirtyDaysAgo.getTime())
-                .order('ts', { ascending: true });
-
-            if (error) {
-                return reply.code(500).send({ ok: false, error: error.message });
-            }
-
-            // Create funnel steps from events
-            const steps: any[] = [];
-
-            // Group events by type and calculate funnel
-            const eventsByType = new Map<string, any[]>();
-            events.forEach((event: any) => {
-                const eventType = event.event_type || 'UNKNOWN';
-                if (!eventsByType.has(eventType)) {
-                    eventsByType.set(eventType, []);
-                }
-                eventsByType.get(eventType)!.push(event);
-            });
-
-            // Calculate conversion funnel
-            const totalUsers = new Set(events.map((e: any) => e.user_id).filter(Boolean)).size;
-            let stepNumber = 1;
-
-            for (const [eventType, eventList] of eventsByType.entries()) {
-                const uniqueUsers = new Set(eventList.map((e: any) => e.user_id).filter(Boolean)).size;
-                const conversionRate = totalUsers > 0 ? (uniqueUsers / totalUsers) * 100 : 0;
-
-                steps.push({
-                    step: stepNumber++,
-                    event_type: eventType,
-                    count: eventList.length,
-                    unique_users: uniqueUsers,
-                    conversion_rate: Math.round(conversionRate * 10) / 10
-                });
-            }
-
-            // Sort by count descending to create a proper funnel
-            steps.sort((a, b) => b.count - a.count);
-
-            // Recalculate step numbers and conversion rates based on funnel order
-            steps.forEach((step, index) => {
-                step.step = index + 1;
-                if (index === 0) {
-                    step.conversion_rate = 100;
-                } else {
-                    step.conversion_rate = Math.round((step.count / steps[0].count) * 100 * 10) / 10;
-                }
-            });
-
-            return reply.send({
-                ok: true,
-                funnel: {
-                    repo_id: repo_id,
-                    period: {
-                        from: thirtyDaysAgo.toISOString(),
-                        to: new Date().toISOString()
-                    },
-                    total_events: events.length,
-                    unique_users: totalUsers,
-                    steps: steps
-                }
-            });
-
-        } catch (error: any) {
-            return reply.code(400).send({ ok: false, error: error.message });
-        }
-    });
-
-    // Daily sessions endpoint
-    app.get('/analytics/session/daily', async (req, reply) => {
-        try {
-            const query = z.object({
-                app_key: z.string().min(1).optional(),
-                full: z.string().min(1).optional(),
-                days: z.coerce.number().optional().default(30)
-            }).parse((req as any).query);
-
-            let app_key: string | null = null;
-
-            if (query.app_key) {
-                app_key = query.app_key;
-            } else if (query.full) {
-                // For backward compatibility with full format
-                const [owner, name] = query.full.split('/');
-                if (!owner || !name) {
-                    return reply.code(400).send({ ok: false, error: 'Invalid repo format. Use owner/name' });
-                }
-                // Use full as a pseudo app_key
-                app_key = `${owner}-${name}`;
-            } else {
-                return reply.code(400).send({ ok: false, error: 'Provide either app_key or full parameter' });
-            }
-
-            // Get events from analytics_product_events for the specified period
-            const fromDate = new Date(Date.now() - query.days * 24 * 60 * 60 * 1000);
-
-            const { data: events, error } = await supabase
-                .from('analytics_product_events')
-                .select('ts, user_id, session_id')
-                .eq('app_key', app_key)
-                .gte('ts', fromDate.getTime())
-                .order('ts', { ascending: true });
-
-            if (error) {
-                return reply.code(500).send({ ok: false, error: error.message });
-            }
-
-            // Group events by day and calculate session metrics
-            const dailyMetrics = new Map<string, { date: string; sessions: Set<string>; users: Set<string>; events: number }>();
-
-            events.forEach((event: any) => {
-                const date = new Date(event.ts).toISOString().split('T')[0]; // YYYY-MM-DD
-                const userId = event.user_id;
-                const sessionId = event.session_id;
-
-                if (!dailyMetrics.has(date)) {
-                    dailyMetrics.set(date, {
-                        date,
-                        sessions: new Set(),
-                        users: new Set(),
-                        events: 0
-                    });
-                }
-
-                const dayData = dailyMetrics.get(date)!;
-                if (userId) dayData.users.add(userId);
-                if (sessionId) dayData.sessions.add(sessionId);
-                dayData.events++;
-            });
-
-            // Convert to array format expected by frontend
-            const metrics = Array.from(dailyMetrics.values()).map(day => ({
-                date: day.date,
-                sessions: day.sessions.size,
-                unique_users: day.users.size,
-                events: day.events
-            }));
-
-            return reply.send({
-                ok: true,
-                daily_sessions: {
-                    app_key: app_key,
-                    period: {
-                        from: fromDate.toISOString(),
-                        to: new Date().toISOString()
-                    },
-                    metrics: metrics
-                }
-            });
-
-        } catch (error: any) {
-            return reply.code(400).send({ ok: false, error: error.message });
-        }
-    });
-
-    // Simple ping endpoint
-    app.get('/analytics/ping', async () => ({ ok: true }));
+// Lazy-initialized Supabase client (env vars loaded by the time routes are registered)
+let _supabase: ReturnType<typeof createClient> | null = null;
+function getSupabase() {
+    if (!_supabase) {
+        _supabase = createClient(
+            process.env.SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            { auth: { persistSession: false } }
+        );
+    }
+    return _supabase;
 }
 
-export default fp(analyticsRoutes, { name: 'analytics-routes' });
+export default async function analyticsRoutes(app: FastifyInstance) {
+
+  /**
+   * GET /analytics/events - Query events with filters
+   */
+  app.get('/analytics/events', async (req, reply) => {
+    try {
+      const { 
+        app_key, 
+        event_type, 
+        start_date, 
+        end_date, 
+        limit = 100,
+        offset = 0
+      } = req.query as {
+        app_key?: string;
+        event_type?: string;
+        start_date?: string;
+        end_date?: string;
+        limit?: number;
+        offset?: number;
+      };
+
+      const safeLimit = Math.min(Number(limit), 1000);
+
+      let query = getSupabase()
+        .from('analytics_product_events')
+        .select('*')
+        .order('timestamp', { ascending: false })
+        .range(Number(offset), Number(offset) + safeLimit - 1);
+
+      if (app_key) query = query.eq('app_key', app_key);
+      if (event_type) query = query.eq('event_type', event_type);
+      if (start_date) query = query.gte('timestamp', start_date);
+      if (end_date) query = query.lte('timestamp', end_date);
+
+      const { data: events, error } = await query;
+
+      if (error) {
+        req.log.error({ error: error.message }, 'Failed to fetch events');
+        return reply.code(500).send({ ok: false, error: error.message });
+      }
+
+      return reply.send({ 
+        ok: true, 
+        events: events || [],
+        count: events?.length || 0
+      });
+
+    } catch (error: any) {
+      req.log.error({ error: error.message }, 'Query events error');
+      return reply.code(500).send({ ok: false, error: error.message });
+    }
+  });
+
+  /**
+   * GET /analytics/summary - Get summary stats
+   */
+  app.get('/analytics/summary', async (req, reply) => {
+    try {
+      const { app_key } = req.query as { app_key?: string };
+
+      let query = getSupabase()
+        .from('analytics_product_events')
+        .select('event_type', { count: 'exact' });
+
+      if (app_key) query = query.eq('app_key', app_key);
+
+      const { count, error } = await query;
+
+      if (error) {
+        return reply.code(500).send({ ok: false, error: error.message });
+      }
+
+      return reply.send({ 
+        ok: true,
+        total_events: count || 0
+      });
+
+    } catch (error: any) {
+      return reply.code(500).send({ ok: false, error: error.message });
+    }
+  });
+
+  /**
+   * GET /analytics/apps - List apps
+   */
+  app.get('/analytics/apps', async (req, reply) => {
+    try {
+      const { data: apps, error } = await getSupabase()
+        .from('apps')
+        .select('id, app_key, name, created_at')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        return reply.code(500).send({ ok: false, error: error.message });
+      }
+
+      return reply.send({ ok: true, apps: apps || [] });
+
+    } catch (error: any) {
+      return reply.code(500).send({ ok: false, error: error.message });
+    }
+  });
+}

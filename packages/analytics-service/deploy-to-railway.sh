@@ -9,10 +9,10 @@ echo "=================================================="
 echo ""
 
 # Load environment variables
-if [ -f "../../../analytics-automation/.env" ]; then
+if [ -f "../../.env" ]; then
     echo "✅ Found .env file, loading credentials..."
-    export $(cat ../../../analytics-automation/.env | grep -E "^SUPABASE_URL=" | xargs)
-    export $(cat ../../../analytics-automation/.env | grep -E "^SUPABASE_SERVICE_ROLE_KEY=" | xargs)
+    export $(cat ../../.env | grep -E "^SUPABASE_URL=" | xargs)
+    export $(cat ../../.env | grep -E "^SUPABASE_SERVICE_ROLE_KEY=" | xargs)
 fi
 
 # Check if credentials are available

@@ -47,3 +47,16 @@ export function AlertDescription({ className = '', children }: AlertDescriptionP
   );
 }
 
+interface AlertTitleProps {
+  className?: string;
+  children: React.ReactNode;
+}
+
+export function AlertTitle({ className = '', children }: AlertTitleProps) {
+  return (
+    <h5 className={`font-medium leading-none tracking-tight ${className}`}>
+      {children}
+    </h5>
+  );
+}
+

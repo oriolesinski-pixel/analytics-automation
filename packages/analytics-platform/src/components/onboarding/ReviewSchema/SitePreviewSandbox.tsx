@@ -1,4 +1,4 @@
-///Users/oriolesinski/analytics-automation/packages/analytics-platform/src/components/onboarding/ReviewSchema/SitePreviewSandbox.tsx
+///Users/oriolesinski/main-project-repo/analytics-automation/packages/analytics-platform/src/components/onboarding/ReviewSchema/SitePreviewSandbox.tsx
 'use client';
 
 import React, { useMemo } from 'react';

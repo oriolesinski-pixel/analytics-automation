@@ -1,12 +1,12 @@
 {
-  "name": "analytics-service",
+  "name": "@analytics-automation-main-project-repo/service",
   "private": true,
   "version": "0.1.0",
   "engines": {
     "node": ">=20.0.0"
   },
   "scripts": {
-    "dev": "tsx src/server.ts",
+    "dev": "tsx --import ./src/env.ts src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "worker:once": "tsx scripts/analyzer-worker.ts",
@@ -21,6 +21,7 @@
     "dotenv": "^17.2.2",
     "fastify": "^4.28.1",
     "fastify-plugin": "^5.0.1",
+    "ioredis": "^5.9.2",
     "node-fetch": "^3.3.2",
     "octokit": "^5.0.3",
     "openai": "^5.15.0",
@@ -28,6 +29,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/ioredis": "^4.28.10",
     "@types/node": "^24.3.3",
     "@types/terser": "^3.8.1",
     "nodemon": "^3.1.10",

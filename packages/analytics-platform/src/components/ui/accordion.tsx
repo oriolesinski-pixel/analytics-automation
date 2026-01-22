@@ -16,9 +16,10 @@ interface AccordionProps {
   children: React.ReactNode;
   className?: string;
   defaultValue?: string[];
+  collapsible?: boolean;
 }
 
-export function Accordion({ type = 'single', children, className = '', defaultValue = [] }: AccordionProps) {
+export function Accordion({ type = 'single', children, className = '', defaultValue = [], collapsible = true }: AccordionProps) {
   const [openItems, setOpenItems] = useState<string[]>(defaultValue);
 
   const toggleItem = (value: string) => {

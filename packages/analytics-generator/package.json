@@ -1,9 +1,9 @@
 {
-  "name": "analytics-generator",
+  "name": "@analytics-automation-main-project-repo/generator",
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "tsx src/server.ts",
+    "dev": "tsx --import ./src/env.ts src/server.ts",
     "worker:once": "tsx scripts/analyzer-worker.ts",
     "worker:loop": "bash scripts/worker-loop.sh"
   },

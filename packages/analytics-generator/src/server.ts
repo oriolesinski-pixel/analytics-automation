@@ -1,7 +1,7 @@
-import 'dotenv/config';
+// env.ts is preloaded via --import flag in package.json
+import path from 'path';
 import Fastify from 'fastify';
 import fs from 'fs';
-import path from 'path';
 import crypto from 'crypto';
 import { Octokit } from '@octokit/rest';
 import { createAppAuth } from '@octokit/auth-app';
@@ -43,33 +43,62 @@ function getGithubPrivateKey(): string {
     return '';
 }
 
-function requireEnv(name: string): string {
+function getEnv(name: string, defaultValue?: string): string {
     const v = process.env[name];
-    if (!v) throw new Error(`Missing required env: ${name}`);
+    if (!v) {
+        if (defaultValue !== undefined) return defaultValue;
+        console.warn(`⚠️  Missing env: ${name} - some features may not work`);
+        return '';
+    }
     return v;
 }
 
-const APP_ID = Number(requireEnv('GITHUB_APP_ID'));
-const GH_APP_SLUG = requireEnv('GH_APP_SLUG');
-const WEBHOOK_SECRET = requireEnv('GITHUB_WEBHOOK_SECRET');
+// GitHub App config - optional for basic functionality
+const APP_ID = Number(getEnv('GITHUB_APP_ID', '0'));
+const GH_APP_SLUG = getEnv('GH_APP_SLUG', 'analytics-app');
+const WEBHOOK_SECRET = getEnv('GITHUB_WEBHOOK_SECRET', '');
 const PRIVATE_KEY = getGithubPrivateKey();
 if (!PRIVATE_KEY) app.log.warn('⚠️  No GitHub private key found (set GITHUB_PRIVATE_KEY_PATH or GITHUB_PRIVATE_KEY).');
 
-// ---- Octokit (App auth) ----
-const octokit = new Octokit({
-    authStrategy: createAppAuth,
-    auth: {
-        appId: APP_ID,
-        privateKey: PRIVATE_KEY
+// ---- Octokit (App auth) - lazy initialization ----
+let _octokit: Octokit | null = null;
+function getOctokit(): Octokit {
+    if (!_octokit) {
+        if (!APP_ID || APP_ID === 0) {
+            console.warn('⚠️ GitHub App not configured - GitHub integration features will not work');
+            // Create a minimal Octokit without app auth for basic operations
+            _octokit = new Octokit();
+        } else {
+            _octokit = new Octokit({
+                authStrategy: createAppAuth,
+                auth: {
+                    appId: APP_ID,
+                    privateKey: PRIVATE_KEY
+                }
+            });
+        }
     }
+    return _octokit;
+}
+// Backward compatible - octokit is now a getter
+const octokit = new Proxy({} as Octokit, {
+    get: (_, prop) => (getOctokit() as any)[prop]
 });
 
-// ---- Supabase client ----
-const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-);
+// ---- Supabase client (lazy initialization) ----
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _supabase: ReturnType<typeof createClient<any>>;
+function getSupabase() {
+    if (!_supabase) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        _supabase = createClient<any>(
+            process.env.SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!,
+            { auth: { persistSession: false, autoRefreshToken: false } }
+        );
+    }
+    return _supabase;
+}
 
 function parseFullName(full: string) {
     const [owner, name] = String(full).split('/');
@@ -85,7 +114,7 @@ async function ensureRepo(args: {
     const defaultBranch = args.default_branch ?? 'main';
     const installationId = args.installation_id ?? null;
 
-    const up = await supabase
+    const up = await getSupabase()
         .from('repos')
         .upsert(
             {
@@ -106,7 +135,7 @@ async function ensureRepo(args: {
 
 async function findRepoId(full_name: string): Promise<string | null> {
     const { owner, name } = parseFullName(full_name);
-    const q = await supabase
+    const q = await getSupabase()
         .from('repos')
         .select('id')
         .eq('provider', 'github')
@@ -131,6 +160,7 @@ let hasRaw = false;
 
 async function start() {
     hasRaw = true;
+    const supabase = getSupabase();
 
     // ---- routes ----
     app.get('/healthz', async () => ({ ok: true }));

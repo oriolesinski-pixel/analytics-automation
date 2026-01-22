@@ -32,7 +32,7 @@ The AI Analytics Wizard is a natural language interface for querying analytics d
 ## File Structure
 
 ```
-/analytics-automation/packages/analytics-platform/src/
+/analytics-automation-main-project-repo/packages/analytics-platform/src/
 ├── components/ai-wiz/
 │   ├── AIWizard.tsx              # Main container component
 │   ├── DynamicChart.tsx          # Dynamic chart renderer

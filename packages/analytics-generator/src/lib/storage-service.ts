@@ -1,17 +1,26 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+let _supabase: SupabaseClient;
+function getSupabase() {
+  if (!_supabase) {
+    _supabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+  }
+  return _supabase;
+}
 
 export class StorageService {
+  private get supabase() {
+    return getSupabase();
+  }
   private bucketName = 'generated-analytics';
 
   async initialize() {
-    const { data: buckets } = await supabase.storage.listBuckets();
+    const { data: buckets } = await this.supabase.storage.listBuckets();
     if (!buckets?.find(b => b.name === this.bucketName)) {
-      await supabase.storage.createBucket(this.bucketName, {
+      await this.supabase.storage.createBucket(this.bucketName, {
         public: false
       });
     }
@@ -19,14 +28,14 @@ export class StorageService {
 
   async saveOutput(repoId: string, type: string, content: any) {
     const path = `${repoId}/${type}/${Date.now()}.json`;
-    const { data, error } = await supabase.storage
+    const { data, error } = await this.supabase.storage
       .from(this.bucketName)
       .upload(path, JSON.stringify(content, null, 2));
     
     if (error) throw error;
     
     // Save metadata to database
-    await supabase.from('generated_outputs').insert({
+    await this.supabase.from('generated_outputs').insert({
       repo_id: repoId,
       output_type: type,
       file_path: path,
@@ -45,7 +54,7 @@ export class StorageService {
   }
 
   async getLatest(repoId: string, type: string) {
-    const { data } = await supabase
+    const { data } = await this.supabase
       .from('generated_outputs')
       .select('*')
       .eq('repo_id', repoId)
@@ -56,7 +65,7 @@ export class StorageService {
     
     if (!data) return null;
     
-    const { data: file } = await supabase.storage
+    const { data: file } = await this.supabase.storage
       .from(this.bucketName)
       .download(data.file_path);
     
@@ -64,7 +73,7 @@ export class StorageService {
   }
 
   private async getSignedUrl(path: string) {
-    const { data } = await supabase.storage
+    const { data } = await this.supabase.storage
       .from(this.bucketName)
       .createSignedUrl(path, 3600);
     return data?.signedUrl;

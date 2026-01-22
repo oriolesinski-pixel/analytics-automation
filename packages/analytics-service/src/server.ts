@@ -1,5 +1,5 @@
 // packages/analytics-service/src/server.ts
-import 'dotenv/config';
+// env.ts is preloaded via --import flag in package.json
 import Fastify from 'fastify';
 import { createClient } from '@supabase/supabase-js';
 import ingestRoutes from './routes/ingest';

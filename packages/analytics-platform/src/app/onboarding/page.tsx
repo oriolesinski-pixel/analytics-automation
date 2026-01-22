@@ -1,4 +1,4 @@
-//analytics-automation/packages/analytics-platform/src/app/api/analyze/progress/route.ts
+//analytics-automation-main-project-repo/packages/analytics-platform/src/app/api/analyze/progress/route.ts
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';

@@ -67,4 +67,13 @@ export function RecursiveDirectoryTree({
   // Fetch directory contents at any depth
   const fetchDirectoryContents = async (repo: Repository, dirPath: string = '') => {
     const pathKey = `${repo.id}:${dirPath}`;
-    
+    // TODO: Implement fetch logic
+  };
+
+  // Component temporarily disabled - file was truncated
+  return (
+    <div className="p-4 text-gray-500">
+      RecursiveDirectoryTree component is temporarily unavailable (file was truncated during recovery).
+    </div>
+  );
+}

@@ -85,10 +85,11 @@ export default function DashboardComposer({ params }: DashboardComposerProps) {
   }, [dashboardId]);
 
   const handleLayoutChange = useCallback(
-    (layout: GridLayout[], layouts: Layouts) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (layout: GridLayout[], layouts: any) => {
       if (isEditing) {
         console.log('Layout changed, saving...', layouts.lg);
-        debouncedSaveLayout(layouts);
+        debouncedSaveLayout(layouts as Layouts);
       }
     },
     [isEditing, debouncedSaveLayout]
@@ -387,7 +388,7 @@ export default function DashboardComposer({ params }: DashboardComposerProps) {
             rowHeight={100}
             isDraggable={isEditing}
             isResizable={isEditing}
-            onLayoutChange={handleLayoutChange}
+            onLayoutChange={handleLayoutChange as any}
             onDragStart={handleDragStart}
             onDragStop={handleDragStop}
             onResizeStart={handleDragStart}

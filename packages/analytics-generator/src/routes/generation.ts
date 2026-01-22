@@ -116,7 +116,7 @@ async function analyticsIntelligenceRoutes(app: FastifyInstance) {
                 files_found: files.length,
                 file_paths: files.map((f: any) => f.path),
                 sample_content: files[0]?.content?.slice(0, 500),
-                repo_path_checked: `/Users/oriolesinski/analytics-automation/examples/demo-next`
+                repo_path_checked: `/Users/oriolesinski/main-project-repo/analytics-automation/examples/demo-next`
             });
         } catch (error: any) {
             return reply.code(500).send({
