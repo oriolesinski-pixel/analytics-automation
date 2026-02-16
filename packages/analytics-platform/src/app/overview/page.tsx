@@ -4,27 +4,22 @@ import { useState, useEffect } from 'react';
 import { BarChart3, TrendingUp, Users, Activity, Zap, Globe, Monitor, Smartphone, Flame, FileText, Layers, Sparkles } from 'lucide-react';
 import { SitePreviewSandbox } from '@/components/onboarding/ReviewSchema';
 import { UIGraphWithTraffic } from '@/components/UIGraphWithTraffic';
+import { useAppKey } from '@/lib/AppKeyContext';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082';
 
 export default function OverviewPage() {
-  const [appKey, setAppKey] = useState('');
+  const { appKey } = useAppKey();
   const [schema, setSchema] = useState<any>(null);
   const [previewDevice, setPreviewDevice] = useState('desktop');
   const [isLoading, setIsLoading] = useState(true);
   const [realtimeStats, setRealtimeStats] = useState<any>(null);
 
   useEffect(() => {
+    if (!appKey) return;
     const loadData = async () => {
       console.log('🔍 === OVERVIEW PAGE LOADING DATA ===');
-      
-      // Get app key from storage (try multiple locations)
-      const storedKey = localStorage.getItem('app_key') || 
-                       sessionStorage.getItem('app_key') || 
-                       sessionStorage.getItem('onboarding_app_key') || 
-                       localStorage.getItem('onboarding_app_key') || '';
-      console.log('   App Key found:', storedKey);
-      setAppKey(storedKey);
+      console.log('   App Key found:', appKey);
 
       // Try to load schema from storage first - check all possible locations
       const storedSchema = sessionStorage.getItem('onboarding_schema') || 
@@ -93,7 +88,7 @@ export default function OverviewPage() {
       console.log('⚠️ No schema found in storage - building from event data');
       
       // If no schema, build one from actual event data
-      if (storedKey) {
+      if (appKey) {
         try {
           const now = new Date();
           const startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // Last 30 days
@@ -102,7 +97,7 @@ export default function OverviewPage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              app_key: storedKey,
+              app_key: appKey,
               event_type: 'PAGE_VIEW',
               measure: { aggregation: 'count', label: 'Views' },
               dimensions: [{ id: 'path', field: 'data->path', label: 'Path', type: 'categorical' }],
@@ -225,7 +220,7 @@ export default function OverviewPage() {
     };
     
     loadData();
-  }, []);
+  }, [appKey]);
 
   // Fetch realtime stats
   useEffect(() => {

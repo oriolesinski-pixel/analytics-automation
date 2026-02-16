@@ -1,18 +1,22 @@
 // lib/queryBuilder.ts
 // Query builder logic for tile queries
 
-import { TileConfig, Dimension, Filter } from './tile-types';
+import { TileConfig, Dimension, Filter, Measure } from './tile-types';
+
+export interface MeasureRequest {
+  aggregation: string;
+  field?: string;
+  conditions?: Array<{ field: string; operator: string; value: string | number }>;
+}
 
 export interface TileQueryRequest {
   app_key: string;
   event_type?: string;
-  measure: {
-    aggregation: string;
-    field?: string;
-  };
+  measure?: MeasureRequest;
+  measures?: MeasureRequest[];
   dimensions: Array<{
     field: string;
-    bucket?: string; // For temporal dimensions: 'hour', 'day', 'week', 'month'
+    bucket?: string;
     type: string;
   }>;
   filters: Array<{
@@ -21,16 +25,24 @@ export interface TileQueryRequest {
     value: string | number | string[];
   }>;
   date_range: {
-    start: string; // ISO string
-    end: string; // ISO string
+    start: string;
+    end: string;
   };
+}
+
+function measureToRequest(m: Measure): MeasureRequest {
+  const req: MeasureRequest = {
+    aggregation: m.aggregation,
+  };
+  if (m.field) req.field = m.field;
+  if (m.conditions && m.conditions.length > 0) req.conditions = m.conditions;
+  return req;
 }
 
 export function buildTileQueryRequest(
   config: TileConfig,
   appKey: string
 ): TileQueryRequest {
-  // Handle both Date objects and ISO strings for dateRange
   const startDate = config.dateRange?.start instanceof Date 
     ? config.dateRange.start.toISOString()
     : config.dateRange?.start;
@@ -38,10 +50,7 @@ export function buildTileQueryRequest(
     ? config.dateRange.end.toISOString()
     : config.dateRange?.end;
 
-  // Use the first measure for now (backend currently supports single measure)
-  const primaryMeasure = config.measures?.[0];
-
-  if (!primaryMeasure) {
+  if (!config.measures || config.measures.length === 0) {
     throw new Error('No measure defined for tile');
   }
 
@@ -49,13 +58,12 @@ export function buildTileQueryRequest(
     throw new Error('Invalid date range for tile');
   }
 
-  return {
+  const hasMultipleMeasures = config.measures.length > 1;
+  const hasConditions = config.measures.some(m => m.conditions && m.conditions.length > 0);
+
+  const base: TileQueryRequest = {
     app_key: appKey,
     event_type: config.eventType,
-    measure: {
-      aggregation: primaryMeasure.aggregation,
-      field: primaryMeasure.field,
-    },
     dimensions: (config.dimensions || []).map(d => ({
       field: d.field,
       bucket: d.type === 'temporal' ? d.id : undefined,
@@ -71,19 +79,31 @@ export function buildTileQueryRequest(
       end: endDate,
     },
   };
+
+  if (hasMultipleMeasures || hasConditions) {
+    base.measures = config.measures.map(measureToRequest);
+  } else {
+    base.measure = measureToRequest(config.measures[0]);
+  }
+
+  return base;
 }
 
 // Transform query result for different chart types
 export function transformDataForChart(
   data: Array<Record<string, any>>,
   dimensions: Dimension[],
-  measureId: string
+  measureId: string,
+  measures?: Measure[],
+  computedFormula?: 'rate',
 ): Array<Record<string, any>> {
   if (!data || data.length === 0) {
     return [];
   }
 
-  // For charts, we need to ensure consistent naming
+  // Check if response uses multi-measure format (measure_value_0, measure_value_1, ...)
+  const isMultiMeasure = data[0] && 'measure_value_0' in data[0];
+
   return data.map(row => {
     const transformed: Record<string, any> = {};
     
@@ -95,8 +115,31 @@ export function transformDataForChart(
       }
     });
     
-    // Add measure value
-    transformed.value = row.measure_value || 0;
+    if (isMultiMeasure && measures) {
+      // Multi-measure: add each measure as a named key
+      const rawValues: number[] = [];
+      measures.forEach((m, idx) => {
+        rawValues[idx] = row[`measure_value_${idx}`] || 0;
+      });
+
+      const hasDimensions = dimensions.length > 0;
+
+      const hasTemporal = dimensions.some(d => d.type === 'temporal');
+      if (computedFormula === 'rate' && measures.length >= 2 && hasDimensions && hasTemporal) {
+        // Rate mode for time-series: keep measure[0] raw, replace measure[1] with rate per bucket
+        transformed[measures[0].label] = rawValues[0];
+        const denominator = rawValues[0] || 1;
+        transformed[measures[1].label] = parseFloat(((rawValues[1] / denominator) * 100).toFixed(1));
+      } else {
+        // Aggregate (no dimensions) or non-rate: pass raw values — BigNumber handles rate
+        measures.forEach((m, idx) => {
+          transformed[m.label] = rawValues[idx];
+        });
+      }
+      transformed.value = rawValues[0];
+    } else {
+      transformed.value = row.measure_value || 0;
+    }
     
     return transformed;
   });
@@ -112,7 +155,7 @@ export function suggestChartType(dimensions: Dimension[]): string {
   const hasCategorical = dimensions.some(d => d.type === 'categorical');
   
   if (hasTemporal) {
-    return 'line';
+    return 'area';
   }
   
   if (hasCategorical && dimensions.length === 1) {

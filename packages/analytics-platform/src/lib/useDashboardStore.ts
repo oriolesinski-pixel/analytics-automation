@@ -1,11 +1,21 @@
 // lib/useDashboardStore.ts
 // Zustand store for dashboard and tile management
+// All operations pass app_key for tenant isolation
 
 import { create } from 'zustand';
 import { SavedTile, Dashboard, Layouts, GRID_CONFIG } from './dashboard-types';
 import { TileConfig } from './tile-types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082';
+
+/** Build query string with app_key and optional admin flag */
+function tenantQuery(appKey?: string, admin?: boolean): string {
+  const params = new URLSearchParams();
+  if (appKey) params.set('app_key', appKey);
+  if (admin) params.set('admin', 'true');
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
 
 interface DashboardStore {
   // State
@@ -16,22 +26,22 @@ interface DashboardStore {
   error: string | null;
   
   // Dashboards
-  fetchDashboards: (appKey: string) => Promise<void>;
-  fetchDashboard: (id: string) => Promise<void>;
+  fetchDashboards: (appKey: string, admin?: boolean) => Promise<void>;
+  fetchDashboard: (id: string, appKey?: string, admin?: boolean) => Promise<void>;
   createDashboard: (name: string, description: string | undefined, appKey: string) => Promise<string>;
-  updateDashboard: (id: string, name?: string, description?: string) => Promise<void>;
-  deleteDashboard: (id: string) => Promise<void>;
-  updateDashboardLayout: (id: string, layouts: Layouts) => Promise<void>;
+  updateDashboard: (id: string, name?: string, description?: string, appKey?: string, admin?: boolean) => Promise<void>;
+  deleteDashboard: (id: string, appKey?: string, admin?: boolean) => Promise<void>;
+  updateDashboardLayout: (id: string, layouts: Layouts, appKey?: string, admin?: boolean) => Promise<void>;
   
   // Saved Tiles
-  fetchSavedTiles: (appKey: string) => Promise<void>;
+  fetchSavedTiles: (appKey: string, admin?: boolean) => Promise<void>;
   saveTile: (name: string, description: string | undefined, config: TileConfig, appKey: string) => Promise<string>;
-  updateTile: (id: string, name?: string, description?: string, config?: TileConfig) => Promise<void>;
-  deleteTile: (id: string) => Promise<void>;
+  updateTile: (id: string, name?: string, description?: string, config?: TileConfig, appKey?: string, admin?: boolean) => Promise<void>;
+  deleteTile: (id: string, appKey?: string, admin?: boolean) => Promise<void>;
   
   // Dashboard Composition
-  addTileToDashboard: (dashboardId: string, tileId: string, layout: any) => Promise<void>;
-  removeTileFromDashboard: (dashboardId: string, tileId: string) => Promise<void>;
+  addTileToDashboard: (dashboardId: string, tileId: string, layout: any, appKey?: string, admin?: boolean) => Promise<void>;
+  removeTileFromDashboard: (dashboardId: string, tileId: string, appKey?: string, admin?: boolean) => Promise<void>;
   
   // Utility
   reset: () => void;
@@ -44,10 +54,10 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   isLoading: false,
   error: null,
   
-  fetchDashboards: async (appKey: string) => {
+  fetchDashboards: async (appKey: string, admin?: boolean) => {
     set({ isLoading: true, error: null });
     try {
-      const response = await fetch(`${API_BASE_URL}/dashboards?app_key=${appKey}`);
+      const response = await fetch(`${API_BASE_URL}/dashboards${tenantQuery(appKey, admin)}`);
       const data = await response.json();
       if (data.ok) {
         set({ dashboards: data.dashboards, isLoading: false });
@@ -59,10 +69,10 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
   
-  fetchDashboard: async (id: string) => {
+  fetchDashboard: async (id: string, appKey?: string, admin?: boolean) => {
     set({ isLoading: true, error: null });
     try {
-      const response = await fetch(`${API_BASE_URL}/dashboards/${id}`);
+      const response = await fetch(`${API_BASE_URL}/dashboards/${id}${tenantQuery(appKey, admin)}`);
       const data = await response.json();
       if (data.ok) {
         set({ currentDashboard: data.dashboard, isLoading: false });
@@ -93,9 +103,9 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
   
-  updateDashboard: async (id: string, name?: string, description?: string) => {
+  updateDashboard: async (id: string, name?: string, description?: string, appKey?: string, admin?: boolean) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/dashboards/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/dashboards/${id}${tenantQuery(appKey, admin)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, description }),
@@ -115,9 +125,9 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
   
-  deleteDashboard: async (id: string) => {
+  deleteDashboard: async (id: string, appKey?: string, admin?: boolean) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/dashboards/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/dashboards/${id}${tenantQuery(appKey, admin)}`, {
         method: 'DELETE',
       });
       const data = await response.json();
@@ -134,9 +144,9 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
   
-  updateDashboardLayout: async (id: string, layouts: Layouts) => {
+  updateDashboardLayout: async (id: string, layouts: Layouts, appKey?: string, admin?: boolean) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/dashboards/${id}/layout`, {
+      const response = await fetch(`${API_BASE_URL}/dashboards/${id}/layout${tenantQuery(appKey, admin)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ layouts }),
@@ -157,10 +167,10 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
   
-  fetchSavedTiles: async (appKey: string) => {
+  fetchSavedTiles: async (appKey: string, admin?: boolean) => {
     set({ isLoading: true, error: null });
     try {
-      const response = await fetch(`${API_BASE_URL}/tiles?app_key=${appKey}`);
+      const response = await fetch(`${API_BASE_URL}/tiles${tenantQuery(appKey, admin)}`);
       const data = await response.json();
       if (data.ok) {
         set({ savedTiles: data.tiles, isLoading: false });
@@ -191,9 +201,9 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
   
-  updateTile: async (id: string, name?: string, description?: string, config?: TileConfig) => {
+  updateTile: async (id: string, name?: string, description?: string, config?: TileConfig, appKey?: string, admin?: boolean) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/tiles/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/tiles/${id}${tenantQuery(appKey, admin)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, description, config }),
@@ -212,9 +222,9 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
   
-  deleteTile: async (id: string) => {
+  deleteTile: async (id: string, appKey?: string, admin?: boolean) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/tiles/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/tiles/${id}${tenantQuery(appKey, admin)}`, {
         method: 'DELETE',
       });
       const data = await response.json();
@@ -231,17 +241,16 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
   
-  addTileToDashboard: async (dashboardId: string, tileId: string, layout: any) => {
+  addTileToDashboard: async (dashboardId: string, tileId: string, layout: any, appKey?: string, admin?: boolean) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/dashboards/${dashboardId}/tiles`, {
+      const response = await fetch(`${API_BASE_URL}/dashboards/${dashboardId}/tiles${tenantQuery(appKey, admin)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tile_id: tileId, layout_config: layout }),
       });
       const data = await response.json();
       if (data.ok) {
-        // Refresh dashboard to get updated tiles
-        await get().fetchDashboard(dashboardId);
+        await get().fetchDashboard(dashboardId, appKey, admin);
       } else {
         throw new Error(data.error);
       }
@@ -251,15 +260,14 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     }
   },
   
-  removeTileFromDashboard: async (dashboardId: string, tileId: string) => {
+  removeTileFromDashboard: async (dashboardId: string, tileId: string, appKey?: string, admin?: boolean) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/dashboards/${dashboardId}/tiles/${tileId}`, {
+      const response = await fetch(`${API_BASE_URL}/dashboards/${dashboardId}/tiles/${tileId}${tenantQuery(appKey, admin)}`, {
         method: 'DELETE',
       });
       const data = await response.json();
       if (data.ok) {
-        // Refresh dashboard to get updated tiles
-        await get().fetchDashboard(dashboardId);
+        await get().fetchDashboard(dashboardId, appKey, admin);
       } else {
         throw new Error(data.error);
       }
@@ -279,4 +287,3 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
     });
   },
 }));
-

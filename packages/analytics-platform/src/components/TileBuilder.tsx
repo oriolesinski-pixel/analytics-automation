@@ -8,6 +8,7 @@ import {
   X,
   BarChart3,
   LineChart as LineChartIcon,
+  AreaChart as AreaChartIcon,
   PieChart as PieChartIcon,
   Table,
   Hash,
@@ -30,6 +31,7 @@ import {
   Layers,
   Clock,
   Tag,
+  Palette,
 } from 'lucide-react';
 import {
   DndContext,
@@ -63,6 +65,7 @@ import {
   Dimension,
   Filter,
   ChartType,
+  ChartStyle,
   FlowStep,
   FlowStepCondition,
   getMeasuresForEventType,
@@ -115,7 +118,7 @@ function SortableDimensionChip({ dimension, onRemove }: { dimension: Dimension; 
   );
 }
 
-function SortableMeasureChip({ measure, onRemove }: { measure: Measure; onRemove: () => void }) {
+function SortableMeasureChip({ measure, onRemove, showAxisToggle, onToggleAxis }: { measure: Measure; onRemove: () => void; showAxisToggle?: boolean; onToggleAxis?: () => void }) {
   const {
     attributes,
     listeners,
@@ -131,6 +134,8 @@ function SortableMeasureChip({ measure, onRemove }: { measure: Measure; onRemove
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const axis = measure.yAxis || 'left';
+
   return (
     <div
       ref={setNodeRef}
@@ -142,6 +147,19 @@ function SortableMeasureChip({ measure, onRemove }: { measure: Measure; onRemove
         <span className="text-xs">{measure.label}</span>
         <span className="text-[10px] text-blue-600">{measure.aggregation}</span>
       </div>
+      {showAxisToggle && onToggleAxis && (
+        <button
+          onClick={onToggleAxis}
+          className={`ml-1 px-1.5 py-0.5 text-[9px] font-bold rounded transition-colors ${
+            axis === 'right'
+              ? 'bg-amber-100 text-amber-700 border border-amber-300'
+              : 'bg-indigo-100 text-indigo-700 border border-indigo-300'
+          }`}
+          title={`Y-axis: ${axis} (click to toggle)`}
+        >
+          {axis === 'right' ? 'R' : 'L'}
+        </button>
+      )}
       <button
         onClick={onRemove}
         className="ml-1 hover:bg-blue-200 rounded-full p-0.5 transition-colors"
@@ -167,6 +185,7 @@ export default function TileBuilder({ appKey }: TileBuilderProps) {
   const [isResizingLeft, setIsResizingLeft] = useState(false);
   const [isResizingMiddle, setIsResizingMiddle] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
+  const [showStylePanel, setShowStylePanel] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -293,8 +312,8 @@ export default function TileBuilder({ appKey }: TileBuilderProps) {
     }
   };
 
-  const canPivot = ['bar', 'line'].includes(store.config.chartType) && store.config.dimensions.length > 0;
-  const canSort = store.config.dimensions.length > 0 && ['bar', 'line', 'table'].includes(store.config.chartType);
+  const canPivot = ['bar', 'line', 'area'].includes(store.config.chartType) && store.config.dimensions.length > 0;
+  const canSort = store.config.dimensions.length > 0 && ['bar', 'line', 'area', 'table'].includes(store.config.chartType);
   
   const getSortIcon = () => {
     const sortDir = store.config.sortDirection || 'none';
@@ -590,6 +609,11 @@ export default function TileBuilder({ appKey }: TileBuilderProps) {
             <MeasuresDropZone
               measures={store.config.measures}
               onRemove={(id) => store.removeMeasure(id)}
+              chartType={store.config.chartType}
+              onToggleAxis={(measureId) => {
+                const current = store.config.measures.find(m => m.id === measureId);
+                store.setMeasureYAxis(measureId, (current?.yAxis || 'left') === 'left' ? 'right' : 'left');
+              }}
             />
 
             {/* DIMENSIONS Drop Zone or Flow Steps */}
@@ -650,6 +674,12 @@ export default function TileBuilder({ appKey }: TileBuilderProps) {
                     onClick={() => store.setChartType('line')}
                   />
                   <ChartTypeButton
+                    type="area"
+                    icon={AreaChartIcon}
+                    active={store.config.chartType === 'area'}
+                    onClick={() => store.setChartType('area')}
+                  />
+                  <ChartTypeButton
                     type="bar"
                     icon={BarChart3}
                     active={store.config.chartType === 'bar'}
@@ -692,7 +722,7 @@ export default function TileBuilder({ appKey }: TileBuilderProps) {
                 </div>
 
                 {/* Labels Toggle */}
-                {['bar', 'line'].includes(store.config.chartType) && (
+                {['bar', 'line', 'area'].includes(store.config.chartType) && (
                   <button
                     onClick={() => setShowLabels(!showLabels)}
                     className={`flex items-center gap-2 px-3 py-2 text-sm border rounded-lg transition-colors font-medium ${
@@ -738,6 +768,20 @@ export default function TileBuilder({ appKey }: TileBuilderProps) {
                   </button>
                 )}
 
+                {/* Appearance Panel Toggle */}
+                <button
+                  onClick={() => setShowStylePanel(!showStylePanel)}
+                  className={`flex items-center gap-2 px-3 py-2 text-sm border rounded-lg transition-colors font-medium ${
+                    showStylePanel
+                      ? 'bg-indigo-50 dark:bg-indigo-500/20 border-indigo-300 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-400'
+                      : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
+                  }`}
+                  title="Chart appearance settings"
+                >
+                  <Palette className="w-4 h-4" />
+                  <span>Appearance</span>
+                </button>
+
                 <button
                   onClick={handleAutoSelectChart}
                   className="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 rounded-lg transition-colors font-medium"
@@ -779,6 +823,15 @@ export default function TileBuilder({ appKey }: TileBuilderProps) {
               />
             )}
 
+            {/* ── Appearance Panel ── */}
+            {showStylePanel && (
+              <StylePanel
+                chartType={store.config.chartType}
+                style={store.config.style || {}}
+                onChange={(updates) => store.setStyle(updates)}
+              />
+            )}
+
             {store.error && (
               <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
                 <div className="flex items-start">
@@ -807,11 +860,13 @@ export default function TileBuilder({ appKey }: TileBuilderProps) {
                 data={store.queryResult?.data || []}
                 chartType={store.config.chartType}
                 dimensions={store.config.dimensions}
+                measures={store.config.measures}
                 measureLabel={store.config.measures.length > 0 ? store.config.measures[0].label : 'Value'}
                 isLoading={store.isLoading}
                 pivotAxis={store.config.pivotAxis}
                 showLabels={showLabels}
                 flowSteps={store.config.flowSteps}
+                style={store.config.style}
               />
             </div>
           </div>
@@ -941,13 +996,19 @@ function DraggableDimension({
 function MeasuresDropZone({
   measures,
   onRemove,
+  chartType,
+  onToggleAxis,
 }: {
   measures: Measure[];
   onRemove: (id: string) => void;
+  chartType?: string;
+  onToggleAxis?: (measureId: string) => void;
 }) {
   const { isOver, setNodeRef } = useSortable({
     id: 'measures-dropzone',
   });
+
+  const showAxisToggle = measures.length >= 2 && ['line', 'area', 'bar'].includes(chartType || '');
 
   return (
     <div
@@ -966,6 +1027,9 @@ function MeasuresDropZone({
         <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
           Measures ({measures.length})
         </h3>
+        {showAxisToggle && (
+          <span className="text-[9px] text-gray-400 dark:text-gray-500 ml-auto">L/R = Y-axis</span>
+        )}
       </div>
 
       {measures.length > 0 ? (
@@ -976,6 +1040,8 @@ function MeasuresDropZone({
                 key={measure.id}
                 measure={measure}
                 onRemove={() => onRemove(measure.id)}
+                showAxisToggle={showAxisToggle}
+                onToggleAxis={onToggleAxis ? () => onToggleAxis(measure.id) : undefined}
               />
             ))}
           </div>
@@ -1707,6 +1773,185 @@ function FilterBuilder({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Color palette for picker ───────────────────────────
+const CHART_COLORS = [
+  '#6366f1', '#8b5cf6', '#a855f7', '#3b82f6', '#0ea5e9',
+  '#14b8a6', '#10b981', '#22c55e', '#eab308', '#f59e0b',
+  '#f97316', '#ef4444', '#ec4899', '#64748b', '#1e293b',
+];
+
+// ── Style Panel Component ──────────────────────────────
+function StylePanel({ chartType, style, onChange }: {
+  chartType: ChartType;
+  style: ChartStyle;
+  onChange: (updates: Partial<ChartStyle>) => void;
+}) {
+  const isBar = chartType === 'bar';
+  const isPie = chartType === 'pie';
+  const isLine = chartType === 'line';
+  const isArea = chartType === 'area';
+  const isNumber = chartType === 'number';
+  const isChart = isBar || isPie || isLine || isArea;
+
+  return (
+    <div className="mb-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+      <div className="px-4 py-3 bg-gray-50 dark:bg-gray-750 border-b border-gray-200 dark:border-gray-700">
+        <h3 className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider flex items-center gap-2">
+          <Palette className="w-3.5 h-3.5" />
+          Appearance
+        </h3>
+      </div>
+
+      <div className="p-4 space-y-5">
+        {/* ── Primary Color ── */}
+        {isChart && (
+          <div>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Primary Color</label>
+            <div className="flex flex-wrap gap-1.5">
+              {CHART_COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => onChange({ primaryColor: c })}
+                  className={`w-6 h-6 rounded-md transition-all ${
+                    (style.primaryColor || '#6366f1') === c
+                      ? 'ring-2 ring-offset-1 ring-indigo-500 scale-110'
+                      : 'hover:scale-105'
+                  }`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Axis & Grid ── */}
+        {isChart && !isPie && (
+          <div>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Axis & Grid</label>
+            <div className="flex flex-wrap gap-2">
+              <ToggleChip label="X Axis" active={style.showXAxis !== false} onClick={() => onChange({ showXAxis: style.showXAxis === false ? true : false })} />
+              <ToggleChip label="Y Axis" active={style.showYAxis !== false} onClick={() => onChange({ showYAxis: style.showYAxis === false ? true : false })} />
+              <ToggleChip label="Grid" active={style.showGridLines !== false} onClick={() => onChange({ showGridLines: style.showGridLines === false ? true : false })} />
+              <ToggleChip label="Value Labels" active={style.showValueLabels === true} onClick={() => onChange({ showValueLabels: !style.showValueLabels })} />
+            </div>
+          </div>
+        )}
+
+        {/* ── Bar Options ── */}
+        {isBar && (
+          <div>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Bar Style</label>
+            <div className="space-y-3">
+              <SliderRow label="Corner Radius" value={style.barRadius ?? 4} min={0} max={12} onChange={(v) => onChange({ barRadius: v })} />
+              <SliderRow label="Gap" value={style.barGap ?? 20} min={0} max={50} suffix="%" onChange={(v) => onChange({ barGap: v })} />
+              <ToggleChip label="Gradient Fill" active={style.gradientEnabled !== false} onClick={() => onChange({ gradientEnabled: style.gradientEnabled === false ? true : false })} />
+            </div>
+          </div>
+        )}
+
+        {/* ── Line / Area Options ── */}
+        {(isLine || isArea) && (
+          <div>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Line Style</label>
+            <div className="space-y-3">
+              <SliderRow label="Stroke Width" value={style.strokeWidth ?? 2} min={1} max={4} onChange={(v) => onChange({ strokeWidth: v })} />
+              <SliderRow label="Dot Size" value={style.dotSize ?? 3} min={0} max={6} onChange={(v) => onChange({ dotSize: v })} />
+              {isArea && (
+                <SliderRow label="Fill Opacity" value={Math.round((style.fillOpacity ?? 0.15) * 100)} min={0} max={50} suffix="%" onChange={(v) => onChange({ fillOpacity: v / 100 })} />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Pie / Donut Options ── */}
+        {isPie && (
+          <div>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Donut</label>
+            <div className="space-y-3">
+              <SliderRow label="Inner Radius (Hole)" value={style.innerRadius ?? 35} min={0} max={70} suffix="%" onChange={(v) => onChange({ innerRadius: v })} />
+              <SliderRow label="Outer Radius" value={style.outerRadius ?? 55} min={40} max={90} suffix="%" onChange={(v) => onChange({ outerRadius: v })} />
+            </div>
+          </div>
+        )}
+
+        {/* ── Label sizing ── */}
+        {isChart && (
+          <div>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Typography</label>
+            <div className="space-y-3">
+              <SliderRow label="Axis Labels" value={style.axisLabelSize ?? 10} min={8} max={14} suffix="px" onChange={(v) => onChange({ axisLabelSize: v })} />
+              <SliderRow label="Value Labels" value={style.valueLabelSize ?? 10} min={8} max={16} suffix="px" onChange={(v) => onChange({ valueLabelSize: v })} />
+            </div>
+          </div>
+        )}
+
+        {/* ── Number Tile Size ── */}
+        {isNumber && (
+          <div>
+            <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Display Size</label>
+            <div className="flex gap-2">
+              {(['compact', 'default', 'large'] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => onChange({ numberSize: s })}
+                  className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg border transition-all capitalize ${
+                    (style.numberSize || 'default') === s
+                      ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+                      : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Toggle chip for boolean style options ──────────────
+function ToggleChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-2.5 py-1 text-[10px] font-semibold rounded-md border transition-all ${
+        active
+          ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
+          : 'bg-gray-50 border-gray-200 text-gray-400'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+// ── Slider row for numeric style options ───────────────
+function SliderRow({ label, value, min, max, suffix, onChange }: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  suffix?: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="text-[10px] text-gray-500 w-24 flex-shrink-0">{label}</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="flex-1 h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-indigo-500"
+      />
+      <span className="text-[10px] font-mono text-gray-500 w-10 text-right">{value}{suffix || ''}</span>
     </div>
   );
 }

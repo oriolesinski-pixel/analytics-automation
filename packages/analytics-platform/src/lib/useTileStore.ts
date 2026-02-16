@@ -5,6 +5,7 @@
 import { create } from 'zustand';
 import {
   TileConfig,
+  ChartStyle,
   QueryResult,
   Measure,
   Dimension,
@@ -99,10 +100,12 @@ interface TileStore {
   setChartType: (chartType: ChartType) => void;
   setPivotAxis: (pivot: boolean) => void;
   toggleSort: () => void;
+  setMeasureYAxis: (measureId: string, axis: 'left' | 'right') => void;
   addFlowStep: (step: FlowStep) => void;
   removeFlowStep: (stepId: string) => void;
   updateFlowStep: (stepId: string, updates: Partial<FlowStep>) => void;
   setFlowSteps: (steps: FlowStep[]) => void;
+  setStyle: (style: Partial<ChartStyle>) => void;
   executeQuery: () => Promise<void>;
   reset: () => void;
 }
@@ -288,6 +291,17 @@ export const useTileStore = create<TileStore>((set, get) => ({
     });
   },
 
+  setMeasureYAxis: (measureId: string, axis: 'left' | 'right') => {
+    set((state) => ({
+      config: {
+        ...state.config,
+        measures: state.config.measures.map(m =>
+          m.id === measureId ? { ...m, yAxis: axis } : m
+        ),
+      },
+    }));
+  },
+
   addFlowStep: (step: FlowStep) => {
     set((state) => ({
       config: {
@@ -322,6 +336,15 @@ export const useTileStore = create<TileStore>((set, get) => ({
       config: {
         ...state.config,
         flowSteps: steps,
+      },
+    }));
+  },
+
+  setStyle: (style: Partial<ChartStyle>) => {
+    set((state) => ({
+      config: {
+        ...state.config,
+        style: { ...(state.config.style || {}), ...style },
       },
     }));
   },
@@ -420,7 +443,7 @@ export const useTileStore = create<TileStore>((set, get) => ({
       }
 
       // Transform data for chart rendering
-      let transformedData = transformQueryResult(result.data, config.dimensions);
+      let transformedData = transformQueryResult(result.data, config.dimensions, config.measures);
       
       // Apply sorting if specified
       if (config.sortDirection && config.sortDirection !== 'none') {
@@ -471,12 +494,14 @@ if (typeof window !== 'undefined') {
 // Transform raw query result to chart-friendly format
 function transformQueryResult(
   data: Array<Record<string, any>>,
-  dimensions: Dimension[]
+  dimensions: Dimension[],
+  measures?: Measure[],
 ): Array<Record<string, any>> {
+  const isMultiMeasure = data.length > 0 && 'measure_value_0' in data[0];
+
   return data.map((row) => {
     const transformed: Record<string, any> = {};
 
-    // Map dimension_N to dimension labels
     dimensions.forEach((dim, idx) => {
       const key = `dimension_${idx}`;
       if (row[key] !== undefined) {
@@ -484,8 +509,14 @@ function transformQueryResult(
       }
     });
 
-    // Add measure value
-    transformed.value = row.measure_value || 0;
+    if (isMultiMeasure && measures) {
+      measures.forEach((m, idx) => {
+        transformed[m.label] = row[`measure_value_${idx}`] || 0;
+      });
+      transformed.value = row.measure_value_0 || 0;
+    } else {
+      transformed.value = row.measure_value || 0;
+    }
 
     return transformed;
   });

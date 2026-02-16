@@ -9,64 +9,40 @@ import {
   Trash2,
   Eye,
   Loader2,
-  ChevronDown,
   X,
 } from 'lucide-react';
 import { useDashboardStore } from '@/lib/useDashboardStore';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082';
-
-interface App {
-  app_key: string;
-  name: string;
-}
+import { useAppKey } from '@/lib/AppKeyContext';
+import { GRADIENT_PRESETS, getGradientCss } from '@/lib/gradient-presets';
 
 export default function DashboardsPage() {
   const router = useRouter();
   const dashboardStore = useDashboardStore();
-  const [selectedApp, setSelectedApp] = useState<string>('');
-  const [apps, setApps] = useState<App[]>([]);
-  const [showAppDropdown, setShowAppDropdown] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const { appKey, currentApp, isLoading: appLoading, isAdmin } = useAppKey();
   const [showCreateModal, setShowCreateModal] = useState(false);
-
-  // Fetch apps
-  useEffect(() => {
-    const fetchApps = async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/apps/list`);
-        const data = await response.json();
-        if (data.ok && data.apps) {
-          const formattedApps = data.apps.map((app: any) => ({
-            app_key: app.app_key,
-            name: app.name || app.app_key,
-          }));
-          setApps(formattedApps);
-          if (formattedApps.length > 0) {
-            setSelectedApp(formattedApps[0].app_key);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch apps:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchApps();
-  }, []);
 
   // Fetch dashboards when app changes
   useEffect(() => {
-    if (selectedApp) {
-      dashboardStore.fetchDashboards(selectedApp);
+    if (appKey) {
+      dashboardStore.fetchDashboards(appKey, isAdmin);
     }
-  }, [selectedApp]);
+  }, [appKey, isAdmin]);
 
-  const handleCreateDashboard = async (name: string, description?: string) => {
+  const handleCreateDashboard = async (name: string, description?: string, gradientId?: string) => {
     try {
-      const dashboardId = await dashboardStore.createDashboard(name, description, selectedApp);
+      const dashboardId = await dashboardStore.createDashboard(name, description, appKey);
+      
+      // Save background gradient to dashboard layout
+      if (gradientId) {
+        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082';
+        await fetch(`${API_BASE_URL}/dashboards/${dashboardId}/layout`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ background: gradientId }),
+        });
+      }
+
       setShowCreateModal(false);
-      // Redirect to new dashboard
       router.push(`/dashboards/${dashboardId}`);
     } catch (error: any) {
       alert(`Failed to create dashboard: ${error.message}`);
@@ -77,16 +53,16 @@ export default function DashboardsPage() {
     if (!confirm('Are you sure you want to delete this dashboard?')) return;
     
     try {
-      await dashboardStore.deleteDashboard(id);
-      if (selectedApp) {
-        dashboardStore.fetchDashboards(selectedApp);
+      await dashboardStore.deleteDashboard(id, appKey, isAdmin);
+      if (appKey) {
+        dashboardStore.fetchDashboards(appKey, isAdmin);
       }
     } catch (error: any) {
       alert(`Failed to delete dashboard: ${error.message}`);
     }
   };
 
-  if (loading) {
+  if (appLoading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-indigo-600 dark:text-indigo-400" />
@@ -100,42 +76,16 @@ export default function DashboardsPage() {
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="px-8 py-6">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Dashboards</h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">Organize your analytics tiles into custom dashboards</p>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            Dashboards for <span className="font-semibold text-gray-800 dark:text-gray-200">{currentApp?.name || appKey}</span>
+          </p>
           
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-
-              {/* App Selector */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowAppDropdown(!showAppDropdown)}
-                  className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 rounded-lg transition-colors"
-                >
-                  <span className="font-medium text-gray-700 dark:text-gray-200">
-                    {apps.find(a => a.app_key === selectedApp)?.name || 'Select App'}
-                  </span>
-                  <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                </button>
-
-                {showAppDropdown && (
-                  <div className="absolute top-full left-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
-                    {apps.map(app => (
-                      <button
-                        key={app.app_key}
-                        onClick={() => {
-                          setSelectedApp(app.app_key);
-                          setShowAppDropdown(false);
-                        }}
-                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                      >
-                        <span className="text-gray-700 dark:text-gray-200">{app.name}</span>
-                        {app.app_key === selectedApp && (
-                          <div className="w-2 h-2 bg-indigo-600 dark:bg-indigo-500 rounded-full" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
+              <div className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
+                <span className="text-xs font-medium text-blue-700 dark:text-blue-400">
+                  App: {currentApp?.name || appKey}
+                </span>
               </div>
             </div>
 
@@ -160,7 +110,6 @@ export default function DashboardsPage() {
             <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
           </div>
         ) : dashboardStore.dashboards.length === 0 ? (
-          // Empty State
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
               <LayoutDashboard className="mx-auto h-16 w-16 text-gray-400 dark:text-gray-600 mb-4" />
@@ -178,7 +127,6 @@ export default function DashboardsPage() {
             </div>
           </div>
         ) : (
-          // Dashboards List
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {dashboardStore.dashboards.map((dashboard) => (
               <div
@@ -188,7 +136,6 @@ export default function DashboardsPage() {
                 {/* Dashboard Preview Thumbnail */}
                 <div className="h-32 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-800 border-b border-gray-200 dark:border-gray-700 p-4">
                   <div className="grid grid-cols-3 gap-2 h-full">
-                    {/* Simulate tile layout preview */}
                     {dashboard.tiles?.slice(0, 6).map((tile, idx) => (
                       <div
                         key={idx}
@@ -199,7 +146,6 @@ export default function DashboardsPage() {
                         <LayoutDashboard className="w-4 h-4 text-gray-400 dark:text-gray-500" />
                       </div>
                     )) || (
-                      // Empty state preview
                       <div className="col-span-3 flex items-center justify-center text-gray-400 dark:text-gray-500">
                         <LayoutDashboard className="w-8 h-8" />
                       </div>
@@ -257,16 +203,16 @@ export default function DashboardsPage() {
   );
 }
 
-// Create Dashboard Modal Component
 function CreateDashboardModal({
   onSave,
   onCancel,
 }: {
-  onSave: (name: string, description?: string) => Promise<void>;
+  onSave: (name: string, description?: string, gradientId?: string) => Promise<void>;
   onCancel: () => void;
 }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [selectedGradient, setSelectedGradient] = useState('mesh-default');
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -275,66 +221,102 @@ function CreateDashboardModal({
 
     setIsSaving(true);
     try {
-      await onSave(name.trim(), description.trim() || undefined);
+      await onSave(name.trim(), description.trim() || undefined, selectedGradient);
     } catch (error) {
       setIsSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 dark:bg-black dark:bg-opacity-70 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full mx-4">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Create Dashboard</h2>
-          <button onClick={onCancel} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-            <X className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+          <h2 className="text-lg font-bold text-gray-900">New Dashboard</h2>
+          <button onClick={onCancel} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+            <X className="w-5 h-5 text-gray-400" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Dashboard Name <span className="text-red-500">*</span>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              Name <span className="text-red-400">*</span>
             </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Analytics Overview"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="e.g., Product Analytics"
+              className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 text-sm transition-all"
               autoFocus
               maxLength={255}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Description (optional)
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+              Description
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe your dashboard..."
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              placeholder="Brief description..."
+              rows={2}
+              className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 text-sm resize-none transition-all"
             />
           </div>
 
-          <div className="flex space-x-3 pt-2">
+          {/* Gradient Background Picker */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Background
+            </label>
+            <div className="grid grid-cols-5 gap-2">
+              {GRADIENT_PRESETS.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => setSelectedGradient(g.id)}
+                  className={`group relative rounded-xl h-12 transition-all ${
+                    selectedGradient === g.id
+                      ? 'ring-2 ring-indigo-500 ring-offset-2 scale-105'
+                      : 'ring-1 ring-gray-200 hover:ring-gray-300'
+                  }`}
+                  style={{ background: g.css }}
+                  title={g.label}
+                >
+                  {selectedGradient === g.id && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-4 h-4 bg-indigo-500 rounded-full flex items-center justify-center">
+                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-gray-400 mt-1.5">
+              {GRADIENT_PRESETS.find(g => g.id === selectedGradient)?.label || 'Select a background'}
+            </p>
+          </div>
+
+          <div className="flex space-x-3 pt-1">
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors"
+              className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors text-sm font-medium"
               disabled={isSaving}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors disabled:opacity-50 font-medium"
+              className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors disabled:opacity-50 text-sm font-semibold shadow-sm"
               disabled={isSaving || !name.trim()}
             >
-              {isSaving ? 'Creating...' : 'Create Dashboard'}
+              {isSaving ? 'Creating...' : 'Create'}
             </button>
           </div>
         </form>
@@ -342,4 +324,3 @@ function CreateDashboardModal({
     </div>
   );
 }
-

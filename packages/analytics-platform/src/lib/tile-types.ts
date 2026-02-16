@@ -4,8 +4,14 @@
 export type AggregationType = 'count' | 'count_distinct' | 'sum' | 'avg' | 'min' | 'max' | 'custom';
 export type DimensionType = 'categorical' | 'temporal' | 'numerical';
 export type FilterOperator = 'equals' | 'not_equals' | 'contains' | 'gt' | 'lt' | 'gte' | 'lte' | 'in';
-export type ChartType = 'line' | 'bar' | 'pie' | 'table' | 'number' | 'funnel' | 'scatter' | 'sankey' | 'flow';
+export type ChartType = 'line' | 'area' | 'bar' | 'pie' | 'table' | 'number' | 'funnel' | 'scatter' | 'sankey' | 'flow';
 export type SortDirection = 'asc' | 'desc' | 'none';
+
+export interface MeasureCondition {
+  field: string;
+  operator: string;
+  value: string | number;
+}
 
 export interface Measure {
   id: string;
@@ -13,6 +19,8 @@ export interface Measure {
   aggregation: AggregationType;
   field?: string; // Optional, for field-specific aggregations
   eventTypes?: string[]; // Optional, restrict to specific event types
+  yAxis?: 'left' | 'right'; // For dual-axis charts (default: 'left')
+  conditions?: MeasureCondition[]; // Per-measure filter conditions (become CASE WHEN in SQL)
 }
 
 export interface Dimension {
@@ -38,18 +46,54 @@ export interface DateRange {
   label?: string; // e.g., "Last 7 Days"
 }
 
+export interface ChartStyle {
+  // Colors
+  primaryColor?: string;       // Main chart color (hex)
+  colorPalette?: string[];     // Multi-series color palette
+  gradientEnabled?: boolean;   // Use gradient fill
+
+  // Axis
+  showXAxis?: boolean;
+  showYAxis?: boolean;
+  showGridLines?: boolean;
+  axisLabelSize?: number;      // 8-14
+
+  // Labels
+  showValueLabels?: boolean;
+  valueLabelSize?: number;     // 8-16
+
+  // Bar-specific
+  barRadius?: number;          // Border radius 0-12
+  barGap?: number;             // Gap percentage 0-50
+
+  // Pie/Donut-specific
+  innerRadius?: number;        // 0 = pie, 30-70 = donut
+  outerRadius?: number;        // 50-90%
+
+  // Line/Area-specific
+  strokeWidth?: number;        // 1-4
+  dotSize?: number;            // 0-6 (0 = no dots)
+  fillOpacity?: number;        // 0-0.5 for area charts
+
+  // Number tile
+  numberSize?: 'compact' | 'default' | 'large';
+}
+
 export interface TileConfig {
   id?: string;
   name?: string;
-  eventType?: string; // Filter to specific event type
-  measures: Measure[]; // Support multiple measures
+  eventType?: string;
+  measures: Measure[];
   dimensions: Dimension[];
   filters: Filter[];
   dateRange: DateRange;
   chartType: ChartType;
-  pivotAxis?: boolean; // Swap X and Y axis for bar/line charts
-  sortDirection?: SortDirection; // Sort data by value
-  flowSteps?: FlowStep[]; // For Sankey/flow diagrams
+  pivotAxis?: boolean;
+  showLabels?: boolean;
+  sortDirection?: SortDirection;
+  flowSteps?: FlowStep[];
+  computedFormula?: 'rate';
+  style?: ChartStyle;
 }
 
 export interface FlowStepCondition {

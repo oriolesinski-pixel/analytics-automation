@@ -1,19 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle } from 'lucide-react';
 import TileBuilder from '@/components/TileBuilder';
+import { useAppKey } from '@/lib/AppKeyContext';
 
 export default function AnalyticsPage() {
   const router = useRouter();
-  const [appKey, setAppKey] = useState('');
-
-  useEffect(() => {
-    // Get app key from storage
-    const storedKey = localStorage.getItem('app_key') || sessionStorage.getItem('app_key') || '';
-    setAppKey(storedKey);
-  }, []);
+  const { appKey } = useAppKey();
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -48,4 +42,3 @@ export default function AnalyticsPage() {
     </div>
   );
 }
-

@@ -38,7 +38,7 @@ export default async function appsRoutes(fastify: FastifyInstance) {
                 return reply.status(500).send({ error: error.message });
             }
 
-            return reply.send({ apps: apps || [] });
+            return reply.send({ ok: true, apps: apps || [] });
         } catch (error) {
             console.error('Error listing apps:', error);
             return reply.status(500).send({ error: 'Failed to list apps' });

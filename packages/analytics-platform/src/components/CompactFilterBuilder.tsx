@@ -59,13 +59,17 @@ export default function CompactFilterBuilder({
     if (!selectedDimension) return;
 
     let filterValue: string | number | string[];
+    let displayLabel: string;
 
     if (selectedDimension.type === 'temporal') {
       if (!dateValue) return;
-      filterValue = new Date(dateValue).getTime();
+      const d = new Date(dateValue);
+      filterValue = d.getTime();
+      displayLabel = `${selectedDimension.label} ${operator} ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
     } else {
       if (!value.trim()) return;
       filterValue = value.trim();
+      displayLabel = `${selectedDimension.label} ${operator} ${filterValue}`;
     }
 
     onAdd({
@@ -73,7 +77,7 @@ export default function CompactFilterBuilder({
       field: selectedDimension.field,
       operator,
       value: filterValue,
-      label: `${selectedDimension.label} ${operator} ${filterValue}`,
+      label: displayLabel,
     });
   };
 

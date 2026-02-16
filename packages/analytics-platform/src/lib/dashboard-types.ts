@@ -92,8 +92,10 @@ export const GRID_CONFIG = {
   defaultSizes: {
     'number': { w: 3, h: 3 },
     'line': { w: 6, h: 4 },
+    'area': { w: 6, h: 4 },
     'bar': { w: 6, h: 4 },
     'pie': { w: 4, h: 4 },
+    'funnel': { w: 6, h: 5 },
     'table': { w: 12, h: 6 }
   } as Record<string, { w: number; h: number }>,
 };

@@ -7,12 +7,16 @@ interface MarkdownTileProps {
   content: string;
   backgroundColor?: string;
   textColor?: string;
+  isSection?: boolean;
+  accentColor?: string;
 }
 
 export default function MarkdownTile({
   content,
   backgroundColor = '#ffffff',
   textColor = '#111827',
+  isSection = false,
+  accentColor = '#6366f1',
 }: MarkdownTileProps) {
   // Simple markdown parsing (can be enhanced with a library later)
   const renderMarkdown = (text: string) => {
@@ -57,6 +61,35 @@ export default function MarkdownTile({
         return <br key={idx} />;
       });
   };
+
+  // Section header mode — editorial divider with configurable accent color
+  if (isSection) {
+    const lines = content.split('\n').filter(l => l.trim());
+    const title = (lines[0] || '').replace(/^#+\s*/, '');
+    const subtitle = lines.slice(1).join(' ').replace(/\*+/g, '').trim();
+    
+    return (
+      <div className="flex items-start gap-3 py-2 px-1">
+        <div
+          className="w-1 self-stretch rounded-full flex-shrink-0"
+          style={{ backgroundColor: accentColor, minHeight: '24px' }}
+        />
+        <div>
+          <h3
+            className="text-sm font-bold text-slate-700 tracking-wide uppercase"
+            style={{ fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: '0.08em' }}
+          >
+            {title}
+          </h3>
+          {subtitle && (
+            <p className="text-[11px] text-slate-400 mt-0.5" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+              {subtitle}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

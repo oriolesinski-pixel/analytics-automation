@@ -179,6 +179,94 @@ html.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   animation: fadeIn 0.2s ease-out;
 }
 
+/* ── Premium Analytics Dashboard ─────────────────────── */
+
+/* Warm mesh-gradient background */
+.dashboard-mesh-bg {
+  background:
+    radial-gradient(ellipse 80% 60% at 10% 0%, rgba(99,102,241,0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 90% 10%, rgba(139,92,246,0.06) 0%, transparent 50%),
+    radial-gradient(ellipse 70% 40% at 50% 90%, rgba(244,114,182,0.05) 0%, transparent 50%),
+    linear-gradient(160deg, #f8f9ff 0%, #f5f3ff 30%, #fef7f0 55%, #f0f4ff 80%, #f8fafc 100%);
+}
+
+/* Glassmorphism tile card */
+.tile-glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow:
+    0 1px 3px rgba(0,0,0,0.03),
+    0 4px 12px rgba(0,0,0,0.04),
+    inset 0 1px 0 rgba(255,255,255,0.8);
+  transition: box-shadow 0.3s ease, transform 0.3s ease, border-color 0.3s ease;
+}
+
+.tile-glass:hover {
+  box-shadow:
+    0 2px 8px rgba(99,102,241,0.06),
+    0 8px 32px rgba(99,102,241,0.08),
+    inset 0 1px 0 rgba(255,255,255,0.9);
+  border-color: rgba(99,102,241,0.15);
+  transform: translateY(-1px);
+}
+
+/* Animated counter for big numbers */
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-count-up {
+  animation: countUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Pulse glow for KPI cards */
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(99,102,241,0); }
+  50% { box-shadow: 0 0 20px 2px rgba(99,102,241,0.06); }
+}
+
+/* Section header styling */
+.section-header-tile {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 8px;
+  height: 100%;
+}
+.section-header-tile::before {
+  content: '';
+  flex: 0 0 3px;
+  height: 28px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #6366f1 0%, #a78bfa 100%);
+}
+
+/* Smooth scrollbar for entire dashboard */
+.dashboard-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.dashboard-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.dashboard-scroll::-webkit-scrollbar-thumb {
+  background: rgba(99,102,241,0.15);
+  border-radius: 3px;
+}
+.dashboard-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(99,102,241,0.25);
+}
+
+/* Chart value label animation */
+@keyframes labelFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.recharts-label-list {
+  animation: labelFade 0.4s ease-out 0.3s both;
+}
+
 /* Resize handle styling */
 .resize-handle {
   position: relative;

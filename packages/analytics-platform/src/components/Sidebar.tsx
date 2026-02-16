@@ -16,9 +16,12 @@ import {
   Menu,
   X,
   BookOpen,
-  Plus
+  Plus,
+  Shield,
+  ShieldOff
 } from 'lucide-react';
 import { AppSelector } from './AppSelector';
+import { useAppKey } from '@/lib/AppKeyContext';
 
 interface NavItem {
   id: string;
@@ -48,16 +51,11 @@ const SECTIONS: NavItem[] = [
   { id: 'settings', label: 'Settings', icon: Settings, path: '/settings', available: true }
 ];
 
-interface App {
-  app_key: string;
-  name?: string;
-}
-
 export function Sidebar() {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['workspace']));
-  const [selectedApp, setSelectedApp] = useState('');
+  const { appKey, isAdmin, setAdminMode } = useAppKey();
 
   // Update CSS variable for main content margin
   useEffect(() => {
@@ -66,14 +64,6 @@ export function Sidebar() {
       isCollapsed ? '4rem' : '16rem'
     );
   }, [isCollapsed]);
-
-  // Get selected app from storage
-  useEffect(() => {
-    const storedKey = localStorage.getItem('app_key') || sessionStorage.getItem('app_key');
-    if (storedKey) {
-      setSelectedApp(storedKey);
-    }
-  }, []);
 
   const toggleSection = (sectionId: string) => {
     setExpandedSections(prev => {
@@ -104,13 +94,20 @@ export function Sidebar() {
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
           {!isCollapsed && (
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 dark:from-blue-500 dark:to-indigo-500 rounded-lg flex items-center justify-center">
-                <Activity className="w-5 h-5 text-white" />
+              <div className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-violet-600 dark:from-indigo-500 dark:to-violet-500 rounded-lg flex items-center justify-center shadow-sm">
+                <svg viewBox="0 0 40 30" fill="none" className="w-5 h-4">
+                  <path d="M8 17C5 17 3 14.5 4 12C5 9.5 8 8.5 10.5 10C12 5 16.5 2.5 20 3.5C23.5 2.5 28 5 29.5 10C32 8.5 35 9.5 36 12C37 14.5 35 17 32 17" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M5 27C10 20 15 20 20 24C25 28 30 28 35 21" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+                  <path d="M5 21C10 28 15 28 20 24C25 20 30 20 35 27" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+                </svg>
               </div>
               <div>
-                <h1 className="text-sm font-bold bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent tracking-tight">
-                  Analytics E2E Automation
+                <h1 className="text-[15px] font-bold bg-gradient-to-r from-indigo-600 to-violet-600 dark:from-indigo-400 dark:to-violet-400 bg-clip-text text-transparent tracking-tight leading-tight">
+                  Glint
                 </h1>
+                <p className="text-[9px] text-gray-400 dark:text-gray-500 font-semibold tracking-[0.08em] uppercase leading-tight">
+                  Analytics Automation
+                </p>
               </div>
             </div>
           )}
@@ -130,7 +127,7 @@ export function Sidebar() {
         {/* App Selector */}
         {!isCollapsed && (
           <div className="p-4 border-b border-gray-200 dark:border-gray-800">
-            <AppSelector variant="sidebar" onAppChange={setSelectedApp} />
+            <AppSelector variant="sidebar" />
           </div>
         )}
 
@@ -261,12 +258,35 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* Footer */}
+        {/* Footer: App Key + Admin Toggle */}
         {!isCollapsed && (
-          <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+          <div className="p-4 border-t border-gray-200 dark:border-gray-800 space-y-2">
             <div className="text-xs text-gray-500 dark:text-gray-400">
-              App Key: <code className="text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-xs">{selectedApp || 'None'}</code>
+              App Key: <code className="text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-xs">{appKey || 'None'}</code>
             </div>
+            <button
+              onClick={() => setAdminMode(!isAdmin)}
+              className={`flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                isAdmin
+                  ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-700'
+                  : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+              title={isAdmin ? 'Disable admin mode (shows all apps data)' : 'Enable admin mode to see all apps data'}
+            >
+              {isAdmin ? (
+                <>
+                  <Shield className="w-3.5 h-3.5" />
+                  <span>Admin Mode</span>
+                  <span className="ml-auto text-[10px] bg-amber-200 dark:bg-amber-700 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded-full">ON</span>
+                </>
+              ) : (
+                <>
+                  <ShieldOff className="w-3.5 h-3.5" />
+                  <span>Tenant Isolated</span>
+                  <span className="ml-auto text-[10px] bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded-full">Secure</span>
+                </>
+              )}
+            </button>
           </div>
         )}
       </aside>

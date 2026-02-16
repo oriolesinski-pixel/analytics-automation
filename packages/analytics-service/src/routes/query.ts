@@ -24,8 +24,15 @@ function escapeSQL(value: string): string {
 
 // Validate that a field/column name contains only safe characters.
 // Allows alphanumeric, underscores, dots, and Postgres JSON operators (-> / ->>).
+// Supports both quoted (data->>'key') and unquoted (data->key) JSON paths.
 const SAFE_IDENTIFIER_RE = /^[a-zA-Z_][a-zA-Z0-9_]*(\s*->>?\s*'[^']*')*$/;
+const UNQUOTED_JSON_RE = /^([a-zA-Z_][a-zA-Z0-9_]*)->([a-zA-Z_][a-zA-Z0-9_]*)$/;
 function assertSafeIdentifier(name: string): string {
+  // Handle unquoted JSON paths like "data->path" → "data->>'path'"
+  const unquotedMatch = name.match(UNQUOTED_JSON_RE);
+  if (unquotedMatch) {
+    return `${unquotedMatch[1]}->>'${unquotedMatch[2]}'`;
+  }
   if (!SAFE_IDENTIFIER_RE.test(name)) {
     throw new Error(`Unsafe SQL identifier: ${name}`);
   }
@@ -35,14 +42,25 @@ function assertSafeIdentifier(name: string): string {
 // The RPC function name — matches migration 005
 const ANALYTICS_RPC = 'execute_analytics_query';
 
+// Per-measure condition schema (becomes CASE WHEN in SQL)
+const MeasureConditionSchema = z.object({
+  field: z.string(),
+  operator: z.string().default('equals'),
+  value: z.union([z.string(), z.number()]),
+});
+
+const MeasureSchema = z.object({
+  aggregation: z.enum(['count', 'count_distinct', 'sum', 'avg', 'min', 'max']),
+  field: z.string().optional(),
+  conditions: z.array(MeasureConditionSchema).optional(),
+});
+
 // Validation schema
 const TileQuerySchema = z.object({
   app_key: z.string(),
   event_type: z.string().optional(),
-  measure: z.object({
-    aggregation: z.enum(['count', 'count_distinct', 'sum', 'avg', 'min', 'max']),
-    field: z.string().optional(),
-  }),
+  measure: MeasureSchema.optional(),
+  measures: z.array(MeasureSchema).optional(),
   dimensions: z.array(z.object({
     field: z.string(),
     bucket: z.string().optional(), // 'hour', 'day', 'week', 'month'
@@ -57,6 +75,8 @@ const TileQuerySchema = z.object({
     start: z.string(),
     end: z.string(),
   }),
+}).refine(data => data.measure || (data.measures && data.measures.length > 0), {
+  message: 'Either measure or measures must be provided',
 });
 
 type TileQuery = z.infer<typeof TileQuerySchema>;
@@ -436,10 +456,16 @@ function buildTileSQL(query: TileQuery): string {
     app_key,
     event_type,
     measure,
+    measures: measuresArr,
     dimensions,
     filters,
     date_range,
   } = query;
+
+  // Resolve measures: prefer `measures` array, fall back to single `measure`
+  const measures = measuresArr && measuresArr.length > 0
+    ? measuresArr
+    : measure ? [measure] : [];
 
   // Build SELECT clause
   const selectParts: string[] = [];
@@ -447,23 +473,29 @@ function buildTileSQL(query: TileQuery): string {
   // Add dimensions (with identifier validation)
   dimensions.forEach((dim, idx) => {
     if (dim.type === 'temporal' && dim.bucket) {
-      // Time bucketing — field is validated inside getTimeBucketClause
       const safeField = assertSafeIdentifier(dim.field);
       const bucketClause = getTimeBucketClause(safeField, dim.bucket);
       selectParts.push(`${bucketClause} as dimension_${idx}`);
     } else {
-      // Regular dimension
       const safeField = assertSafeIdentifier(dim.field);
       selectParts.push(`${safeField} as dimension_${idx}`);
     }
   });
 
-  // Add measure
-  const measureClause = getMeasureClause(measure);
-  selectParts.push(`${measureClause} as measure_value`);
+  // Add measures
+  if (measures.length === 1 && (!measures[0].conditions || measures[0].conditions.length === 0)) {
+    // Single measure, no per-measure conditions: backward-compatible format
+    const measureClause = getMeasureClause(measures[0]);
+    selectParts.push(`${measureClause} as measure_value`);
+  } else {
+    // Multi-measure or per-measure conditions: use indexed columns
+    measures.forEach((m, idx) => {
+      const measureClause = getMeasureClauseWithConditions(m);
+      selectParts.push(`${measureClause} as measure_value_${idx}`);
+    });
+  }
 
   // Build WHERE clause
-  // The ts column is bigint (Unix timestamp in milliseconds)
   const startTimestamp = new Date(date_range.start).getTime();
   const endTimestamp = new Date(date_range.end).getTime();
   
@@ -477,11 +509,8 @@ function buildTileSQL(query: TileQuery): string {
     whereParts.push(`event_type = '${escapeSQL(event_type)}'`);
   }
 
-  // Add custom filters (skip JSON fields - they'll be filtered in executeDirectQuery)
   filters.forEach(filter => {
-    if (!filter.field.includes('->')) {
-      whereParts.push(buildFilterClause(filter));
-    }
+    whereParts.push(buildFilterClause(filter));
   });
 
   // Build GROUP BY clause
@@ -490,7 +519,6 @@ function buildTileSQL(query: TileQuery): string {
     groupByParts.push(`dimension_${idx}`);
   });
 
-  // Construct final SQL (single-line style so RPC validation is reliable)
   let sql =
     `SELECT ${selectParts.join(', ')} FROM analytics_product_events WHERE ${whereParts.join(' AND ')}`;
 
@@ -498,9 +526,58 @@ function buildTileSQL(query: TileQuery): string {
     sql += ` GROUP BY ${groupByParts.join(', ')} ORDER BY ${groupByParts.join(', ')}`;
   }
 
-  sql += ` LIMIT 10000`; // Safety limit
+  sql += ` LIMIT 10000`;
 
   return sql;
+}
+
+// Build a measure clause with per-measure CASE WHEN conditions
+function getMeasureClauseWithConditions(measure: { aggregation: string; field?: string; conditions?: Array<{ field: string; operator?: string; value: string | number }> }): string {
+  const { aggregation, field, conditions } = measure;
+  const safeField = field ? assertSafeIdentifier(field) : null;
+
+  // Build CASE WHEN clause from conditions
+  let caseWhen = '';
+  if (conditions && conditions.length > 0) {
+    const condParts = conditions.map(c => {
+      const safeCondField = assertSafeIdentifier(c.field);
+      const op = c.operator || 'equals';
+      const safeVal = escapeSQL(String(c.value));
+      switch (op) {
+        case 'equals': return `${safeCondField} = '${safeVal}'`;
+        case 'not_equals': return `${safeCondField} != '${safeVal}'`;
+        case 'gt': return `${safeCondField} > ${Number(c.value)}`;
+        case 'lt': return `${safeCondField} < ${Number(c.value)}`;
+        default: return `${safeCondField} = '${safeVal}'`;
+      }
+    });
+    caseWhen = `CASE WHEN ${condParts.join(' AND ')} THEN `;
+  }
+
+  if (!caseWhen) {
+    // No conditions — standard measure clause
+    return getMeasureClause(measure);
+  }
+
+  // With conditions — wrap in CASE WHEN
+  switch (aggregation) {
+    case 'count':
+      return `COUNT(${caseWhen}1 END)`;
+    case 'count_distinct':
+      return safeField
+        ? `COUNT(DISTINCT ${caseWhen}${safeField} END)`
+        : `COUNT(${caseWhen}1 END)`;
+    case 'sum':
+      return safeField ? `SUM(${caseWhen}(${safeField})::numeric END)` : '0';
+    case 'avg':
+      return safeField ? `AVG(${caseWhen}(${safeField})::numeric END)` : '0';
+    case 'min':
+      return safeField ? `MIN(${caseWhen}(${safeField})::numeric END)` : '0';
+    case 'max':
+      return safeField ? `MAX(${caseWhen}(${safeField})::numeric END)` : '0';
+    default:
+      return `COUNT(${caseWhen}1 END)`;
+  }
 }
 
 function getTimeBucketClause(field: string, bucket: string): string {

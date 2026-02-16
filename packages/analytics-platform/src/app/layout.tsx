@@ -29,8 +29,8 @@ import { Providers } from '@/components/Providers';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Analytics E2E Automation',
-  description: 'End-to-end analytics automation platform with real-time insights',
+  title: 'Glint — Analytics Automation',
+  description: 'Analytics automation platform — infra to insights',
 };
 
 export default function RootLayout({

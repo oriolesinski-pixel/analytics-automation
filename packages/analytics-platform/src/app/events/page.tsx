@@ -1,93 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { Activity, Database, Plus } from 'lucide-react';
 import LiveEventFeed from '@/components/LiveEventFeed';
 import SQLSandbox from '@/components/SQLSandbox';
+import { useAppKey } from '@/lib/AppKeyContext';
 
 type Tab = 'live' | 'sql';
 
 export default function EventsPage() {
-  const searchParams = useSearchParams();
-  const [appKey, setAppKey] = useState<string>('');
-  const [isHydrated, setIsHydrated] = useState(false);
+  const { appKey, isLoading: isHydrating } = useAppKey();
   const [activeTab, setActiveTab] = useState<Tab>('live');
-
-  useEffect(() => {
-    const hydrateFromStorage = () => {
-      const urlKey = searchParams.get('app');
-      if (urlKey && urlKey.trim()) {
-        const normalized = urlKey.trim();
-        try {
-          sessionStorage.setItem('app_key', normalized);
-          localStorage.setItem('app_key', normalized);
-        } catch (error) {
-          console.warn('Unable to persist app key from URL:', error);
-        }
-        setAppKey(normalized);
-        setIsHydrated(true);
-        return;
-      }
-
-      try {
-        const storedAppKey =
-          sessionStorage.getItem('app_key') ||
-          sessionStorage.getItem('onboarding_app_key') ||
-          localStorage.getItem('app_key') ||
-          localStorage.getItem('onboarding_app_key');
-
-        if (storedAppKey) {
-          let cleanKey = storedAppKey;
-
-          try {
-            const parsed = JSON.parse(storedAppKey);
-            if (typeof parsed === 'string') {
-              cleanKey = parsed;
-            }
-          } catch {
-            if (
-              (cleanKey.startsWith('"') && cleanKey.endsWith('"')) ||
-              (cleanKey.startsWith("'") && cleanKey.endsWith("'"))
-            ) {
-              cleanKey = cleanKey.slice(1, -1);
-            }
-          }
-
-          cleanKey = cleanKey.trim();
-
-          if (cleanKey) {
-            setAppKey(cleanKey);
-            setIsHydrated(true);
-            return;
-          }
-        }
-      } catch (storageError) {
-        console.warn('Unable to hydrate app_key from storage:', storageError);
-      }
-
-      const cached = localStorage.getItem('live_events_cache_key');
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (typeof parsed === 'string' && parsed.trim()) {
-            const normalized = parsed.trim();
-            setAppKey(normalized);
-            setIsHydrated(true);
-            return;
-          }
-        } catch (cacheError) {
-          console.warn('Unable to parse cached app key:', cacheError);
-        }
-      }
-
-      setIsHydrated(true);
-    };
-
-    hydrateFromStorage();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  const isHydrated = !isHydrating;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">

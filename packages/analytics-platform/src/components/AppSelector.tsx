@@ -1,79 +1,23 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Check, ChevronDown, Loader2, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082';
-
-interface App {
-  app_key: string;
-  name?: string;
-  created_at?: string;
-}
+import { useAppKey, AppInfo } from '@/lib/AppKeyContext';
 
 interface AppSelectorProps {
   variant?: 'sidebar' | 'header';
-  onAppChange?: (appKey: string) => void;
 }
 
-export function AppSelector({ variant = 'header', onAppChange }: AppSelectorProps) {
+export function AppSelector({ variant = 'header' }: AppSelectorProps) {
   const router = useRouter();
-  const [apps, setApps] = useState<App[]>([]);
-  const [selectedApp, setSelectedApp] = useState('');
+  const { appKey, apps, currentApp, isLoading, setAppKey } = useAppKey();
   const [isOpen, setIsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    fetchApps();
-  }, []);
-
-  const fetchApps = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/apps/list`);
-      const data = await response.json();
-      
-      if (data.ok && data.apps) {
-        const formattedApps = data.apps.map((app: any) => ({
-          app_key: app.app_key,
-          name: app.name || app.app_key,
-          created_at: app.created_at
-        }));
-        
-        setApps(formattedApps);
-        
-        // Check for stored app key first
-        const storedKey = localStorage.getItem('app_key') || sessionStorage.getItem('app_key');
-        if (storedKey && formattedApps.some((app: App) => app.app_key === storedKey)) {
-          setSelectedApp(storedKey);
-          onAppChange?.(storedKey);
-        } else if (formattedApps.length > 0) {
-          const firstApp = formattedApps[0].app_key;
-          setSelectedApp(firstApp);
-          localStorage.setItem('app_key', firstApp);
-          sessionStorage.setItem('app_key', firstApp);
-          onAppChange?.(firstApp);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch apps:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSelectApp = (appKey: string) => {
-    setSelectedApp(appKey);
-    localStorage.setItem('app_key', appKey);
-    sessionStorage.setItem('app_key', appKey);
+  const handleSelectApp = (key: string) => {
+    setAppKey(key);
     setIsOpen(false);
-    onAppChange?.(appKey);
-    
-    // Trigger a page refresh to update all components with new app
-    window.location.reload();
   };
-
-  const selectedAppData = apps.find(app => app.app_key === selectedApp);
 
   if (isLoading) {
     return (
@@ -98,22 +42,7 @@ export function AppSelector({ variant = 'header', onAppChange }: AppSelectorProp
     );
   }
 
-  // Build a display label that distinguishes apps with the same name
-  const getAppLabel = (app: App) => {
-    const name = app.name || app.app_key;
-    // Extract the unique suffix from app_key (last segment after the date portion)
-    const keyParts = app.app_key.split('-');
-    const suffix = keyParts.length > 3 ? keyParts.slice(-1)[0].substring(0, 6) : '';
-    const dateStr = app.created_at 
-      ? new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
-      : '';
-    const datePart = dateStr ? ` (${dateStr})` : '';
-    const suffixPart = suffix ? ` [${suffix}]` : '';
-    return `${name}${datePart}${suffixPart}`;
-  };
-
   if (variant === 'sidebar') {
-    // Custom dropdown for sidebar that shows app_key details
     return (
       <div className="relative">
         <button
@@ -121,8 +50,8 @@ export function AppSelector({ variant = 'header', onAppChange }: AppSelectorProp
           className="w-full px-3 py-2 text-left text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 flex items-center justify-between gap-2"
         >
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium truncate">{selectedAppData?.name || 'Select App'}</div>
-            <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate">{selectedApp}</div>
+            <div className="text-sm font-medium truncate">{currentApp?.name || 'Select App'}</div>
+            <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate">{appKey}</div>
           </div>
           <ChevronDown className={`w-3.5 h-3.5 text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
@@ -132,7 +61,7 @@ export function AppSelector({ variant = 'header', onAppChange }: AppSelectorProp
             <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
             <div className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50 max-h-80 overflow-y-auto">
               {apps.map((app) => {
-                const isSelected = app.app_key === selectedApp;
+                const isSelected = app.app_key === appKey;
                 return (
                   <button
                     key={app.app_key}
@@ -165,7 +94,7 @@ export function AppSelector({ variant = 'header', onAppChange }: AppSelectorProp
     );
   }
 
-  // Header variant - custom dropdown
+  // Header variant
   return (
     <div className="relative">
       <button
@@ -174,10 +103,10 @@ export function AppSelector({ variant = 'header', onAppChange }: AppSelectorProp
       >
         <div className="flex-1 text-left">
           <div className="text-sm font-medium text-gray-900">
-            {selectedAppData?.name || 'Select App'}
+            {currentApp?.name || 'Select App'}
           </div>
           <div className="text-xs text-gray-500 font-mono">
-            {selectedApp || 'No app selected'}
+            {appKey || 'No app selected'}
           </div>
         </div>
         <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -185,15 +114,8 @@ export function AppSelector({ variant = 'header', onAppChange }: AppSelectorProp
 
       {isOpen && (
         <>
-          {/* Backdrop */}
-          <div 
-            className="fixed inset-0 z-40" 
-            onClick={() => setIsOpen(false)}
-          />
-          
-          {/* Dropdown */}
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
           <div className="absolute top-full left-0 mt-2 w-full min-w-[300px] bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-96 overflow-y-auto">
-            {/* Header */}
             <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-gray-900">Your Applications</h3>
@@ -210,11 +132,9 @@ export function AppSelector({ variant = 'header', onAppChange }: AppSelectorProp
               </div>
             </div>
 
-            {/* Apps List */}
             <div className="py-2">
               {apps.map((app) => {
-                const isSelected = app.app_key === selectedApp;
-                
+                const isSelected = app.app_key === appKey;
                 return (
                   <button
                     key={app.app_key}
@@ -249,4 +169,3 @@ export function AppSelector({ variant = 'header', onAppChange }: AppSelectorProp
     </div>
   );
 }
-

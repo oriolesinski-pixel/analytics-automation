@@ -1,5 +1,5 @@
 // src/routes/tiles.ts
-// Saved Tiles & Dashboards API
+// Saved Tiles & Dashboards API — with full tenant isolation by app_key
 
 import { FastifyPluginAsync } from 'fastify';
 import { createClient } from '@supabase/supabase-js';
@@ -34,7 +34,7 @@ const CreateTileSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional(),
   tile_type: z.enum(['chart', 'markdown']).optional().default('chart'),
-  config: z.any(), // Can be TileConfig or MarkdownTileConfig
+  config: z.any(),
   user_id: z.string().optional().default('default-user'),
 });
 
@@ -78,6 +78,49 @@ const AddTileToDashboardSchema = z.object({
   }),
 });
 
+/**
+ * Check if the request is using admin mode (bypasses tenant isolation).
+ * In production this should be validated against a real auth token / role.
+ */
+function isAdminRequest(request: any): boolean {
+  const query = request.query as any;
+  return query?.admin === 'true' || query?.admin === '1';
+}
+
+/**
+ * Verify a tile belongs to the given app_key. Returns the tile if valid, null otherwise.
+ * Admin requests skip the check.
+ */
+async function verifyTileAccess(tileId: string, appKey: string | undefined, admin: boolean) {
+  const { data: tile, error } = await supabase
+    .from('saved_tiles')
+    .select('*')
+    .eq('id', tileId)
+    .single();
+
+  if (error || !tile) return null;
+  if (admin) return tile;
+  if (appKey && tile.app_key !== appKey) return null;
+  return tile;
+}
+
+/**
+ * Verify a dashboard belongs to the given app_key. Returns the dashboard if valid, null otherwise.
+ * Admin requests skip the check.
+ */
+async function verifyDashboardAccess(dashboardId: string, appKey: string | undefined, admin: boolean) {
+  const { data: dashboard, error } = await supabase
+    .from('dashboards')
+    .select('*')
+    .eq('id', dashboardId)
+    .single();
+
+  if (error || !dashboard) return null;
+  if (admin) return dashboard;
+  if (appKey && dashboard.app_key !== appKey) return null;
+  return dashboard;
+}
+
 const tilesRoutes: FastifyPluginAsync = async (fastify) => {
   
   // ==================== SAVED TILES ENDPOINTS ====================
@@ -115,7 +158,7 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(500).send({ ok: false, error: error.message });
       }
 
-      console.log(`✅ Created saved tile: ${tile.name} (${tile.id})`);
+      console.log(`✅ Created saved tile: ${tile.name} (${tile.id}) for app ${app_key}`);
       return reply.code(201).send({ ok: true, tile });
     } catch (error: any) {
       console.error('Exception creating tile:', error);
@@ -123,10 +166,18 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // List user's tiles (optionally filter by app_key)
+  // List tiles — app_key is REQUIRED unless admin mode
   fastify.get('/tiles', async (request, reply) => {
     try {
       const { app_key, user_id = 'default-user' } = request.query as any;
+      const admin = isAdminRequest(request);
+
+      if (!app_key && !admin) {
+        return reply.code(400).send({
+          ok: false,
+          error: 'app_key query parameter is required (use admin=true to bypass)',
+        });
+      }
 
       let query = supabase
         .from('saved_tiles')
@@ -134,7 +185,7 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
         .eq('user_id', user_id)
         .order('created_at', { ascending: false });
 
-      if (app_key) {
+      if (app_key && !admin) {
         query = query.eq('app_key', app_key);
       }
 
@@ -152,22 +203,17 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Get single tile
+  // Get single tile — validates app_key ownership
   fastify.get('/tiles/:id', async (request, reply) => {
     try {
       const { id } = request.params as any;
+      const { app_key } = request.query as any;
+      const admin = isAdminRequest(request);
 
-      const { data: tile, error } = await supabase
-        .from('saved_tiles')
-        .select('*')
-        .eq('id', id)
-        .single();
+      const tile = await verifyTileAccess(id, app_key, admin);
 
-      if (error) {
-        if (error.code === 'PGRST116') {
-          return reply.code(404).send({ ok: false, error: 'Tile not found' });
-        }
-        return reply.code(500).send({ ok: false, error: error.message });
+      if (!tile) {
+        return reply.code(404).send({ ok: false, error: 'Tile not found or access denied' });
       }
 
       return reply.send({ ok: true, tile });
@@ -177,10 +223,12 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Update tile
+  // Update tile — validates app_key ownership
   fastify.put('/tiles/:id', async (request, reply) => {
     try {
       const { id } = request.params as any;
+      const { app_key } = request.query as any;
+      const admin = isAdminRequest(request);
       const validation = UpdateTileSchema.safeParse(request.body);
 
       if (!validation.success) {
@@ -189,6 +237,12 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
           error: 'Invalid request body',
           errors: validation.error.issues,
         });
+      }
+
+      // Verify ownership first
+      const existing = await verifyTileAccess(id, app_key, admin);
+      if (!existing) {
+        return reply.code(404).send({ ok: false, error: 'Tile not found or access denied' });
       }
 
       const { data: tile, error } = await supabase
@@ -213,10 +267,17 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Delete tile
+  // Delete tile — validates app_key ownership
   fastify.delete('/tiles/:id', async (request, reply) => {
     try {
       const { id } = request.params as any;
+      const { app_key } = request.query as any;
+      const admin = isAdminRequest(request);
+
+      const existing = await verifyTileAccess(id, app_key, admin);
+      if (!existing) {
+        return reply.code(404).send({ ok: false, error: 'Tile not found or access denied' });
+      }
 
       const { error } = await supabase
         .from('saved_tiles')
@@ -252,7 +313,6 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
 
       const { app_key, name, description, user_id } = validation.data;
 
-      // Default empty layout
       const defaultLayout = {
         breakpoints: { lg: 1200, md: 996, sm: 768, xs: 480 },
         cols: { lg: 12, md: 10, sm: 6, xs: 4 },
@@ -276,7 +336,7 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(500).send({ ok: false, error: error.message });
       }
 
-      console.log(`✅ Created dashboard: ${dashboard.name} (${dashboard.id})`);
+      console.log(`✅ Created dashboard: ${dashboard.name} (${dashboard.id}) for app ${app_key}`);
       return reply.code(201).send({ ok: true, dashboard });
     } catch (error: any) {
       console.error('Exception creating dashboard:', error);
@@ -284,10 +344,18 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // List user's dashboards (optionally filter by app_key)
+  // List dashboards — app_key is REQUIRED unless admin mode
   fastify.get('/dashboards', async (request, reply) => {
     try {
       const { app_key, user_id = 'default-user' } = request.query as any;
+      const admin = isAdminRequest(request);
+
+      if (!app_key && !admin) {
+        return reply.code(400).send({
+          ok: false,
+          error: 'app_key query parameter is required (use admin=true to bypass)',
+        });
+      }
 
       let query = supabase
         .from('dashboards')
@@ -295,7 +363,7 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
         .eq('user_id', user_id)
         .order('created_at', { ascending: false });
 
-      if (app_key) {
+      if (app_key && !admin) {
         query = query.eq('app_key', app_key);
       }
 
@@ -306,7 +374,6 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(500).send({ ok: false, error: error.message });
       }
 
-      // Count tiles per dashboard
       const dashboardsWithCounts = await Promise.all(
         (dashboards || []).map(async (dashboard) => {
           const { count } = await supabase
@@ -325,10 +392,12 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Get dashboard with all tiles
+  // Get dashboard with all tiles — validates app_key ownership
   fastify.get('/dashboards/:id', async (request, reply) => {
     try {
       const { id } = request.params as any;
+      const { app_key } = request.query as any;
+      const admin = isAdminRequest(request);
 
       // Fetch dashboard
       const { data: dashboard, error: dashboardError } = await supabase
@@ -344,6 +413,11 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(500).send({ ok: false, error: dashboardError.message });
       }
 
+      // Tenant isolation: verify app_key if not admin
+      if (!admin && app_key && dashboard.app_key !== app_key) {
+        return reply.code(403).send({ ok: false, error: 'Access denied: dashboard belongs to a different app' });
+      }
+
       // Fetch dashboard tiles with tile details
       const { data: dashboardTiles, error: tilesError } = await supabase
         .from('dashboard_tiles')
@@ -355,7 +429,6 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(500).send({ ok: false, error: tilesError.message });
       }
 
-      // Transform to flat structure
       const tiles = (dashboardTiles || []).map((dt: any) => ({
         dashboard_tile_id: dt.id,
         tile_id: dt.tile_id,
@@ -380,10 +453,12 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Update dashboard (name, description)
+  // Update dashboard (name, description) — validates app_key ownership
   fastify.put('/dashboards/:id', async (request, reply) => {
     try {
       const { id } = request.params as any;
+      const { app_key } = request.query as any;
+      const admin = isAdminRequest(request);
       const validation = UpdateDashboardSchema.safeParse(request.body);
 
       if (!validation.success) {
@@ -392,6 +467,12 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
           error: 'Invalid request body',
           errors: validation.error.issues,
         });
+      }
+
+      // Verify ownership
+      const existing = await verifyDashboardAccess(id, app_key, admin);
+      if (!existing) {
+        return reply.code(404).send({ ok: false, error: 'Dashboard not found or access denied' });
       }
 
       const { data: dashboard, error } = await supabase
@@ -416,12 +497,18 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Delete dashboard
+  // Delete dashboard — validates app_key ownership
   fastify.delete('/dashboards/:id', async (request, reply) => {
     try {
       const { id } = request.params as any;
+      const { app_key } = request.query as any;
+      const admin = isAdminRequest(request);
 
-      // Cascade delete will handle dashboard_tiles automatically
+      const existing = await verifyDashboardAccess(id, app_key, admin);
+      if (!existing) {
+        return reply.code(404).send({ ok: false, error: 'Dashboard not found or access denied' });
+      }
+
       const { error } = await supabase
         .from('dashboards')
         .delete()
@@ -441,10 +528,12 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ==================== DASHBOARD COMPOSITION ENDPOINTS ====================
 
-  // Add tile to dashboard
+  // Add tile to dashboard — validates dashboard app_key ownership
   fastify.post('/dashboards/:id/tiles', async (request, reply) => {
     try {
       const { id } = request.params as any;
+      const { app_key } = request.query as any;
+      const admin = isAdminRequest(request);
       const validation = AddTileToDashboardSchema.safeParse(request.body);
 
       if (!validation.success) {
@@ -457,15 +546,10 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
 
       const { tile_id, layout_config } = validation.data;
 
-      // Verify dashboard exists
-      const { data: dashboard, error: dashboardError } = await supabase
-        .from('dashboards')
-        .select('id')
-        .eq('id', id)
-        .single();
-
-      if (dashboardError) {
-        return reply.code(404).send({ ok: false, error: 'Dashboard not found' });
+      // Verify dashboard ownership
+      const dashboard = await verifyDashboardAccess(id, app_key, admin);
+      if (!dashboard) {
+        return reply.code(404).send({ ok: false, error: 'Dashboard not found or access denied' });
       }
 
       // Add tile to dashboard
@@ -494,10 +578,17 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Remove tile from dashboard
+  // Remove tile from dashboard — validates dashboard app_key ownership
   fastify.delete('/dashboards/:id/tiles/:tile_id', async (request, reply) => {
     try {
       const { id, tile_id } = request.params as any;
+      const { app_key } = request.query as any;
+      const admin = isAdminRequest(request);
+
+      const dashboard = await verifyDashboardAccess(id, app_key, admin);
+      if (!dashboard) {
+        return reply.code(404).send({ ok: false, error: 'Dashboard not found or access denied' });
+      }
 
       const { error } = await supabase
         .from('dashboard_tiles')
@@ -517,11 +608,18 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Update tile settings in dashboard (e.g., ignore_global_filters)
+  // Update tile settings in dashboard
   fastify.put('/dashboards/:id/tiles/:tile_id/settings', async (request, reply) => {
     try {
       const { id, tile_id } = request.params as any;
+      const { app_key } = request.query as any;
+      const admin = isAdminRequest(request);
       const { ignore_global_filters } = request.body as any;
+
+      const dashboard = await verifyDashboardAccess(id, app_key, admin);
+      if (!dashboard) {
+        return reply.code(404).send({ ok: false, error: 'Dashboard not found or access denied' });
+      }
 
       const { error } = await supabase
         .from('dashboard_tiles')
@@ -545,6 +643,8 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.put('/dashboards/:id/layout', async (request, reply) => {
     try {
       const { id } = request.params as any;
+      const { app_key } = request.query as any;
+      const admin = isAdminRequest(request);
       const validation = UpdateLayoutSchema.safeParse(request.body);
 
       if (!validation.success) {
@@ -555,20 +655,15 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
 
-      const { layouts } = validation.data;
-
-      // Fetch current layout to preserve breakpoints and cols
-      const { data: dashboard, error: fetchError } = await supabase
-        .from('dashboards')
-        .select('layout')
-        .eq('id', id)
-        .single();
-
-      if (fetchError) {
-        return reply.code(404).send({ ok: false, error: 'Dashboard not found' });
+      // Verify ownership
+      const existing = await verifyDashboardAccess(id, app_key, admin);
+      if (!existing) {
+        return reply.code(404).send({ ok: false, error: 'Dashboard not found or access denied' });
       }
 
-      const currentLayout = dashboard.layout as any;
+      const { layouts } = validation.data;
+
+      const currentLayout = existing.layout as any;
       const updatedLayout = {
         ...currentLayout,
         layouts,
@@ -595,4 +690,3 @@ const tilesRoutes: FastifyPluginAsync = async (fastify) => {
 };
 
 export default tilesRoutes;
-

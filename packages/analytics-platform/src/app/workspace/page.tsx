@@ -9,71 +9,35 @@ import {
   Trash2,
   LayoutDashboard,
   Loader2,
-  ChevronDown,
   BarChart3,
 } from 'lucide-react';
 import { useDashboardStore } from '@/lib/useDashboardStore';
 import TileLiveChart from '@/components/TileLiveChart';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082';
-
-interface App {
-  app_key: string;
-  name: string;
-}
+import { useAppKey } from '@/lib/AppKeyContext';
 
 export default function WorkspacePage() {
   const router = useRouter();
   const dashboardStore = useDashboardStore();
-  const [selectedApp, setSelectedApp] = useState<string>('');
-  const [apps, setApps] = useState<App[]>([]);
-  const [showAppDropdown, setShowAppDropdown] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const { appKey, currentApp, isLoading: appLoading, isAdmin } = useAppKey();
   const [showAddToDashboard, setShowAddToDashboard] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
 
-  // Fetch apps
-  useEffect(() => {
-    const fetchApps = async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/apps/list`);
-        const data = await response.json();
-        if (data.ok && data.apps) {
-          const formattedApps = data.apps.map((app: any) => ({
-            app_key: app.app_key,
-            name: app.name || app.app_key,
-          }));
-          setApps(formattedApps);
-          if (formattedApps.length > 0) {
-            setSelectedApp(formattedApps[0].app_key);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to fetch apps:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchApps();
-  }, []);
-
   // Fetch saved tiles when app changes
   useEffect(() => {
-    if (selectedApp) {
-      dashboardStore.fetchSavedTiles(selectedApp);
-      dashboardStore.fetchDashboards(selectedApp);
+    if (appKey) {
+      dashboardStore.fetchSavedTiles(appKey, isAdmin);
+      dashboardStore.fetchDashboards(appKey, isAdmin);
     }
-  }, [selectedApp]);
+  }, [appKey, isAdmin]);
 
   const handleDeleteTile = async (tileId: string) => {
     try {
       console.log('Deleting tile:', tileId);
-      await dashboardStore.deleteTile(tileId);
+      await dashboardStore.deleteTile(tileId, appKey, isAdmin);
       console.log('Tile deleted successfully');
       setShowDeleteModal(null);
-      // Refresh tiles
-      if (selectedApp) {
-        await dashboardStore.fetchSavedTiles(selectedApp);
+      if (appKey) {
+        await dashboardStore.fetchSavedTiles(appKey, isAdmin);
       }
     } catch (error: any) {
       console.error('Failed to delete tile:', error);
@@ -84,14 +48,12 @@ export default function WorkspacePage() {
   const handleAddToDashboard = async (tileId: string, dashboardId: string) => {
     try {
       console.log('Adding tile to dashboard:', { tileId, dashboardId });
-      // Get tile to determine default size
       const tile = dashboardStore.savedTiles.find(t => t.id === tileId);
       if (!tile) {
         console.error('Tile not found:', tileId);
         return;
       }
 
-      // Default layout position
       const layout = {
         x: 0,
         y: 0,
@@ -101,11 +63,9 @@ export default function WorkspacePage() {
         minH: 3,
       };
 
-      await dashboardStore.addTileToDashboard(dashboardId, tileId, layout);
+      await dashboardStore.addTileToDashboard(dashboardId, tileId, layout, appKey, isAdmin);
       console.log('Tile added successfully');
       setShowAddToDashboard(null);
-      
-      // Redirect to dashboard in edit mode so user can position the tile
       router.push(`/dashboards/${dashboardId}?edit=true`);
     } catch (error: any) {
       console.error('Failed to add tile:', error);
@@ -113,7 +73,7 @@ export default function WorkspacePage() {
     }
   };
 
-  if (loading) {
+  if (appLoading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
@@ -127,42 +87,16 @@ export default function WorkspacePage() {
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
         <div className="px-8 py-6">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">My Tiles</h1>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">View and manage your saved analytics tiles</p>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            Tiles for <span className="font-semibold text-gray-800 dark:text-gray-200">{currentApp?.name || appKey}</span>
+          </p>
           
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-
-              {/* App Selector */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowAppDropdown(!showAppDropdown)}
-                  className="flex items-center space-x-2 px-4 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 rounded-lg transition-colors"
-                >
-                  <span className="font-medium text-gray-700 dark:text-gray-200">
-                    {apps.find(a => a.app_key === selectedApp)?.name || 'Select App'}
-                  </span>
-                  <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                </button>
-
-                {showAppDropdown && (
-                  <div className="absolute top-full left-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
-                    {apps.map(app => (
-                      <button
-                        key={app.app_key}
-                        onClick={() => {
-                          setSelectedApp(app.app_key);
-                          setShowAppDropdown(false);
-                        }}
-                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
-                      >
-                        <span className="text-gray-700">{app.name}</span>
-                        {app.app_key === selectedApp && (
-                          <div className="w-2 h-2 bg-indigo-600 rounded-full" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
+              <div className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
+                <span className="text-xs font-medium text-blue-700 dark:text-blue-400">
+                  App: {currentApp?.name || appKey}
+                </span>
               </div>
             </div>
 
@@ -195,7 +129,6 @@ export default function WorkspacePage() {
             <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
           </div>
         ) : dashboardStore.savedTiles.length === 0 ? (
-          // Empty State
           <div className="flex items-center justify-center h-64">
             <div className="text-center">
               <BarChart3 className="mx-auto h-16 w-16 text-gray-400 mb-4" />
@@ -204,7 +137,7 @@ export default function WorkspacePage() {
                 Create your first tile to get started
               </p>
               <button
-                onClick={() => router.push('/dashboard')}
+                onClick={() => router.push('/analytics')}
                 className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -213,7 +146,6 @@ export default function WorkspacePage() {
             </div>
           </div>
         ) : (
-          // Tiles Grid
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {dashboardStore.savedTiles.map((tile) => (
               <div
@@ -230,13 +162,13 @@ export default function WorkspacePage() {
                     {'measures' in tile.config && tile.config.measures?.[0]?.label && (
                       <>
                         <span>{tile.config.measures[0].label}</span>
-                        <span>•</span>
+                        <span>-</span>
                       </>
                     )}
                     <span>{'chartType' in tile.config ? tile.config.chartType : 'chart'}</span>
                     {'eventType' in tile.config && tile.config.eventType && (
                       <>
-                        <span>•</span>
+                        <span>-</span>
                         <span>{tile.config.eventType}</span>
                       </>
                     )}
@@ -248,7 +180,7 @@ export default function WorkspacePage() {
                   <TileLiveChart
                     tileId={tile.id}
                     config={tile.config}
-                    appKey={selectedApp}
+                    appKey={appKey}
                   />
                 </div>
 
@@ -259,8 +191,6 @@ export default function WorkspacePage() {
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        console.log('Edit tile clicked:', tile.id);
-                        // TODO: Load tile in TileBuilder for editing
                         router.push(`/dashboard?tile=${tile.id}`);
                       }}
                       className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
@@ -273,7 +203,6 @@ export default function WorkspacePage() {
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        console.log('Add to dashboard clicked:', tile.id);
                         setShowAddToDashboard(tile.id);
                       }}
                       className="p-2 hover:bg-indigo-100 rounded-lg transition-colors"
@@ -286,7 +215,6 @@ export default function WorkspacePage() {
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        console.log('Delete tile clicked:', tile.id);
                         setShowDeleteModal(tile.id);
                       }}
                       className="p-2 hover:bg-red-100 rounded-lg transition-colors"
@@ -363,7 +291,6 @@ export default function WorkspacePage() {
   );
 }
 
-// Delete Confirmation Modal Component
 function DeleteConfirmationModal({
   tileName,
   onConfirm,
@@ -376,7 +303,6 @@ function DeleteConfirmationModal({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-in fade-in duration-200">
       <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden animate-in zoom-in-95 duration-200">
-        {/* Header with red accent */}
         <div className="bg-gradient-to-r from-red-50 to-orange-50 px-6 py-4 border-b border-red-100">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-red-100 rounded-lg">
@@ -386,7 +312,6 @@ function DeleteConfirmationModal({
           </div>
         </div>
 
-        {/* Content */}
         <div className="p-6">
           <p className="text-gray-700 mb-2">
             Are you sure you want to delete <span className="font-semibold text-gray-900">{tileName}</span>?
@@ -396,7 +321,6 @@ function DeleteConfirmationModal({
           </p>
         </div>
 
-        {/* Actions */}
         <div className="px-6 pb-6 flex space-x-3">
           <button
             onClick={onCancel}
@@ -416,4 +340,3 @@ function DeleteConfirmationModal({
     </div>
   );
 }
-
