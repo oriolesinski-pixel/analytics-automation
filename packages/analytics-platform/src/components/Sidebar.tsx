@@ -15,7 +15,8 @@ import {
   ChevronRight,
   Menu,
   X,
-  BookOpen
+  BookOpen,
+  Plus
 } from 'lucide-react';
 import { AppSelector } from './AppSelector';
 
@@ -236,6 +237,29 @@ export function Sidebar() {
             );
           })}
         </nav>
+
+        {/* Add New App Button */}
+        {!isCollapsed ? (
+          <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-800">
+            <Link
+              href="/onboarding"
+              className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-sm font-medium transition-all shadow-sm hover:shadow-md"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add New App</span>
+            </Link>
+          </div>
+        ) : (
+          <div className="px-2 py-3 border-t border-gray-200 dark:border-gray-800 flex justify-center">
+            <Link
+              href="/onboarding"
+              className="p-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg transition-all shadow-sm hover:shadow-md"
+              title="Add New App"
+            >
+              <Plus className="w-5 h-5" />
+            </Link>
+          </div>
+        )}
 
         {/* Footer */}
         {!isCollapsed && (

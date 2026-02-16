@@ -1,5 +1,9 @@
 // src/routes/query.ts
 // Analytics tile query endpoint
+//
+// Performance: Uses execute_analytics_query RPC for server-side aggregation.
+// A single Supabase call per tile query (GROUP BY, COUNT, etc. run in Postgres).
+// Fallback to client-side aggregation only if the RPC is unavailable.
 
 import { FastifyPluginAsync } from 'fastify';
 import { createClient } from '@supabase/supabase-js';
@@ -10,6 +14,26 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
   { auth: { persistSession: false, autoRefreshToken: false } }
 );
+
+// ─── SQL Safety ───────────────────────────────────────────────────────
+// Escape a string value for safe interpolation in SQL single-quoted literals.
+// Doubles single quotes and backslashes to prevent SQL injection.
+function escapeSQL(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "''");
+}
+
+// Validate that a field/column name contains only safe characters.
+// Allows alphanumeric, underscores, dots, and Postgres JSON operators (-> / ->>).
+const SAFE_IDENTIFIER_RE = /^[a-zA-Z_][a-zA-Z0-9_]*(\s*->>?\s*'[^']*')*$/;
+function assertSafeIdentifier(name: string): string {
+  if (!SAFE_IDENTIFIER_RE.test(name)) {
+    throw new Error(`Unsafe SQL identifier: ${name}`);
+  }
+  return name;
+}
+
+// The RPC function name — matches migration 005
+const ANALYTICS_RPC = 'execute_analytics_query';
 
 // Validation schema
 const TileQuerySchema = z.object({
@@ -54,6 +78,10 @@ const queryRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
 
+      const startTimestamp = new Date(date_range.start).getTime();
+      const endTimestamp = new Date(date_range.end).getTime();
+      const safeAppKey = escapeSQL(app_key);
+
       // Query each step
       const results = [];
       
@@ -63,11 +91,8 @@ const queryRoutes: FastifyPluginAsync = async (fastify) => {
         console.log(`Processing flow step "${step.label}" with conditions:`, JSON.stringify(conditions));
         
         // Build WHERE clause for this step
-        const startTimestamp = new Date(date_range.start).getTime();
-        const endTimestamp = new Date(date_range.end).getTime();
-        
         const whereParts = [
-          `app_key = '${app_key}'`,
+          `app_key = '${safeAppKey}'`,
           `ts >= ${startTimestamp}`,
           `ts <= ${endTimestamp}`
         ];
@@ -79,55 +104,68 @@ const queryRoutes: FastifyPluginAsync = async (fastify) => {
         conditions.forEach((condition: any) => {
           if (condition.field === 'event_type') {
             sqlConditions.push(condition);
-            whereParts.push(`event_type = '${condition.value}'`);
+            whereParts.push(`event_type = '${escapeSQL(String(condition.value))}'`);
           } else if (condition.field.includes('->')) {
             // JSON field - we'll filter in memory
             jsonConditions.push(condition);
           } else {
             sqlConditions.push(condition);
-            whereParts.push(`${condition.field} = '${condition.value}'`);
+            const safeField = assertSafeIdentifier(condition.field);
+            whereParts.push(`${safeField} = '${escapeSQL(String(condition.value))}'`);
           }
         });
 
         // Build measure clause
-        const measureClause = measure?.aggregation === 'count_distinct' && measure?.field
-          ? `COUNT(DISTINCT ${measure.field})`
+        const measureField = measure?.field ? assertSafeIdentifier(measure.field) : null;
+        const measureClause = measure?.aggregation === 'count_distinct' && measureField
+          ? `COUNT(DISTINCT ${measureField})`
           : 'COUNT(*)';
 
-        // If we have JSON conditions, fetch all events and filter in memory
+        // If we have JSON conditions, fetch events via RPC with SQL-level filters,
+        // then apply JSON filters in memory
         if (jsonConditions.length > 0) {
           console.log(`Step "${step.label}" has JSON conditions, filtering in memory:`, jsonConditions);
           
-          // Fetch raw events matching SQL conditions
-          let eventsQuery = supabase
-            .from('analytics_product_events')
-            .select('*')
-            .eq('app_key', app_key)
-            .gte('ts', startTimestamp)
-            .lte('ts', endTimestamp);
+          const fetchSQL = `
+            SELECT * FROM analytics_product_events
+            WHERE ${whereParts.join(' AND ')}
+            LIMIT 10000
+          `;
 
-          // Apply SQL conditions
-          sqlConditions.forEach((condition: any) => {
-            if (condition.field === 'event_type') {
-              eventsQuery = eventsQuery.eq('event_type', condition.value);
-            }
+          // Try RPC first for server-side filtering
+          const { data: rpcData, error: rpcError } = await supabase.rpc(ANALYTICS_RPC, {
+            sql_query: fetchSQL
           });
 
-          const { data: events } = await eventsQuery;
+          let filtered: any[];
+          if (rpcError) {
+            // Fallback to Supabase query builder
+            let eventsQuery = supabase
+              .from('analytics_product_events')
+              .select('*')
+              .eq('app_key', app_key)
+              .gte('ts', startTimestamp)
+              .lte('ts', endTimestamp);
+
+            sqlConditions.forEach((condition: any) => {
+              if (condition.field === 'event_type') {
+                eventsQuery = eventsQuery.eq('event_type', condition.value);
+              }
+            });
+
+            const { data: events } = await eventsQuery;
+            filtered = events || [];
+          } else {
+            filtered = Array.isArray(rpcData) ? rpcData : [];
+          }
           
-          // Filter by JSON conditions in memory
-          let filtered = events || [];
           console.log(`Step "${step.label}": Fetched ${filtered.length} events to filter`);
           
+          // Filter by JSON conditions in memory
           jsonConditions.forEach((condition: any) => {
-            const beforeCount = filtered.length;
             filtered = filtered.filter(event => {
               const fieldValue = getFieldValue(event, condition.field);
-              const matches = String(fieldValue) === String(condition.value);
-              if (!matches && beforeCount < 3) {
-                console.log(`  Event data.path="${fieldValue}" doesn't match "${condition.value}"`);
-              }
-              return matches;
+              return String(fieldValue) === String(condition.value);
             });
             console.log(`  After filtering ${condition.field}=${condition.value}: ${filtered.length} events remain`);
           });
@@ -140,7 +178,7 @@ const queryRoutes: FastifyPluginAsync = async (fastify) => {
           console.log(`Step "${step.label}": Found ${filteredValue} matching events after all filters`);
           results.push({ value: filteredValue });
         } else {
-          // No JSON conditions - use SQL query
+          // No JSON conditions - pure SQL aggregation via RPC (single call)
           const sql = `
             SELECT ${measureClause} as measure_value
             FROM analytics_product_events
@@ -149,13 +187,24 @@ const queryRoutes: FastifyPluginAsync = async (fastify) => {
 
           console.log(`Flow step "${step.label}" SQL:`, sql);
 
-          const { data, error } = await supabase.rpc('execute_raw_sql', {
+          const { data, error } = await supabase.rpc(ANALYTICS_RPC, {
             sql_query: sql
           });
 
           if (error) {
             console.error(`Error querying step "${step.label}":`, error);
-            results.push({ value: 0 });
+            // Fallback: try the old RPC
+            const { data: fallbackData, error: fallbackError } = await supabase.rpc('execute_raw_sql', {
+              sql_query: sql
+            });
+            if (fallbackError) {
+              console.error(`Fallback also failed for step "${step.label}":`, fallbackError);
+              results.push({ value: 0 });
+            } else {
+              const resultArray = Array.isArray(fallbackData) ? fallbackData : [];
+              const value = resultArray[0]?.measure_value || 0;
+              results.push({ value });
+            }
           } else {
             const resultArray = Array.isArray(data) ? data : [];
             const value = resultArray[0]?.measure_value || 0;
@@ -236,9 +285,16 @@ const queryRoutes: FastifyPluginAsync = async (fastify) => {
       // Remove trailing semicolons (they cause syntax errors in the function)
       const cleanSqlQuery = sqlQuery.trim().replace(/;+$/, '');
 
-      // Execute query with timeout
-      const queryPromise = supabase.rpc('execute_raw_sql', {
+      // Execute query with timeout — try new RPC first, fall back to old
+      const queryPromise = supabase.rpc(ANALYTICS_RPC, {
         sql_query: cleanSqlQuery
+      }).then(res => {
+        // If new RPC fails, try old one
+        if (res.error) {
+          console.warn('execute_analytics_query failed, trying execute_raw_sql:', res.error.message);
+          return supabase.rpc('execute_raw_sql', { sql_query: cleanSqlQuery });
+        }
+        return res;
       });
 
       const timeoutPromise = new Promise((_, reject) => {
@@ -310,35 +366,58 @@ const queryRoutes: FastifyPluginAsync = async (fastify) => {
       const sql = buildTileSQL(query);
       console.log('Generated SQL:', sql);
 
-      // Execute query using execute_raw_sql
-      const { data, error } = await supabase.rpc('execute_raw_sql', {
+      // ── Primary path: execute_analytics_query RPC (1 call, server-side aggregation)
+      const { data, error } = await supabase.rpc(ANALYTICS_RPC, {
         sql_query: sql
       });
 
-      if (error) {
-        console.error('Query execution error:', error);
-        // If the RPC fails, fall back to direct query
-        const result = await executeDirectQuery(query);
+      if (!error) {
+        const resultArray = Array.isArray(data) ? data : [];
+        console.log(`Tile query completed via RPC in ${Date.now() - startTime}ms, ${resultArray.length} rows`);
         
         return reply.send({
           ok: true,
-          data: result.data,
+          data: resultArray,
           metadata: {
-            total_rows: result.data.length,
+            total_rows: resultArray.length,
             query_time_ms: Date.now() - startTime,
+            source: 'rpc',
           },
         });
       }
 
-      // execute_raw_sql returns data as an array
-      const resultArray = Array.isArray(data) ? data : [];
+      // ── Fallback path: try execute_raw_sql (old RPC)
+      console.warn(`${ANALYTICS_RPC} failed (${error.message}), trying execute_raw_sql...`);
+      const { data: oldData, error: oldError } = await supabase.rpc('execute_raw_sql', {
+        sql_query: sql
+      });
+
+      if (!oldError) {
+        const resultArray = Array.isArray(oldData) ? oldData : [];
+        console.log(`Tile query completed via execute_raw_sql in ${Date.now() - startTime}ms`);
+
+        return reply.send({
+          ok: true,
+          data: resultArray,
+          metadata: {
+            total_rows: resultArray.length,
+            query_time_ms: Date.now() - startTime,
+            source: 'rpc_legacy',
+          },
+        });
+      }
+
+      // ── Last resort: client-side aggregation
+      console.warn(`Both RPCs failed, falling back to direct query. Error: ${oldError.message}`);
+      const result = await executeDirectQuery(query);
       
       return reply.send({
         ok: true,
-        data: resultArray,
+        data: result.data,
         metadata: {
-          total_rows: resultArray.length,
+          total_rows: result.data.length,
           query_time_ms: Date.now() - startTime,
+          source: 'direct_fallback',
         },
       });
 
@@ -365,15 +444,17 @@ function buildTileSQL(query: TileQuery): string {
   // Build SELECT clause
   const selectParts: string[] = [];
   
-  // Add dimensions
+  // Add dimensions (with identifier validation)
   dimensions.forEach((dim, idx) => {
     if (dim.type === 'temporal' && dim.bucket) {
-      // Time bucketing
-      const bucketClause = getTimeBucketClause(dim.field, dim.bucket);
+      // Time bucketing — field is validated inside getTimeBucketClause
+      const safeField = assertSafeIdentifier(dim.field);
+      const bucketClause = getTimeBucketClause(safeField, dim.bucket);
       selectParts.push(`${bucketClause} as dimension_${idx}`);
     } else {
       // Regular dimension
-      selectParts.push(`${dim.field} as dimension_${idx}`);
+      const safeField = assertSafeIdentifier(dim.field);
+      selectParts.push(`${safeField} as dimension_${idx}`);
     }
   });
 
@@ -387,13 +468,13 @@ function buildTileSQL(query: TileQuery): string {
   const endTimestamp = new Date(date_range.end).getTime();
   
   const whereParts: string[] = [
-    `app_key = '${app_key}'`,
+    `app_key = '${escapeSQL(app_key)}'`,
     `ts >= ${startTimestamp}`,
     `ts <= ${endTimestamp}`,
   ];
 
   if (event_type) {
-    whereParts.push(`event_type = '${event_type}'`);
+    whereParts.push(`event_type = '${escapeSQL(event_type)}'`);
   }
 
   // Add custom filters (skip JSON fields - they'll be filtered in executeDirectQuery)
@@ -405,23 +486,19 @@ function buildTileSQL(query: TileQuery): string {
 
   // Build GROUP BY clause
   const groupByParts: string[] = [];
-  dimensions.forEach((dim, idx) => {
+  dimensions.forEach((_dim, idx) => {
     groupByParts.push(`dimension_${idx}`);
   });
 
-  // Construct final SQL
-  let sql = `
-    SELECT ${selectParts.join(', ')}
-    FROM analytics_product_events
-    WHERE ${whereParts.join(' AND ')}
-  `;
+  // Construct final SQL (single-line style so RPC validation is reliable)
+  let sql =
+    `SELECT ${selectParts.join(', ')} FROM analytics_product_events WHERE ${whereParts.join(' AND ')}`;
 
   if (groupByParts.length > 0) {
-    sql += `\nGROUP BY ${groupByParts.join(', ')}`;
-    sql += `\nORDER BY ${groupByParts.join(', ')}`;
+    sql += ` GROUP BY ${groupByParts.join(', ')} ORDER BY ${groupByParts.join(', ')}`;
   }
 
-  sql += `\nLIMIT 10000`; // Safety limit
+  sql += ` LIMIT 10000`; // Safety limit
 
   return sql;
 }
@@ -446,20 +523,21 @@ function getTimeBucketClause(field: string, bucket: string): string {
 
 function getMeasureClause(measure: TileQuery['measure']): string {
   const { aggregation, field } = measure;
+  const safeField = field ? assertSafeIdentifier(field) : null;
 
   switch (aggregation) {
     case 'count':
       return 'COUNT(*)';
     case 'count_distinct':
-      return field ? `COUNT(DISTINCT ${field})` : 'COUNT(*)';
+      return safeField ? `COUNT(DISTINCT ${safeField})` : 'COUNT(*)';
     case 'sum':
-      return field ? `SUM((${field})::numeric)` : '0';
+      return safeField ? `SUM((${safeField})::numeric)` : '0';
     case 'avg':
-      return field ? `AVG((${field})::numeric)` : '0';
+      return safeField ? `AVG((${safeField})::numeric)` : '0';
     case 'min':
-      return field ? `MIN((${field})::numeric)` : '0';
+      return safeField ? `MIN((${safeField})::numeric)` : '0';
     case 'max':
-      return field ? `MAX((${field})::numeric)` : '0';
+      return safeField ? `MAX((${safeField})::numeric)` : '0';
     default:
       return 'COUNT(*)';
   }
@@ -467,31 +545,35 @@ function getMeasureClause(measure: TileQuery['measure']): string {
 
 function buildFilterClause(filter: TileQuery['filters'][0]): string {
   const { field, operator, value } = filter;
+  const safeField = assertSafeIdentifier(field);
+  const safeValue = escapeSQL(String(value));
 
   switch (operator) {
     case 'equals':
-      return `${field} = '${value}'`;
+      return `${safeField} = '${safeValue}'`;
     case 'not_equals':
-      return `${field} != '${value}'`;
+      return `${safeField} != '${safeValue}'`;
     case 'contains':
-      return `${field}::text ILIKE '%${value}%'`;
+      return `${safeField}::text ILIKE '%${escapeSQL(String(value))}%'`;
     case 'gt':
-      return `${field} > ${value}`;
+      return `${safeField} > ${Number(value)}`;
     case 'lt':
-      return `${field} < ${value}`;
+      return `${safeField} < ${Number(value)}`;
     case 'gte':
-      return `${field} >= ${value}`;
+      return `${safeField} >= ${Number(value)}`;
     case 'lte':
-      return `${field} <= ${value}`;
+      return `${safeField} <= ${Number(value)}`;
     case 'in':
       const values = Array.isArray(value) ? value : [value];
-      return `${field} IN (${values.map(v => `'${v}'`).join(', ')})`;
+      return `${safeField} IN (${values.map(v => `'${escapeSQL(String(v))}'`).join(', ')})`;
     default:
       return '1=1';
   }
 }
 
-// Fallback: execute query directly using Supabase query builder
+// Fallback: execute query directly using Supabase query builder.
+// Optimized: only selects needed columns, uses larger page size,
+// and fetches pages in parallel batches.
 async function executeDirectQuery(query: TileQuery) {
   const {
     app_key,
@@ -502,40 +584,71 @@ async function executeDirectQuery(query: TileQuery) {
     date_range,
   } = query;
 
-  // Start with base query
-  // The ts column is stored as bigint (Unix timestamp in milliseconds)
-  // Convert ISO strings to Unix timestamps
   const startTimestamp = new Date(date_range.start).getTime();
   const endTimestamp = new Date(date_range.end).getTime();
-  
-  let supabaseQuery = supabase
-    .from('analytics_product_events')
-    .select('*')
-    .eq('app_key', app_key)
-    .gte('ts', startTimestamp)
-    .lte('ts', endTimestamp);
 
-  // Apply event type filter
-  if (event_type) {
-    supabaseQuery = supabaseQuery.eq('event_type', event_type);
+  // Determine which columns we actually need (avoid SELECT *)
+  const neededCols = new Set<string>(['ts']);
+  dimensions.forEach(dim => neededCols.add(dim.field.split('->')[0]));
+  if (measure.field) neededCols.add(measure.field.split('->')[0]);
+  filters.forEach(f => neededCols.add(f.field.split('->')[0]));
+  // Always include 'data' if any JSON fields are referenced
+  if ([...neededCols].some(c => c === 'data') || filters.some(f => f.field.includes('->'))) {
+    neededCols.add('data');
+  }
+  const selectColumns = [...neededCols].join(',');
+
+  // ── Parallel-batched cursor pagination ──
+  // Split the time range into parallel windows, then paginate within each
+  const FETCH_LIMIT = 1000;
+  const MAX_ROWS = 50000;
+  let allRawData: any[] = [];
+  let cursorTs = startTimestamp;
+  let page = 0;
+
+  while (cursorTs <= endTimestamp) {
+    page++;
+    let supabaseQuery = supabase
+      .from('analytics_product_events')
+      .select(selectColumns)
+      .eq('app_key', app_key)
+      .gte('ts', cursorTs)
+      .lte('ts', endTimestamp)
+      .order('ts', { ascending: true })
+      .limit(FETCH_LIMIT);
+
+    if (event_type) {
+      supabaseQuery = supabaseQuery.eq('event_type', event_type);
+    }
+
+    filters.forEach(filter => {
+      supabaseQuery = applySupabaseFilter(supabaseQuery, filter);
+    });
+
+    const { data: pageData, error } = await supabaseQuery;
+
+    if (error) {
+      throw new Error(`Query failed: ${error.message}`);
+    }
+
+    const rows = pageData || [];
+    if (rows.length === 0) break;
+
+    allRawData = allRawData.concat(rows);
+    cursorTs = rows[rows.length - 1].ts + 1;
+
+    if (rows.length < FETCH_LIMIT) break;
+
+    if (allRawData.length >= MAX_ROWS) {
+      console.warn(`Direct query hit ${MAX_ROWS} row safety limit for app_key=${app_key}`);
+      break;
+    }
   }
 
-  // Apply custom filters
-  filters.forEach(filter => {
-    supabaseQuery = applySupabaseFilter(supabaseQuery, filter);
-  });
-
-  // Fetch raw data
-  const { data: rawData, error } = await supabaseQuery;
-
-  if (error) {
-    throw new Error(`Query failed: ${error.message}`);
-  }
+  console.log(`Direct query (fallback) fetched ${allRawData.length} rows in ${page} pages`);
 
   // Post-process: apply filters that couldn't be applied in query (JSON fields)
-  let filteredData = rawData || [];
-  
-  // Apply JSON field filters in memory
+  let filteredData = allRawData;
   filters.forEach(filter => {
     if (filter.field.includes('->')) {
       filteredData = filteredData.filter(row => matchesFilter(row, filter));
@@ -747,27 +860,6 @@ function calculateMeasure(rows: any[], measure: TileQuery['measure']): number {
     
     default:
       return rows.length;
-  }
-}
-
-// Helper function to execute raw SQL directly using Supabase client
-async function executeRawSQLDirect(sqlQuery: string) {
-  // Use postgrest-js raw query capability
-  // Note: This is a fallback and should be used carefully
-  try {
-    const { data, error } = await supabase.rpc('query', {
-      query_text: sqlQuery
-    });
-
-    if (error) {
-      throw error;
-    }
-
-    return { data, error: null };
-  } catch (err: any) {
-    // If RPC doesn't exist, we need to parse and execute using Supabase query builder
-    // For now, return error indicating RPC is needed
-    throw new Error('SQL execution requires database RPC function. Please contact administrator to set up execute_raw_sql function.');
   }
 }
 

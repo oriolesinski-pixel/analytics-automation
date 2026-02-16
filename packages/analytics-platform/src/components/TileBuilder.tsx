@@ -413,7 +413,7 @@ export default function TileBuilder({ appKey }: TileBuilderProps) {
             <div className="flex items-center gap-3">
               <Calendar className="w-4 h-4 text-gray-600" />
               <select
-                value={DATE_RANGES.find(r => r.getRange().start.getTime() === store.config.dateRange.start.getTime())?.value || '7d'}
+                value={store.dateRangeKey}
                 onChange={(e) => store.setDateRange(e.target.value)}
                 className="min-w-[150px] px-3 py-2 bg-white dark:bg-gray-700 dark:text-gray-100 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >

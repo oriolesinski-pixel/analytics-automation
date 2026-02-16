@@ -98,20 +98,70 @@ export function AppSelector({ variant = 'header', onAppChange }: AppSelectorProp
     );
   }
 
+  // Build a display label that distinguishes apps with the same name
+  const getAppLabel = (app: App) => {
+    const name = app.name || app.app_key;
+    // Extract the unique suffix from app_key (last segment after the date portion)
+    const keyParts = app.app_key.split('-');
+    const suffix = keyParts.length > 3 ? keyParts.slice(-1)[0].substring(0, 6) : '';
+    const dateStr = app.created_at 
+      ? new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+      : '';
+    const datePart = dateStr ? ` (${dateStr})` : '';
+    const suffixPart = suffix ? ` [${suffix}]` : '';
+    return `${name}${datePart}${suffixPart}`;
+  };
+
   if (variant === 'sidebar') {
-    // Simple dropdown for sidebar
+    // Custom dropdown for sidebar that shows app_key details
     return (
-      <select
-        value={selectedApp}
-        onChange={(e) => handleSelectApp(e.target.value)}
-        className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-      >
-        {apps.map((app) => (
-          <option key={app.app_key} value={app.app_key}>
-            {app.name || app.app_key}
-          </option>
-        ))}
-      </select>
+      <div className="relative">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-full px-3 py-2 text-left text-sm border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 flex items-center justify-between gap-2"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium truncate">{selectedAppData?.name || 'Select App'}</div>
+            <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate">{selectedApp}</div>
+          </div>
+          <ChevronDown className={`w-3.5 h-3.5 text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {isOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+            <div className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50 max-h-80 overflow-y-auto">
+              {apps.map((app) => {
+                const isSelected = app.app_key === selectedApp;
+                return (
+                  <button
+                    key={app.app_key}
+                    onClick={() => handleSelectApp(app.app_key)}
+                    className={`w-full px-3 py-2.5 flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left ${
+                      isSelected ? 'bg-blue-50 dark:bg-blue-900/30' : ''
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className={`text-sm font-medium truncate ${isSelected ? 'text-blue-700 dark:text-blue-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                        {app.name || app.app_key}
+                      </div>
+                      <div className="text-[10px] text-gray-400 dark:text-gray-500 font-mono truncate mt-0.5">
+                        {app.app_key}
+                      </div>
+                      {app.created_at && (
+                        <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                          {new Date(app.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </div>
+                      )}
+                    </div>
+                    {isSelected && <Check className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
     );
   }
 

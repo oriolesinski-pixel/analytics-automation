@@ -307,6 +307,30 @@ export const DATE_RANGES = [
       end: new Date(),
     })
   },
+  {
+    value: '6m',
+    label: 'Last 6 Months',
+    getRange: () => ({
+      start: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000),
+      end: new Date(),
+    })
+  },
+  {
+    value: '1y',
+    label: 'Last Year',
+    getRange: () => ({
+      start: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
+      end: new Date(),
+    })
+  },
+  {
+    value: '2y',
+    label: 'Last 2 Years',
+    getRange: () => ({
+      start: new Date(Date.now() - 730 * 24 * 60 * 60 * 1000),
+      end: new Date(),
+    })
+  },
 ];
 
 // Event type options

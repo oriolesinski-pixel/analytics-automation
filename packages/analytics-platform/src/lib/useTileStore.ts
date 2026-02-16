@@ -1,5 +1,6 @@
 // lib/useTileStore.ts
 // State management for Tile Builder using Zustand
+// Persists selected measures, dimensions, filters, date range per app to localStorage.
 
 import { create } from 'zustand';
 import {
@@ -16,12 +17,73 @@ import {
 } from './tile-types';
 import { buildTileQueryRequest } from './queryBuilder';
 
+const TILE_BUILDER_STORAGE_PREFIX = 'analytics_tile_builder_';
+
+function getStorageKey(appKey: string): string {
+  return `${TILE_BUILDER_STORAGE_PREFIX}${appKey}`;
+}
+
+/** Config with dateRange as ISO strings for storage */
+function configForStorage(config: TileConfig): Record<string, unknown> {
+  return {
+    ...config,
+    dateRange: {
+      ...config.dateRange,
+      start: config.dateRange.start instanceof Date ? config.dateRange.start.toISOString() : config.dateRange.start,
+      end: config.dateRange.end instanceof Date ? config.dateRange.end.toISOString() : config.dateRange.end,
+    },
+  };
+}
+
+/** Load and deserialize persisted state for an app; null if none or invalid */
+function loadPersistedState(appKey: string): { config: TileConfig; dateRangeKey: string } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(getStorageKey(appKey));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.config) return null;
+    const config = parsed.config as TileConfig & { dateRange: { start: string; end: string } };
+    const dateRange = config.dateRange;
+    const restored: TileConfig = {
+      ...config,
+      dateRange: {
+        ...dateRange,
+        start: new Date(dateRange.start),
+        end: new Date(dateRange.end),
+      },
+      // Ensure at least one measure (required for queries)
+      measures: Array.isArray(config.measures) && config.measures.length > 0 ? config.measures : [MEASURES[0]],
+    };
+    return {
+      config: restored,
+      dateRangeKey: typeof parsed.dateRangeKey === 'string' ? parsed.dateRangeKey : DEFAULT_DATE_RANGE_KEY,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Persist current builder state for the given app */
+function persistState(appKey: string, config: TileConfig, dateRangeKey: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(
+      getStorageKey(appKey),
+      JSON.stringify({ config: configForStorage(config), dateRangeKey })
+    );
+  } catch {
+    // ignore quota / parse errors
+  }
+}
+
 interface TileStore {
   config: TileConfig;
   queryResult: QueryResult | null;
   isLoading: boolean;
   error: string | null;
   appKey: string;
+  dateRangeKey: string; // Track which preset is selected
   
   // Actions
   setAppKey: (appKey: string) => void;
@@ -47,12 +109,14 @@ interface TileStore {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082';
 
+const DEFAULT_DATE_RANGE_KEY = '1y';
+
 // Default config
 const getDefaultConfig = (): TileConfig => ({
   measures: [MEASURES[0]], // Total Events by default
   dimensions: [],
   filters: [],
-  dateRange: DATE_RANGES[2].getRange(), // Last 7 days
+  dateRange: (DATE_RANGES.find(r => r.value === DEFAULT_DATE_RANGE_KEY) || DATE_RANGES[2]).getRange(),
   chartType: 'bar',
 });
 
@@ -62,9 +126,19 @@ export const useTileStore = create<TileStore>((set, get) => ({
   isLoading: false,
   error: null,
   appKey: '',
+  dateRangeKey: DEFAULT_DATE_RANGE_KEY,
 
   setAppKey: (appKey: string) => {
-    set({ appKey });
+    const restored = appKey ? loadPersistedState(appKey) : null;
+    if (restored) {
+      set({
+        appKey,
+        config: restored.config,
+        dateRangeKey: restored.dateRangeKey,
+      });
+    } else {
+      set({ appKey });
+    }
   },
 
   setEventType: (eventType?: string) => {
@@ -164,6 +238,7 @@ export const useTileStore = create<TileStore>((set, get) => ({
     const range = DATE_RANGES.find(r => r.value === rangeKey);
     if (range) {
       set((state) => ({
+        dateRangeKey: rangeKey,
         config: {
           ...state.config,
           dateRange: range.getRange(),
@@ -383,6 +458,15 @@ export const useTileStore = create<TileStore>((set, get) => ({
     });
   },
 }));
+
+// Persist tile builder state (measures, dimensions, filters, date range) per app on every change
+if (typeof window !== 'undefined') {
+  useTileStore.subscribe((state) => {
+    if (state.appKey) {
+      persistState(state.appKey, state.config, state.dateRangeKey);
+    }
+  });
+}
 
 // Transform raw query result to chart-friendly format
 function transformQueryResult(
